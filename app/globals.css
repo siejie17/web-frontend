@@ -1,26 +1,132 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
+@theme {
+  /* Green building palette with stronger eco/forest tones */
+  --color-ink: #143423; /* body headings / high-contrast text only */
+  --color-ink-800: #1d4732;
+  --color-ink-700: #27513c;
+
+  --color-slate: #5b6c63; /* secondary text */
+  --color-slate-400: #7a8b82;
+  --color-slate-200: #c7d3ca;
+
+  --color-sage: #2f7a4d; /* primary accent — CTAs, links, focus rings */
+  --color-sage-light: #6ea97f;
+  --color-sage-dark: #215a38;
+  --color-sage-50: #ebf6ee;
+  --color-sage-100: #d8eddc;
+
+  /* Deep forest green — dominant brand panel color */
+  --color-forest: #103124;
+  --color-forest-800: #183d2b;
+  --color-forest-700: #214d36;
+
+  --color-mist: #f2f7f1; /* app background */
+  --color-paper: #fcfefb; /* card / input surface */
+
+  --color-gold: #c58f2f; /* GBI score / rating accent */
+  --color-gold-50: #f8efe2;
+
+  --color-clay: #b24d3c; /* error state */
+  --color-clay-50: #f9e8e4;
+
+  --font-display: var(--font-sora), sora;
+  --font-body: var(--font-sora), sora;
+  --font-mono: var(--font-sora), sora;
+
+  --radius-xl2: 1.25rem;
+
+  --shadow-soft: 0 1px 2px rgba(20, 52, 35, 0.06), 0 16px 32px -14px rgba(20, 52, 35, 0.18);
+  --shadow-focus: 0 0 0 3px rgba(47, 122, 77, 0.25);
+
+  --animate-draw-ring: draw-ring 1.4s cubic-bezier(0.65, 0, 0.35, 1) 0.3s both;
+  --animate-fade-up: fade-up 0.5s ease-out both;
+  --animate-fade-up-delay: fade-up 0.5s ease-out 0.15s both;
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+@keyframes draw-ring {
+  0% {
+    stroke-dashoffset: 251;
+  }
+  100% {
+    stroke-dashoffset: 70;
   }
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+@keyframes fade-up {
+  0% {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+:root {
+ --pfx-bg: #F6F6F2;
+ --pfx-surface: #FFFFFF;
+ --pfx-surface-tint: #EEF2EC;
+ --pfx-ink: #1E2621;
+ --pfx-ink-soft: #5B655F;
+ --pfx-accent: #3E6B52;
+ --pfx-accent-deep: #2E5140;
+ --pfx-line: #E4E1D8;
+ --pfx-signal: #C08A3E;
+}
+
+@keyframes pfx-pulse {
+ 0%   { transform: scale(0.92); opacity: 0.55; }
+ 70%  { transform: scale(1.25); opacity: 0; }
+ 100% { transform: scale(1.25); opacity: 0; }
+}
+
+/* Blueprint dot-grid background, used behind the brand panel. */
+.bg-blueprint-grid {
+  background-image: radial-gradient(circle, rgba(255, 255, 255, 0.12) 1px, transparent 1px);
+  background-size: 18px 18px;
+}
+
+/* Brand panel gradient — deep forest to sage, the page's dominant green field. */
+.bg-brand-panel {
+  background-image: linear-gradient(160deg, var(--color-forest) 0%, var(--color-forest-700) 45%, var(--color-sage-dark) 100%);
+}
+
+@layer base {
+  html {
+    scroll-behavior: smooth;
+  }
+
+  body {
+    @apply bg-mist text-ink font-body antialiased;
+  }
+
+  h1,
+  h2,
+  h3 {
+    @apply font-display;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--color-sage);
+    outline-offset: 2px;
+    border-radius: 4px;
+  }
+
+  ::selection {
+    background-color: var(--color-sage-50);
+    color: var(--color-ink);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
 }
