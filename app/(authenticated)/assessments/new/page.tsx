@@ -27,82 +27,9 @@ import {
   ChevronRight,
   AlertCircle,
   Check,
+  ChevronLeft,
 } from "lucide-react";
 import { FormInputs } from "@/types/form";
-
-/* ---------------- Mock reference data ---------------- */
-/* Replace with the real /form-inputs response shape. */
-
-const BUILDING_TYPES = [
-  "Residential New Construction (RNC)",
-  "Non-Residential New Construction (NRNC)",
-  "Non-Residential Existing Building (NREB)",
-];
-
-const CATEGORIES: Record<string, string[]> = {
-  "Residential New Construction (RNC)": ["Bungalows", "Terrace Houses", "Apartments"],
-  "Non-Residential New Construction (NRNC)": ["Light Duty Factories", "Warehouses", "Offices, Owner Operated", "Shop Offices", "Restaurants", "Multi-Purpose Halls", "Mosques", "Elevated Car Parks"],
-  "Non-Residential Existing Building (NREB)": ["Light Duty Factories", "Warehouses", "Offices, Owner Operated", "Shop Offices", "Restaurants", "Multi-Purpose Halls", "Mosques", "Elevated Car Parks"],
-};
-
-const CLASSIFICATIONS: Record<string, string[]> = {
-  "Residential New Construction (RNC)": [
-    "Landed",
-    "High-Rise",
-    "Medium-Rise",
-  ],
-};
-
-const STATES = [
-  "Pulau Pinang",
-  "Kedah",
-  "Perlis",
-  "Perak",
-  "Selangor",
-  "W.P. Kuala Lumpur",
-  "Melaka",
-  "Negeri Sembilan",
-  "Johor",
-  "Pahang",
-  "Kelantan",
-  "Terengganu",
-  "Sabah",
-  "Sarawak",
-];
-
-const REGIONS: Record<string, string[]> = {
-  Sarawak: ["Kuching", "Sibu", "Miri"],
-  Sabah: ["Kota Kinabalu", "Sandakan", "Tawau"],
-};
-
-const STRUCTURES: Record<string, Record<string, string[]>> = {
-  "Residential New Construction (RNC)": {
-    ALL: ["Landed", "High-Rise Residential", "Mixed Development"],
-  },
-  "Non-Residential New Construction (NRNC)": {
-    SABAH: ["Commercial Tower", "Shopping Complex"],
-    SARAWAK: ["Commercial Tower", "Shopping Complex"],
-    SMSIA: ["Office Tower", "Retail Podium", "Hotel"],
-  },
-  "Non-Residential Existing Building (NREB)": {
-    SABAH: ["Retrofit — Commercial"],
-    SARAWAK: ["Retrofit — Commercial"],
-    SMSIA: ["Retrofit — Office", "Retrofit — Retail"],
-  },
-};
-
-const RATING_SCALES: Record<string, string[]> = {
-  "Residential New Construction (RNC)": [
-    "GreenRE Residential",
-    "GBI Residential",
-  ],
-  "Non-Residential New Construction (NRNC)": [
-    "GreenRE NRNC",
-    "GBI NRNC",
-    "LEED BD+C",
-  ],
-  "Non-Residential Existing Building (NREB)": ["GreenRE NREB", "GBI NREB"],
-};
 
 const currentYear = new Date().getFullYear();
 const YEAR_LIST = Array.from({ length: 6 }, (_, i) => String(currentYear + i));
@@ -114,8 +41,8 @@ type Errors = Record<string, string>;
 export default function NewAssessmentPage() {
   const router = useRouter();
 
-  const [formInputs, setFormInputs] = useState<FormInputs | null>(null);
-  
+  const [formInputs, setFormInputs] = useState<FormInputs>();
+
   const [loading, setLoading] = useState(true);
   useEffect(() => {
     const t = setTimeout(() => setLoading(false), 450);
@@ -127,9 +54,7 @@ export default function NewAssessmentPage() {
   const [buildingType, setBuildingType] = useState<string | null>(null);
   const [category, setCategory] = useState<string | null>(null);
   const [classification, setClassification] = useState<string | null>(null);
-  const [managementOption, setManagementOption] = useState<string | null>(
-    null,
-  );
+  const [managementOption, setManagementOption] = useState<string | null>(null);
   const [year, setYear] = useState<string | null>(null);
   const [state, setState] = useState<string | null>(null);
   const [region, setRegion] = useState<string | null>(null);
@@ -173,12 +98,6 @@ export default function NewAssessmentPage() {
     fetchFormInputs();
   }, []);
 
-  useEffect(() => {
-    if (formInputs) {
-      console.log("Fetched form inputs:", formInputs);
-    }
-  }, [formInputs]);
-
   const clearError = (field: string) =>
     setErrors((prev) => ({ ...prev, [field]: "" }));
 
@@ -191,10 +110,8 @@ export default function NewAssessmentPage() {
 
   /* ---- derived / conditional data ---- */
 
-  const categoryOptions = buildingType ? CATEGORIES[buildingType] || [] : [];
-
   const classificationOptions = buildingType
-    ? CLASSIFICATIONS[buildingType] || []
+    ? formInputs?.classifications[buildingType].map((c) => c.name) || []
     : [];
   const hasClassifications = classificationOptions.length > 0;
 
@@ -209,7 +126,9 @@ export default function NewAssessmentPage() {
     classification === "Landed" ? ["No"] : classification ? ["Yes", "No"] : [];
 
   const showRegion = state === "Sabah" || state === "Sarawak";
-  const regionOptions = showRegion ? REGIONS[state as string] || [] : [];
+  const regionOptions = showRegion
+    ? formInputs?.regions[state as string] || []
+    : [];
 
   const regionKey =
     buildingType === "Residential New Construction (RNC)"
@@ -219,15 +138,17 @@ export default function NewAssessmentPage() {
         : "SMSIA";
 
   const structureOptions =
-    buildingType && state ? STRUCTURES[buildingType]?.[regionKey] || [] : [];
+    buildingType && state
+      ? formInputs?.structures[buildingType]?.[regionKey] || []
+      : [];
 
   const ratingScaleOptions = buildingType
-    ? RATING_SCALES[buildingType] || []
+    ? Object.keys(formInputs?.ratingScales[buildingType] || [])
     : [];
 
   /* ---- progress ---- */
 
-  const requiredTotal = 7 + (hasClassifications ? 2 : 0) + (showRegion ? 1 : 0);
+  const requiredTotal = 9 + (hasClassifications ? 2 : 0) + (showRegion ? 1 : 0);
   const requiredDone =
     [
       projectName.trim() !== "",
@@ -235,6 +156,7 @@ export default function NewAssessmentPage() {
       !!category,
       !!year,
       buildingSizeDisplay !== "" && parseFloat(buildingSizeDisplay) > 0,
+      parseFloat(budgetDisplay) > 0,
       !!state,
       !!structure,
       !!ratingScale,
@@ -245,7 +167,8 @@ export default function NewAssessmentPage() {
     (showRegion ? (region ? 1 : 0) : 0);
 
   const isComplete = requiredDone === requiredTotal;
-  const progressPct = requiredTotal > 0 ? Math.round((requiredDone / requiredTotal) * 100) : 0;
+  const progressPct =
+    requiredTotal > 0 ? Math.round((requiredDone / requiredTotal) * 100) : 0;
 
   /* ---- input formatting helpers ---- */
 
@@ -324,8 +247,28 @@ export default function NewAssessmentPage() {
     setSubmitted(ok);
 
     if (ok) {
+      const data = {
+        projectName: projectName.trim(),
+        buildingType,
+        category,
+        classification: classification || null,
+        managementOption: managementOption || null,
+        year,
+        buildingSize: parseFloat(buildingSizeDisplay),
+        projectBudget: budgetDisplay ? parseFloat(budgetDisplay) : null,
+        state,
+        region: region || null,
+        structure,
+        ratingScale,
+      };
+
+      console.log("Form submitted:", data);
+
       requestAnimationFrame(() => {
-        successRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+        successRef.current?.scrollIntoView({
+          behavior: "smooth",
+          block: "start",
+        });
       });
     } else {
       const firstErrorField = Object.keys(next).find((k) => next[k]);
@@ -339,18 +282,20 @@ export default function NewAssessmentPage() {
   };
 
   return (
-    <div className="mx-auto max-w-200 pb-10 pt-6">
+    <div className="mx-auto max-w-275 pb-10 pt-6">
       {/* ---------------- Breadcrumb ---------------- */}
-      <nav aria-label="Breadcrumb" className="mb-5 flex items-center gap-1.5 text-[12.5px] text-[#8A938C]">
+      <nav
+        aria-label="Breadcrumb"
+        className="mb-5 flex items-center gap-1.5 text-[12.5px] text-[#8A938C]"
+      >
         <button
           type="button"
           onClick={() => router.push("/dashboard")}
-          className="rounded-sm transition-colors hover:text-[#3E6B52] focus-visible:outline focus-visible:outline-offset-2 focus-visible:outline-[#3E6B52]"
+          className="flex items-center gap-1 rounded-sm transition-colors hover:text-[#3E6B52] hover:underline underline-offset-2 focus-visible:outline focus-visible:outline-offset-2 focus-visible:outline-[#3E6B52] cursor-pointer"
         >
-          Dashboard
+          <ChevronLeft size={14} className="shrink-0 font-bold" />
+          Back to Dashboard
         </button>
-        <ChevronRight size={13} className="shrink-0" />
-        <span className="text-[#5B655F]">New Assessment</span>
       </nav>
 
       {/* ---------------- Intro ---------------- */}
@@ -370,9 +315,8 @@ export default function NewAssessmentPage() {
               Green Building Scores Calculator
             </h1>
             <p className="mt-3 text-[15px] leading-relaxed text-[#5B655F]">
-              Estimate your project&apos;s performance against the standards
-              for its green building and cost optimisation compliance. This
-              takes about three minutes.
+              Estimate your project&apos;s performance against the standards for
+              its green building and cost optimisation compliance.
             </p>
           </div>
         </div>
@@ -388,8 +332,8 @@ export default function NewAssessmentPage() {
             <Check size={14} />
           </span>
           <span>
-            Looks good — this is a UI preview, so nothing was actually
-            submitted yet.
+            Looks good — you may proceed to submit this assessment to get your
+            results.
           </span>
         </div>
       )}
@@ -398,41 +342,43 @@ export default function NewAssessmentPage() {
       <form
         onSubmit={handleSubmit}
         noValidate
-        className="overflow-hidden rounded-3xl border border-[#E4E1D8] bg-white shadow-[0_8px_24px_rgba(30,38,33,0.05)]"
+        className="relative mb-5 rounded-3xl border border-[#E4E1D8] bg-white shadow-[0_8px_24px_rgba(30,38,33,0.05)]"
       >
-        {/* Progress header */}
-        <div className="border-b border-[#EFEDE6] bg-[#FBFAF7] px-7 py-4 sm:px-9">
-          <div className="flex items-center justify-between">
-            <span
-              className="text-[12px] uppercase tracking-[0.08em] text-[#7C8880]"
-              style={{ fontFamily: "var(--font-mono)" }}
-            >
-              Project details
-            </span>
-            {!loading && (
+        <div className="overflow-hidden rounded-t-3xl">
+          {/* Progress header */}
+          <div className="border-b border-[#EFEDE6] bg-[#FBFAF7] px-7 py-4 sm:px-9">
+            <div className="flex items-center justify-between">
               <span
-                className="text-[12px] text-[#8A938C]"
+                className="text-[12px] uppercase tracking-[0.08em] text-[#7C8880]"
                 style={{ fontFamily: "var(--font-mono)" }}
               >
-                {requiredDone}/{requiredTotal} complete
+                Project details
               </span>
+              {!loading && (
+                <span
+                  className="text-[12px] text-[#8A938C]"
+                  style={{ fontFamily: "var(--font-mono)" }}
+                >
+                  {requiredDone}/{requiredTotal} Completed
+                </span>
+              )}
+            </div>
+            {!loading && (
+              <div
+                className="mt-2.5 h-1 w-full overflow-hidden rounded-full bg-[#EFEDE6]"
+                role="progressbar"
+                aria-valuenow={progressPct}
+                aria-valuemin={0}
+                aria-valuemax={100}
+                aria-label="Form completion"
+              >
+                <div
+                  className="h-full rounded-full bg-[#3E6B52] transition-all duration-300 ease-out"
+                  style={{ width: `${progressPct}%` }}
+                />
+              </div>
             )}
           </div>
-          {!loading && (
-            <div
-              className="mt-2.5 h-1 w-full overflow-hidden rounded-full bg-[#EFEDE6]"
-              role="progressbar"
-              aria-valuenow={progressPct}
-              aria-valuemin={0}
-              aria-valuemax={100}
-              aria-label="Form completion"
-            >
-              <div
-                className="h-full rounded-full bg-[#3E6B52] transition-all duration-300 ease-out"
-                style={{ width: `${progressPct}%` }}
-              />
-            </div>
-          )}
         </div>
 
         <div className="px-7 py-8 sm:px-9 sm:py-9">
@@ -440,7 +386,10 @@ export default function NewAssessmentPage() {
             <FormSkeleton />
           ) : (
             <>
-              <FormSection title="The basics" description="Name the project and tell us what you're building.">
+              <FormSection
+                title="The Basics"
+                description="Name the project and tell us what you're building."
+              >
                 <TextField
                   name="projectName"
                   label="Project Name"
@@ -459,7 +408,7 @@ export default function NewAssessmentPage() {
                   label="Building Type"
                   placeholder="Select building type"
                   value={buildingType}
-                  options={BUILDING_TYPES}
+                  options={formInputs?.buildingTypes}
                   openField={openField}
                   setOpenField={setOpenField}
                   error={errors.buildingType}
@@ -483,7 +432,11 @@ export default function NewAssessmentPage() {
                       : "Please select building type first"
                   }
                   value={category}
-                  options={categoryOptions}
+                  options={
+                    buildingType
+                      ? formInputs?.categories[buildingType] || []
+                      : []
+                  }
                   disabled={!buildingType}
                   onDisabledPress={() =>
                     !buildingType &&
@@ -558,7 +511,7 @@ export default function NewAssessmentPage() {
               </FormSection>
 
               <FormSection
-                title="Scale & timing"
+                title="Scale & Timing"
                 description="Size, budget, and when the project breaks ground."
               >
                 <TextField
@@ -602,7 +555,7 @@ export default function NewAssessmentPage() {
               </FormSection>
 
               <FormSection
-                title="Location & structure"
+                title="Location & Structure"
                 description="Where the site sits and how it's built."
               >
                 <SelectField
@@ -610,7 +563,7 @@ export default function NewAssessmentPage() {
                   label="State"
                   placeholder="Select state"
                   value={state}
-                  options={STATES}
+                  options={formInputs?.states || []}
                   openField={openField}
                   setOpenField={setOpenField}
                   error={errors.state}
@@ -657,7 +610,10 @@ export default function NewAssessmentPage() {
                         "Please select building type and state first",
                       );
                     else if (!buildingType)
-                      flashHint("structure", "Please select building type first");
+                      flashHint(
+                        "structure",
+                        "Please select building type first",
+                      );
                     else if (!state)
                       flashHint("structure", "Please select state first");
                   }}
@@ -675,7 +631,7 @@ export default function NewAssessmentPage() {
               </FormSection>
 
               <FormSection
-                title="Certification target"
+                title="Certification Target"
                 description="The rating scale you're aiming to be assessed against."
                 noBorder
               >
@@ -700,7 +656,9 @@ export default function NewAssessmentPage() {
                   openField={openField}
                   setOpenField={setOpenField}
                   error={errors.ratingScale}
-                  hint={hint?.field === "ratingScale" ? hint.message : undefined}
+                  hint={
+                    hint?.field === "ratingScale" ? hint.message : undefined
+                  }
                   onDismissHint={() => dismissHint("ratingScale")}
                   onSelect={(v) => {
                     setRatingScale(v);
@@ -710,7 +668,7 @@ export default function NewAssessmentPage() {
                 />
               </FormSection>
 
-              <div className="mt-1 flex flex-col items-center gap-3 border-t border-[#EFEDE6] pt-7 sm:flex-row sm:justify-between">
+              <div className="mt-6 flex flex-col items-center gap-3 border-t border-[#EFEDE6] pt-7 sm:flex-row sm:justify-between">
                 <p className="text-[12.5px] text-[#8A938C]">
                   {isComplete
                     ? "All set — you can revisit and edit these details after submitting."
@@ -718,10 +676,11 @@ export default function NewAssessmentPage() {
                 </p>
                 <button
                   type="submit"
-                  className={`w-full rounded-full py-3.5 text-[14.5px] font-semibold shadow-[0_12px_28px_rgba(62,107,82,0.24)] transition-all focus-visible:outline focus-visible:outline-offset-2 focus-visible:outline-[#3E6B52] sm:w-auto sm:px-10 ${isComplete
+                  className={`w-full rounded-full py-3.5 text-[14.5px] font-semibold shadow-[0_12px_28px_rgba(62,107,82,0.24)] transition-all focus-visible:outline focus-visible:outline-offset-2 focus-visible:outline-[#3E6B52] sm:w-auto sm:px-10 ${
+                    isComplete
                       ? "bg-[#3E6B52] text-[#F6F6F2] hover:-translate-y-0.5 hover:shadow-[0_16px_36px_rgba(62,107,82,0.30)]"
                       : "bg-[#3E6B52]/90 text-[#F6F6F2]/90 hover:-translate-y-0.5"
-                    }`}
+                  }`}
                 >
                   Run assessment
                 </button>
@@ -748,9 +707,7 @@ function FormSection({
   noBorder?: boolean;
 }) {
   return (
-    <div
-      className={`mb-8 pb-8 ${noBorder ? "" : "border-b border-[#EFEDE6]"}`}
-    >
+    <div className={`mb-8 pb-8 ${noBorder ? "" : "border-b border-[#EFEDE6]"}`}>
       <div className="mb-4">
         <h2
           className="text-[15px] font-semibold"
@@ -844,11 +801,13 @@ function TextField({
           aria-required={required}
           aria-invalid={!!error}
           aria-describedby={error ? errorId : undefined}
-          className={`w-full rounded-[14px] border bg-white py-2.75 text-[14px] text-[#1E2621] placeholder:text-[#B7BEB8] transition-colors focus:outline-none focus:ring-2 focus:ring-[#3E6B52]/25 ${prefix ? "pl-12 pr-4" : "px-4"
-            } ${error
+          className={`w-full rounded-[14px] border bg-white py-2.75 text-[14px] text-[#1E2621] placeholder:text-[#B7BEB8] transition-colors focus:outline-none focus:ring-2 focus:ring-[#3E6B52]/25 ${
+            prefix ? "pl-12 pr-4" : "px-4"
+          } ${
+            error
               ? "border-[#E7B7AF] focus:ring-[#B4483C]/20"
               : "border-[#E4E1D8] hover:border-[#C9D3CC]"
-            }`}
+          }`}
         />
       </div>
       {error && <FieldError id={errorId} message={error} />}
@@ -879,7 +838,7 @@ function SelectField({
   label: string;
   value: string | null;
   placeholder: string;
-  options: string[];
+  options: string[] | undefined;
   disabled?: boolean;
   onDisabledPress?: () => void;
   openField: string | null;
@@ -891,12 +850,17 @@ function SelectField({
   required?: boolean;
   isLastInSection?: boolean;
 }) {
+  const safeOptions = options || [];
+
   const isOpen = openField === name;
   const [activeIndex, setActiveIndex] = useState(0);
   const buttonRef = useRef<HTMLButtonElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
   const optionRefs = useRef<Array<HTMLButtonElement | null>>([]);
-  const typeaheadRef = useRef({ query: "", timer: 0 as unknown as ReturnType<typeof setTimeout> });
+  const typeaheadRef = useRef({
+    query: "",
+    timer: 0 as unknown as ReturnType<typeof setTimeout>,
+  });
 
   const buttonId = useId();
   const listboxId = useId();
@@ -908,7 +872,7 @@ function SelectField({
       onDisabledPress?.();
       return;
     }
-    const idx = value ? Math.max(options.indexOf(value), 0) : 0;
+    const idx = value ? Math.max(safeOptions.indexOf(value), 0) : 0;
     setActiveIndex(idx);
     setOpenField(name);
   };
@@ -940,14 +904,16 @@ function SelectField({
   };
 
   const handleListKeyDown = (e: React.KeyboardEvent) => {
-    if (options.length === 0) {
+    const safeOptions = options || [];
+
+    if (safeOptions.length === 0) {
       if (e.key === "Escape") closeList();
       return;
     }
     switch (e.key) {
       case "ArrowDown":
         e.preventDefault();
-        setActiveIndex((i) => Math.min(i + 1, options.length - 1));
+        setActiveIndex((i) => Math.min(i + 1, safeOptions.length - 1));
         break;
       case "ArrowUp":
         e.preventDefault();
@@ -959,12 +925,12 @@ function SelectField({
         break;
       case "End":
         e.preventDefault();
-        setActiveIndex(options.length - 1);
+        setActiveIndex(safeOptions.length - 1);
         break;
       case "Enter":
       case " ":
         e.preventDefault();
-        commitSelection(options[activeIndex]);
+        commitSelection(safeOptions[activeIndex]);
         break;
       case "Escape":
         e.preventDefault();
@@ -978,7 +944,7 @@ function SelectField({
           const ta = typeaheadRef.current;
           clearTimeout(ta.timer);
           ta.query += e.key.toLowerCase();
-          const match = options.findIndex((o) =>
+          const match = safeOptions.findIndex((o) =>
             o.toLowerCase().startsWith(ta.query),
           );
           if (match >= 0) setActiveIndex(match);
@@ -1017,21 +983,24 @@ function SelectField({
           disabled={disabled}
           onClick={() => (isOpen ? closeList() : openList())}
           onKeyDown={handleButtonKeyDown}
-          className={`flex w-full items-center justify-between rounded-[14px] border px-4 py-2.75 text-left text-[14px] transition-colors ${disabled
-            ? "cursor-not-allowed border-[#E4E1D8] bg-[#F6F6F2] text-[#B7BEB8]"
-            : error
-              ? "border-[#E7B7AF] bg-white text-[#1E2621] focus-visible:outline focus-visible:outline-offset-2 focus-visible:outline-[#B4483C]"
-              : `bg-white text-[#1E2621] hover:border-[#C9D3CC] focus-visible:outline focus-visible:outline-offset-2 focus-visible:outline-[#3E6B52] ${isOpen ? "border-[#3E6B52]" : "border-[#E4E1D8]"
-              }`
-            }`}
+          className={`flex w-full items-center justify-between rounded-[14px] border px-4 py-2.75 text-left text-[14px] transition-colors ${
+            disabled
+              ? "cursor-not-allowed border-[#E4E1D8] bg-[#F6F6F2] text-[#B7BEB8]"
+              : error
+                ? "border-[#E7B7AF] bg-white text-[#1E2621] focus-visible:outline focus-visible:outline-offset-2 focus-visible:outline-[#B4483C]"
+                : `bg-white text-[#1E2621] hover:border-[#C9D3CC] focus-visible:outline focus-visible:outline-offset-2 focus-visible:outline-[#3E6B52] ${
+                    isOpen ? "border-[#3E6B52]" : "border-[#E4E1D8]"
+                  }`
+          }`}
         >
           <span className={value ? "" : "text-[#B7BEB8]"}>
             {value || placeholder}
           </span>
           <ChevronDown
             size={16}
-            className={`shrink-0 text-[#8A938C] transition-transform ${isOpen ? "rotate-180" : ""
-              }`}
+            className={`shrink-0 text-[#8A938C] transition-transform ${
+              isOpen ? "rotate-180" : ""
+            }`}
           />
         </button>
 
@@ -1042,20 +1011,21 @@ function SelectField({
             role="listbox"
             aria-labelledby={buttonId + "-label"}
             aria-activedescendant={
-              options.length > 0 ? `${listboxId}-opt-${activeIndex}` : undefined
+              safeOptions.length > 0
+                ? `${listboxId}-opt-${activeIndex}`
+                : undefined
             }
             tabIndex={-1}
             onKeyDown={handleListKeyDown}
-             
             autoFocus
             className="absolute left-0 right-0 top-[calc(100%+6px)] z-20 max-h-64 overflow-y-auto rounded-[14px] border border-[#E4E1D8] bg-white py-1.5 shadow-[0_16px_36px_rgba(30,38,33,0.12)] focus:outline-none"
           >
-            {options.length === 0 ? (
+            {safeOptions.length === 0 ? (
               <div className="px-4 py-3 text-[13px] text-[#B7BEB8]">
                 No options available
               </div>
             ) : (
-              options.map((opt, idx) => (
+              safeOptions.map((opt, idx) => (
                 <button
                   key={opt}
                   id={`${listboxId}-opt-${idx}`}
@@ -1067,8 +1037,9 @@ function SelectField({
                   aria-selected={opt === value}
                   onMouseEnter={() => setActiveIndex(idx)}
                   onClick={() => commitSelection(opt)}
-                  className={`flex w-full items-center justify-between px-4 py-2.5 text-left text-[13.5px] transition-colors ${idx === activeIndex ? "bg-[#F6F6F2]" : ""
-                    } ${opt === value ? "font-medium text-[#3E6B52]" : "text-[#1E2621]"}`}
+                  className={`flex w-full items-center justify-between px-4 py-2.5 text-left text-[13.5px] transition-colors ${
+                    idx === activeIndex ? "bg-[#F6F6F2]" : ""
+                  } ${opt === value ? "font-medium text-[#3E6B52]" : "text-[#1E2621]"}`}
                 >
                   {opt}
                   {opt === value && (
