@@ -26,8 +26,10 @@ import {
     X,
 } from "lucide-react";
 import { Plus_Jakarta_Sans, Inter, IBM_Plex_Mono } from "next/font/google";
+import { usePathname, useRouter } from "next/navigation";
 
 import { useAuth } from "@/contexts/AuthContext";
+import { canAccessPath, dashboardForRole } from "@/lib/auth-roles";
 
 const display = Plus_Jakarta_Sans({
     subsets: ["latin"],
@@ -61,6 +63,12 @@ export default function AuthenticatedLayout({
     children,
 }: Readonly<AuthenticatedLayoutProps>) {
     const { user } = useAuth();
+    const pathname = usePathname();
+    const router = useRouter();
+    const adminPreviewEnabled =
+        process.env.NEXT_PUBLIC_ADMIN_PREVIEW_MODE === "true" &&
+        (pathname.startsWith("/admin") || pathname.startsWith("/super-admin"));
+    const mayViewPage = adminPreviewEnabled || Boolean(user && canAccessPath(user.role, pathname));
 
     const firstName = user?.first_name?.split(" ")[0] || "User";
     const fullName =
@@ -91,6 +99,19 @@ export default function AuthenticatedLayout({
         return () => document.removeEventListener("mousedown", handleClickOutside);
     }, []);
 
+    useEffect(() => {
+        if (adminPreviewEnabled) return;
+
+        if (!user) {
+            router.replace(`/login?redirect=${encodeURIComponent(pathname)}`);
+            return;
+        }
+
+        if (!canAccessPath(user.role, pathname)) {
+            router.replace(dashboardForRole(user.role));
+        }
+    }, [adminPreviewEnabled, pathname, router, user]);
+
     const handleLogout = async () => {
         try {
             await fetch("/api/auth/logout", {
@@ -103,6 +124,8 @@ export default function AuthenticatedLayout({
             console.error("Logout failed", error);
         }
     };
+
+    if (!mayViewPage) return null;
 
     return (
         <div

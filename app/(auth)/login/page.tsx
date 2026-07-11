@@ -9,6 +9,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import TextField from "@/components/ui/TextField";
 import Button from "@/components/ui/Button";
 import Modal from "@/components/ui/Modal";
+import { canAccessPath, dashboardForRole } from "@/lib/auth-roles";
 
 type FieldState = { value: string; error: string };
 
@@ -61,7 +62,16 @@ export default function LoginPage() {
 
             if (user && user.email_verified_at) {
                 await login(data.token ?? "", user);
-                router.push("/dashboard");
+                const requestedPath = searchParams.get("redirect");
+                const roleDashboard = dashboardForRole(user.role);
+                const safeDestination =
+                    requestedPath?.startsWith("/") &&
+                    !requestedPath.startsWith("//") &&
+                    canAccessPath(user.role, requestedPath)
+                        ? requestedPath
+                        : roleDashboard;
+
+                router.replace(safeDestination);
             } else {
                 setIsNotVerifiedModalOpen(true);
             }

@@ -1,6 +1,7 @@
 "use client";
 
 import { createContext, ReactNode, useContext, useEffect, useState } from "react";
+import type { UserRole } from "@/lib/auth-roles";
 
 type User = {
     id: string;
@@ -11,6 +12,7 @@ type User = {
     last_name: string;
     profile_pic: string;
     profile_picture?: string;
+    role: UserRole;
 };
 
 type AuthContextValue = {
