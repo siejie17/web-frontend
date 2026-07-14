@@ -292,7 +292,7 @@ function ActivityRow({ item, last }: { item: Project; last?: boolean }) {
     >
       <Link
         href={`/projects/${item.id}`}
-        className="group flex w-full items-center justify-between gap-4 rounded-lg px-2 py-1 text-left transition-colors hover:bg-[#F6F6F2] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#3E6B52]"
+        className="group flex w-full items-center justify-between gap-4 rounded-lg px-2 py-1 text-left transition-colors hover:bg-[#F6F6F2] focus-visible:outline focus-visible:outline-offset-2 focus-visible:outline-[#3E6B52]"
       >
         <div className="flex min-w-0 items-center gap-2.5">
           <span className={`h-1.5 w-1.5 rounded-full ${dotColor}`} />

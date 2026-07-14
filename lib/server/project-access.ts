@@ -108,7 +108,7 @@ export async function getOwnedProject(projectId: string) {
     const user = await getCurrentUser();
 
     if (!user) {
-        return { user: null, project: null };
+        return { user: null, project: null, selectedProject: null };
     }
 
     const projects = await getUserProjects(user.id);
@@ -118,5 +118,5 @@ export async function getOwnedProject(projectId: string) {
 
     console.log("Selected Project:", selectedProject);
 
-    return { user, project };
+    return { user, project, selectedProject };
 }
