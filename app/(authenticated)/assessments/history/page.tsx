@@ -12,6 +12,8 @@ import {
   Calendar,
   Star,
   Award,
+  Search,
+  X,
 } from "lucide-react";
 
 /* ---------------- Types ---------------- */
@@ -78,18 +80,40 @@ function ratingTone(rating: number) {
   return { text: "text-[#8C3D33]", bg: "bg-[#FBEDEB]", border: "border-[#E7C1BA]", chip: "bg-[#B4483C] text-[#F6F6F2]" };
 }
 
+/** Every whitespace-separated token in the query must appear somewhere
+ *  in the project's combined searchable text (AND semantics), so
+ *  queries like "kuching bungalow" narrow correctly. */
+function matchesQuery(project: Project, query: string) {
+  const tokens = query.trim().toLowerCase().split(/\s+/).filter(Boolean);
+  if (tokens.length === 0) return true;
+  return tokens.every((token) => project.name.toLowerCase().includes(token));
+}
+
 /* ---------------- Page ---------------- */
 
 export default function ProjectHistoryPage() {
   const [page, setPage] = useState(1);
+  const [query, setQuery] = useState("");
 
-  const totalPages = Math.max(1, Math.ceil(MOCK_PROJECTS.length / PER_PAGE));
+  const filteredProjects = useMemo(
+    () => MOCK_PROJECTS.filter((project) => matchesQuery(project, query)),
+    [query]
+  );
+
+  const totalPages = Math.max(1, Math.ceil(filteredProjects.length / PER_PAGE));
+  const safePage = Math.min(page, totalPages);
+
   const paged = useMemo(() => {
-    const start = (page - 1) * PER_PAGE;
-    return MOCK_PROJECTS.slice(start, start + PER_PAGE);
-  }, [page]);
+    const start = (safePage - 1) * PER_PAGE;
+    return filteredProjects.slice(start, start + PER_PAGE);
+  }, [filteredProjects, safePage]);
 
   const goTo = (p: number) => setPage(Math.min(Math.max(p, 1), totalPages));
+
+  const handleSearchChange = (value: string) => {
+    setQuery(value);
+    setPage(1); // reset pagination whenever the search term changes
+  };
 
   return (
     <div className="mx-auto max-w-200 pb-10 pt-6">
@@ -126,17 +150,83 @@ export default function ProjectHistoryPage() {
         <p className="mt-3 text-[14px] leading-relaxed text-[#5B655F]">
           {MOCK_PROJECTS.length} project{MOCK_PROJECTS.length !== 1 ? "s" : ""} assessed so far.
         </p>
+
+        {/* ---------------- Search ---------------- */}
+        <div className="mt-5 relative">
+          <Search
+            size={16}
+            className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-[#8A938C]"
+          />
+          <input
+            type="text"
+            value={query}
+            onChange={(e) => handleSearchChange(e.target.value)}
+            placeholder="Search by name, category, location, year, certification…"
+            aria-label="Search projects"
+            className="w-full rounded-2xl border border-[#E4E1D8] bg-white py-3 pl-11 pr-11 text-[14px] text-[#1E2621] placeholder:text-[#A2AAA4] transition-all focus:border-[#3E6B52] focus:outline-none focus:ring-4 focus:ring-[#3E6B52]/10"
+          />
+          {query && (
+            <button
+              type="button"
+              onClick={() => handleSearchChange("")}
+              aria-label="Clear search"
+              className="absolute right-3.5 top-1/2 flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-full text-[#8A938C] transition-colors hover:bg-[#F6F6F2] hover:text-[#1E2621]"
+            >
+              <X size={14} />
+            </button>
+          )}
+        </div>
+
+        {query && (
+          <p className="mt-2.5 text-[12.5px] text-[#8A938C]">
+            {filteredProjects.length} result{filteredProjects.length !== 1 ? "s" : ""} for &ldquo;{query}&rdquo;
+          </p>
+        )}
       </section>
 
       {/* ---------------- Cards ---------------- */}
-      <div className="space-y-4">
-        {paged.map((project) => (
-          <ProjectCard key={project.id} project={project} />
-        ))}
-      </div>
+      {filteredProjects.length === 0 ? (
+        <EmptyState query={query} onClear={() => handleSearchChange("")} />
+      ) : (
+        <div className="space-y-4">
+          {paged.map((project) => (
+            <ProjectCard key={project.id} project={project} />
+          ))}
+        </div>
+      )}
 
       {/* ---------------- Pagination ---------------- */}
-      <Pagination page={page} totalPages={totalPages} onChange={goTo} />
+      {filteredProjects.length > 0 && (
+        <Pagination page={safePage} totalPages={totalPages} onChange={goTo} />
+      )}
+    </div>
+  );
+}
+
+/* ---------------- Empty state ---------------- */
+
+function EmptyState({ query, onClear }: { query: string; onClear: () => void }) {
+  return (
+    <div className="flex flex-col items-center justify-center rounded-3xl border border-dashed border-[#E4E1D8] bg-[#FCFCF8] px-6 py-16 text-center">
+      <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-[#F6F6F2] text-[#8A938C]">
+        <Search size={20} />
+      </div>
+      <h3
+        className="text-[16px] font-semibold text-[#1E2621]"
+        style={{ fontFamily: "var(--font-display)" }}
+      >
+        No projects found
+      </h3>
+      <p className="mt-1.5 max-w-sm text-[13.5px] text-[#5B655F]">
+        Nothing matches &ldquo;{query}&rdquo;. Try a different name, location, category, or year.
+      </p>
+      <button
+        type="button"
+        onClick={onClear}
+        className="mt-4 rounded-full border border-[#E4E1D8] bg-white px-4 py-2 text-[13px] font-medium text-[#3E6B52] transition-all hover:-translate-y-0.5 hover:border-[#C9D3CC] hover:shadow-[0_10px_24px_rgba(30,38,33,0.08)]"
+      >
+        Clear search
+      </button>
     </div>
   );
 }

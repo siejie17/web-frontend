@@ -67,3 +67,137 @@ export interface ActualAnswerIds {
   subitems: Record<number, Record<number, number>>;
   customEntries: Record<number, Record<string, number>>;
 }
+
+export type CertificationLevel =
+  | "Platinum"
+  | "Gold"
+  | "Silver"
+  | "Certified"
+  | "Not Certified";
+ 
+export type ItemKind = "checkbox" | "options" | "selection" | "subitems";
+ 
+export interface AssessmentOption {
+  id: number;
+  description: string;
+  subDescription?: string;
+  marks: number;
+  predictedChecked: boolean;
+  actualChecked: boolean;
+}
+
+export interface OptionGroup {
+  id: number;
+  label?: string | null;
+  options: AssessmentOption[];
+}
+ 
+export interface AssessmentOptionGroup {
+  id: number;
+  label?: string;
+  options: AssessmentOption[];
+}
+ 
+export interface SelectionChoice {
+  id: number;
+  description: string;
+  marks: number;
+}
+ 
+export interface SelectionGroup {
+  id: number;
+  label: string;
+  exclusive: boolean;
+  selections: SelectionChoice[];
+  predictedChoiceId: number | null;
+  actualChoiceId: number | null;
+}
+ 
+export interface Subitem {
+  id: number;
+  description: string;
+  predictedChecked: boolean;
+  actualChecked: boolean;
+}
+ 
+export interface CustomEntry {
+  id: string;
+  description: string;
+  /** Custom entries only ever exist on the "actual" side. */
+  actualChecked: boolean;
+}
+ 
+export interface AssessmentItem {
+  id: number;
+  kind: ItemKind;
+  description: string;
+  info?: string;
+  esg?: string;
+  suggestions?: string;
+  marks: number;
+  isCompulsory?: boolean;
+ 
+  // checkbox kind
+  predictedChecked?: boolean;
+  actualChecked?: boolean;
+ 
+  // options kind
+  optionGroups?: AssessmentOptionGroup[];
+ 
+  // selection kind
+  selectionGroups?: SelectionGroup[];
+ 
+  // subitems kind
+  subitems?: Subitem[];
+  subitemsExist?: boolean;
+  customEntries?: CustomEntry[];
+ 
+  predictedMarks: number;
+  actualMarks: number;
+}
+ 
+export interface Subcriterion {
+  id: number;
+  name: string;
+  items?: AssessmentItem[] | null;
+}
+ 
+export interface Criterion {
+  id: number;
+  name: string;
+  icon?: string;
+  totalMarks: number;
+  predictedMarks: number;
+  actualMarks: number;
+  items?: AssessmentItem[] | null;
+  subcriteria?: Subcriterion[] | null;
+}
+ 
+export interface EvidenceFile {
+  id: string;
+  name: string;
+  sizeLabel: string;
+  uploadedAt: string;
+}
+ 
+export interface ProjectMeta {
+  projectName: string;
+  buildingType: string;
+  assessmentTitle: string;
+  status: "Draft" | "In Review" | "Submitted" | "Certified";
+  lastUpdated: string;
+  location: string;
+  assessor: string;
+}
+ 
+export interface ScoreSummary {
+  predicted: number;
+  actual: number;
+  total: number;
+  predictedPct: number;
+  actualPct: number;
+  predictedLevel: CertificationLevel;
+  actualLevel: CertificationLevel;
+  completedCriteria: number;
+  remainingCriteria: number;
+}

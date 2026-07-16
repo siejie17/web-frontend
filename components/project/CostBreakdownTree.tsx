@@ -26,6 +26,18 @@ export type CostNode = {
 
 export type CostBreakdown = Record<string, CostNode>;
 
+/**
+ * "assessment" — a single editable cost column. Used when the tree itself IS the thing being
+ *   authored (e.g. the initial assessment predicted-cost breakdown). Edits write to `cost`.
+ * "comparison" — the original behavior: a static "Budgeted" column (`cost`) next to an editable
+ *   "Actual" column (`actual_cost`). Used once a predicted breakdown already exists and the user
+ *   is logging real spend against it.
+ */
+export type CostBreakdownMode = "assessment" | "comparison";
+
+/** Which leaf field on CostNode the tree is currently reading/writing, derived from `mode`. */
+type EditableField = "cost" | "actual_cost";
+
 /* ---------------- Money helpers ---------------- */
 
 /** Only allow digits with at most 2 decimal places while typing (blocks the keystroke otherwise). */
@@ -57,37 +69,41 @@ export function formatWithCommas(raw: string | undefined): string {
 
 /* ---------------- Helpers ---------------- */
 
-/** Walk the tree once to seed edit state (as strings, so partial typing like "18." isn't lost). */
-function collectInitialEdits(data: CostBreakdown): Record<number, string> {
+/** Walk the tree once to seed edit state (as strings, so partial typing like "18." isn't lost).
+ *  Which field seeds the edits depends on the active mode's editable field. */
+function collectInitialEdits(data: CostBreakdown, field: EditableField): Record<number, string> {
     const edits: Record<number, string> = {};
     const visit = (node: CostNode) => {
         if (node.children) {
             Object.values(node.children).forEach(visit);
         } else {
-            edits[node.id] =
-                node.actual_cost !== undefined && node.actual_cost !== null
-                    ? String(node.actual_cost)
-                    : "";
+            const raw = field === "cost" ? node.cost : node.actual_cost;
+            edits[node.id] = raw !== undefined && raw !== null ? String(raw) : "";
         }
     };
     Object.values(data).forEach(visit);
     return edits;
 }
 
-/** A parent's actual cost is always the sum of its children — never stored directly. */
-function computeActualCost(node: CostNode, edits: Record<number, string>): number {
+/** A parent's live value is always the sum of its children's edited leaf values — never stored directly. */
+function computeFieldSum(node: CostNode, edits: Record<number, string>, field: EditableField): number {
     if (node.children) {
         return Object.values(node.children).reduce(
-            (sum, child) => sum + computeActualCost(child, edits),
+            (sum, child) => sum + computeFieldSum(child, edits, field),
             0
         );
     }
     return parseEdit(edits[node.id]);
 }
 
-function sumTop(data: CostBreakdown, key: "cost" | "actual", edits: Record<number, string>) {
+function sumTop(
+    data: CostBreakdown,
+    key: "budgeted" | "live",
+    edits: Record<number, string>,
+    field: EditableField
+) {
     return Object.values(data).reduce(
-        (sum, node) => sum + (key === "cost" ? node.cost : computeActualCost(node, edits)),
+        (sum, node) => sum + (key === "budgeted" ? node.cost : computeFieldSum(node, edits, field)),
         0
     );
 }
@@ -140,20 +156,26 @@ export default function CostBreakdownTree({
     data,
     onActualCostChange,
     hideTotals = false,
+    mode = "comparison",
 }: {
     data: CostBreakdown;
-    /** Optional: fires on every leaf edit (with a clean, parsed number), e.g. to persist to the server. */
+    /** Optional: fires on every leaf edit (with a clean, parsed number), e.g. to persist to the server.
+     *  Fires for whichever field is active in the current mode (`cost` in assessment, `actual_cost` in comparison). */
     onActualCostChange?: (nodeId: number, value: number) => void;
-    /** Set true when a parent screen renders its own summary cards (e.g. CostBreakdownScreen). */
+    /** Set true when a parent screen renders its own summary cards (e.g. CostBreakdownHierarchy). */
     hideTotals?: boolean;
+    /** "assessment" = single editable cost column. "comparison" (default) = Budgeted + editable Actual. */
+    mode?: CostBreakdownMode;
 }) {
-    const [edits, setEdits] = useState<Record<number, string>>(() => collectInitialEdits(data));
+    const field: EditableField = mode === "assessment" ? "cost" : "actual_cost";
+
+    const [edits, setEdits] = useState<Record<number, string>>(() => collectInitialEdits(data, field));
     const [expanded, setExpanded] = useState<Set<number>>(() => new Set());
     const [focusedId, setFocusedId] = useState<number | null>(null);
 
-    const totalBudgeted = useMemo(() => sumTop(data, "cost", edits), [data, edits]);
-    const totalActual = useMemo(() => sumTop(data, "actual", edits), [data, edits]);
-    const variance = totalActual - totalBudgeted;
+    const totalBudgeted = useMemo(() => sumTop(data, "budgeted", edits, field), [data, edits, field]);
+    const totalLive = useMemo(() => sumTop(data, "live", edits, field), [data, edits, field]);
+    const variance = totalLive - totalBudgeted;
     const isOverBudget = variance > 0;
 
     const allTopIds = useMemo(() => Object.values(data).map((n) => n.id), [data]);
@@ -191,6 +213,8 @@ export default function CostBreakdownTree({
         });
     };
 
+    const isAssessment = mode === "assessment";
+
     return (
         <div>
             {/* ---------------- Toolbar ---------------- */}
@@ -210,20 +234,26 @@ export default function CostBreakdownTree({
 
             {/* ---------------- Totals ---------------- */}
             {!hideTotals && (
-                <div className="mb-5 grid grid-cols-1 gap-3 sm:grid-cols-3">
-                    <TotalCard icon={Wallet} label="Total budgeted cost" value={formatMoney(totalBudgeted)} />
-                    <TotalCard
-                        icon={CircleDollarSign}
-                        label="Total actual cost"
-                        value={formatMoney(totalActual)}
-                        highlighted
-                    />
-                    <TotalCard
-                        icon={variance === 0 ? Minus : isOverBudget ? TrendingUp : TrendingDown}
-                        label={isOverBudget ? "Over budget by" : "Under budget by"}
-                        value={formatMoney(Math.abs(variance))}
-                        tone={variance === 0 ? "neutral" : isOverBudget ? "over" : "under"}
-                    />
+                <div className={`mb-5 grid grid-cols-1 gap-3 ${isAssessment ? "sm:grid-cols-1" : "sm:grid-cols-3"}`}>
+                    {isAssessment ? (
+                        <TotalCard icon={CircleDollarSign} label="Total predicted cost" value={formatMoney(totalLive)} highlighted />
+                    ) : (
+                        <>
+                            <TotalCard icon={Wallet} label="Total budgeted cost" value={formatMoney(totalBudgeted)} />
+                            <TotalCard
+                                icon={CircleDollarSign}
+                                label="Total actual cost"
+                                value={formatMoney(totalLive)}
+                                highlighted
+                            />
+                            <TotalCard
+                                icon={variance === 0 ? Minus : isOverBudget ? TrendingUp : TrendingDown}
+                                label={isOverBudget ? "Over budget by" : "Under budget by"}
+                                value={formatMoney(Math.abs(variance))}
+                                tone={variance === 0 ? "neutral" : isOverBudget ? "over" : "under"}
+                            />
+                        </>
+                    )}
                 </div>
             )}
 
@@ -233,8 +263,8 @@ export default function CostBreakdownTree({
                 style={{ fontFamily: "var(--font-mono)" }}
             >
                 <span className="flex-1 text-center">Element</span>
-                <span className={`${COL_BUDGET} shrink-0 text-center`}>Budgeted</span>
-                <span className={`${COL_ACTUAL} shrink-0 text-center`}>Actual</span>
+                {!isAssessment && <span className={`${COL_BUDGET} shrink-0 text-center`}>Budgeted</span>}
+                <span className={`${COL_ACTUAL} shrink-0 text-center`}>{isAssessment ? "Cost" : "Actual"}</span>
             </div>
 
             {/* ---------------- Tree ---------------- */}
@@ -248,6 +278,8 @@ export default function CostBreakdownTree({
                         edits={edits}
                         expanded={expanded}
                         focusedId={focusedId}
+                        mode={mode}
+                        field={field}
                         onToggle={toggleNode}
                         onLeafChange={handleLeafChange}
                         onLeafFocus={handleLeafFocus}
@@ -269,6 +301,8 @@ function CostRow({
     edits,
     expanded,
     focusedId,
+    mode,
+    field,
     onToggle,
     onLeafChange,
     onLeafFocus,
@@ -281,6 +315,8 @@ function CostRow({
     edits: Record<number, string>;
     expanded: Set<number>;
     focusedId: number | null;
+    mode: CostBreakdownMode;
+    field: EditableField;
     onToggle: (id: number) => void;
     onLeafChange: (id: number, raw: string) => void;
     onLeafFocus: (id: number) => void;
@@ -289,16 +325,15 @@ function CostRow({
 }) {
     const hasChildren = !!node.children;
     const isOpen = expanded.has(node.id);
-    const actualCost = computeActualCost(node, edits);
+    const liveValue = computeFieldSum(node, edits, field);
     const entries = node.children ? Object.entries(node.children) : [];
-    const variance = actualCost - node.cost;
-    const varianceTone =
-        variance === 0 ? "text-[#8A938C]" : variance > 0 ? "text-[#B0453A]" : "text-[#3E6B52]";
 
     const isCert = node.is_certification === 1;
     // Certification rows always get the gold treatment; other parent rows are colored by depth;
     // plain leaf rows stay neutral so they read as simple, editable line items.
     const style = isCert ? CERT_STYLE : hasChildren ? LEVEL_STYLES[depth % LEVEL_STYLES.length] : depth == 0 ? LEVEL_STYLES[0] : null;
+
+    const isAssessment = mode === "assessment";
 
     return (
         <div className={!isLast || isOpen ? "border-b border-[#EFEDE6]" : ""}>
@@ -347,17 +382,19 @@ function CostRow({
                     </span>
                 )}
 
-                {/* Budgeted — always plain, right-aligned text, fixed width */}
-                <span
-                    className={`${COL_BUDGET} shrink-0 text-right text-[13px] tabular-nums ${
-                        style ? `font-semibold ${style.amount}` : "text-[#7C8880]"
-                    }`}
-                    style={{ fontFamily: "var(--font-mono)" }}
-                >
-                    {formatMoney(node.cost)}
-                </span>
+                {/* Budgeted — only rendered in comparison mode; static reference figure */}
+                {!isAssessment && (
+                    <span
+                        className={`${COL_BUDGET} shrink-0 text-right text-[13px] tabular-nums ${
+                            style ? `font-semibold ${style.amount}` : "text-[#7C8880]"
+                        }`}
+                        style={{ fontFamily: "var(--font-mono)" }}
+                    >
+                        {formatMoney(node.cost)}
+                    </span>
+                )}
 
-                {/* Actual — same fixed width as Budgeted, whether it's a sum or an editable field */}
+                {/* Live column — Cost in assessment mode, Actual in comparison mode. Same fixed width either way. */}
                 <span className={`${COL_ACTUAL} shrink-0`} onClick={(e) => e.stopPropagation()}>
                     {hasChildren ? (
                         <div className="flex flex-col items-end gap-0.5">
@@ -366,7 +403,7 @@ function CostRow({
                                 style={{ fontFamily: "var(--font-mono)" }}
                                 title="Sum of child items — not directly editable"
                             >
-                                {formatMoney(actualCost)}
+                                {formatMoney(liveValue)}
                             </span>
                         </div>
                     ) : (
@@ -410,6 +447,8 @@ function CostRow({
                             edits={edits}
                             expanded={expanded}
                             focusedId={focusedId}
+                            mode={mode}
+                            field={field}
                             onToggle={onToggle}
                             onLeafChange={onLeafChange}
                             onLeafFocus={onLeafFocus}

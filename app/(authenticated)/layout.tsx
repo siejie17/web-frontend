@@ -19,15 +19,16 @@
 import { useEffect, useRef, useState } from "react";
 import {
     ChevronDown,
-    Settings,
     LogOut,
     UserRound,
     Sparkles,
     X,
+    Info,
 } from "lucide-react";
 import { Plus_Jakarta_Sans, Inter, IBM_Plex_Mono } from "next/font/google";
 
 import { useAuth } from "@/contexts/AuthContext";
+import { useRouter } from "next/navigation";
 
 const display = Plus_Jakarta_Sans({
     subsets: ["latin"],
@@ -80,6 +81,8 @@ export default function AuthenticatedLayout({
 
     const [menuOpen, setMenuOpen] = useState(false);
     const menuRef = useRef<HTMLDivElement>(null);
+
+    const router = useRouter();
 
     useEffect(() => {
         function handleClickOutside(event: MouseEvent) {
@@ -165,8 +168,12 @@ export default function AuthenticatedLayout({
                                     {currentUser.email}
                                 </div>
                             </div>
-                            <MenuItem icon={<UserRound size={16} />} label="Profile" action={() => { }} />
-                            <MenuItem icon={<Settings size={16} />} label="Settings" action={() => { }} />
+                            <MenuItem
+                                icon={<UserRound size={16} />}
+                                label="Profile"
+                                action={() => router.push("/profile")}
+                            />
+                            <MenuItem icon={<Info size={16} />} label="About" action={() => router.push("/about")} />
                             <div className="my-1 h-px bg-[#EFEDE6]" />
                             <MenuItem
                                 icon={<LogOut size={16} />}

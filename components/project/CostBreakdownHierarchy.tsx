@@ -1,9 +1,14 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Wallet, TrendingUp, ShieldCheck, CheckCircle2, RotateCcw } from "lucide-react";
+import { Wallet, TrendingUp, ShieldCheck, CheckCircle2, RotateCcw, CircleDollarSign } from "lucide-react";
 
-import CostBreakdownTree, { type CostBreakdown, type CostNode, formatMoney } from "./CostBreakdownTree";
+import CostBreakdownTree, {
+    type CostBreakdown,
+    type CostNode,
+    type CostBreakdownMode,
+    formatMoney,
+} from "./CostBreakdownTree";
 
 /* ---------------- Shared tone tokens ---------------- */
 /** Single source of truth for good/bad/neutral colors, reused throughout the statement,
@@ -34,29 +39,39 @@ const TONE = {
 
 type Tone = keyof typeof TONE;
 
+/** Which leaf field this hierarchy screen reads/writes, derived from `mode`. Mirrors the
+ *  field CostBreakdownTree itself edits, so the two stay in lockstep. */
+function fieldForMode(mode: CostBreakdownMode): "cost" | "actual_cost" {
+    return mode === "assessment" ? "cost" : "actual_cost";
+}
+
 /* ---------------- Baseline helpers ---------------- */
 
-/** Map every leaf id -> its "as loaded" actual cost (falls back to budgeted cost if none was set yet). */
-function buildBaselineMap(data: CostBreakdown | null | undefined): Record<number, number> {
+/** Map every leaf id -> its current value for the active mode's field (falls back to `cost`
+ *  when reading actual_cost that hasn't been set yet). */
+function buildBaselineMap(data: CostBreakdown | null | undefined, mode: CostBreakdownMode): Record<number, number> {
     const map: Record<number, number> = {};
     if (!data) return map;
     const visit = (node: CostNode) => {
         if (node.children) {
             Object.values(node.children).forEach(visit);
         } else {
-            map[node.id] = node.actual_cost ?? node.cost ?? 0;
+            map[node.id] = mode === "assessment" ? node.cost ?? 0 : node.actual_cost ?? node.cost ?? 0;
         }
     };
     Object.values(data).forEach(visit);
     return map;
 }
 
-/** Deep-clone the tree, patching in any values that were already saved this session (savedOverrides). */
+/** Deep-clone the tree, patching in any values that were already saved this session (savedOverrides)
+ *  onto the field the active mode edits. */
 function applyOverrides(
     data: CostBreakdown | null | undefined,
-    overrides: Record<number, number>
+    overrides: Record<number, number>,
+    mode: CostBreakdownMode
 ): CostBreakdown {
     if (!data) return {};
+    const field = fieldForMode(mode);
     const visit = (node: CostNode): CostNode => {
         if (node.children) {
             const children: Record<string, CostNode> = {};
@@ -65,7 +80,7 @@ function applyOverrides(
             }
             return { ...node, children };
         }
-        return overrides[node.id] !== undefined ? { ...node, actual_cost: overrides[node.id] } : node;
+        return overrides[node.id] !== undefined ? { ...node, [field]: overrides[node.id] } : node;
     };
     const next: CostBreakdown = {};
     for (const [key, node] of Object.entries(data)) {
@@ -91,24 +106,37 @@ export default function CostBreakdownHierarchy({
     projectBudget,
     onSubmit,
     onChangedNodesUpdate,
+    mode = "comparison",
 }: {
-    /** The "as loaded" tree — source of truth for diffing. Only its leaf actual_cost values are compared. */
+    /** The "as loaded" tree — source of truth for diffing. Only its leaf values for the active
+     *  mode's field are compared. */
     value: CostBreakdown | null | undefined;
     /** Fires with the live tree (baseline + saved + any unsaved edits) any time something changes — same contract as CostBreakdownEditor. */
     onChange?: (next: CostBreakdown) => void;
     /** Needed only for the built-in default submit call — omit if you pass `onSubmit` yourself. */
     projectId?: string | number;
-    /** Optional reference figure (e.g. an assessment-predicted cost) shown alongside the live actual total. */
+    /** Optional reference figure (e.g. an assessment-predicted cost) shown alongside the live actual total.
+     *  Only used in "comparison" mode. */
     predictedCost?: number;
-    /** Optional budget ceiling for the indicator card. */
+    /** Optional budget ceiling for the indicator card. Only used in "comparison" mode. */
     projectBudget?: number | null;
-    /** Called with only the leaf nodes that changed this session: { [nodeId]: newActualCost }. */
+    /** Called with only the leaf nodes that changed this session: { [nodeId]: newValue }. */
     onSubmit?: (changedNodes: Record<number, number>) => Promise<SubmitResult>;
     /** Fires on every edit so a parent can mirror dirty state (e.g. disable navigation, show an "unsaved" badge). */
     onChangedNodesUpdate?: (changedNodes: Record<number, number>, hasChanges: boolean) => void;
+    /**
+     * "assessment" — single editable cost column, for authoring the initial predicted cost
+     *   breakdown from scratch. No predicted/actual/budget statement card; edits write to `cost`.
+     * "comparison" (default) — the original screen: predicted vs actual vs budget, with only the
+     *   innermost `actual_cost` leaves editable. Used once a predicted breakdown already exists
+     *   and the user is entering real implementation spend against it.
+     */
+    mode?: CostBreakdownMode;
 }) {
-    // Leaf id -> baseline actual cost, as loaded from the server.
-    const baselineMap = useMemo(() => buildBaselineMap(value), [value]);
+    const isAssessment = mode === "assessment";
+
+    // Leaf id -> baseline value for the active mode's field, as loaded from the server.
+    const baselineMap = useMemo(() => buildBaselineMap(value, mode), [value, mode]);
     // Leaf id -> value from a change that was already submitted successfully this session.
     const [savedOverrides, setSavedOverrides] = useState<Record<number, number>>({});
     // Leaf id -> value the user has typed but not yet submitted.
@@ -122,13 +150,14 @@ export default function CostBreakdownHierarchy({
     // rather than throwing — useful while this view is wired up with a stubbed onChange for now.
     const canSubmit = !!onSubmit || projectId !== undefined;
 
-    // If the parent hands us a genuinely different tree (new project loaded), drop local session state.
+    // If the parent hands us a genuinely different tree (new project loaded) or the mode flips,
+    // drop local session state so stale edits from one field/mode never leak into the other.
     useEffect(() => {
         setSavedOverrides({});
         setChangedNodes({});
         setTreeKey((k) => k + 1);
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [projectId]);
+    }, [projectId, mode]);
 
     const effectiveBaseline = useMemo(
         () => ({ ...baselineMap, ...savedOverrides }),
@@ -137,8 +166,8 @@ export default function CostBreakdownHierarchy({
 
     // What the tree should actually render — baseline patched with anything already saved this session.
     const treeData = useMemo(
-        () => applyOverrides(value, savedOverrides),
-        [value, savedOverrides]
+        () => applyOverrides(value, savedOverrides, mode),
+        [value, savedOverrides, mode]
     );
 
     const hasChanges = Object.keys(changedNodes).length > 0;
@@ -151,14 +180,15 @@ export default function CostBreakdownHierarchy({
     // Keep the parent's controlled value in sync with the live tree (baseline + saved + unsaved edits),
     // same contract CostBreakdownEditor uses.
     useEffect(() => {
-        onChange?.(applyOverrides(value, { ...effectiveBaseline, ...changedNodes }));
+        onChange?.(applyOverrides(value, { ...effectiveBaseline, ...changedNodes }, mode));
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [effectiveBaseline, changedNodes]);
+    }, [effectiveBaseline, changedNodes, mode]);
 
     const totalBudgeted = useMemo(() => sumBudgeted(value), [value]);
 
-    // Live total actual cost = baseline/saved values, overlaid with whatever's currently unsaved-edited.
-    const totalActual = useMemo(() => {
+    // Live total for the active field = baseline/saved values, overlaid with whatever's currently unsaved-edited.
+    // In assessment mode this is simply "total predicted cost entered so far"; in comparison mode it's "total actual".
+    const totalLive = useMemo(() => {
         return Object.entries(effectiveBaseline).reduce(
             (sum, [id, base]) => sum + (changedNodes[Number(id)] ?? base),
             0
@@ -168,11 +198,11 @@ export default function CostBreakdownHierarchy({
     const hasBudget = projectBudget !== null && projectBudget !== undefined;
     const isOverBudget = hasBudget && (projectBudget as number) > 0 && totalBudgeted > (projectBudget as number);
     const comparisonBase = predictedCost ?? totalBudgeted;
-    const isActualOverPredicted = totalActual > comparisonBase;
+    const isActualOverPredicted = totalLive > comparisonBase;
 
     // Delta between actual and the comparison base, surfaced as text so the headline number's
-    // color isn't the only signal the user has to interpret.
-    const delta = totalActual - comparisonBase;
+    // color isn't the only signal the user has to interpret. Only meaningful in comparison mode.
+    const delta = totalLive - comparisonBase;
     const deltaLabel =
         delta === 0
             ? "On target"
@@ -181,7 +211,8 @@ export default function CostBreakdownHierarchy({
     const budgetTone: Tone = !hasBudget ? "neutral" : isOverBudget ? "bad" : "good";
     const actualTone: Tone = isActualOverPredicted ? "bad" : "good";
 
-    /** Wired into CostBreakdownTree's onActualCostChange — this is the "track which node changed" logic. */
+    /** Wired into CostBreakdownTree's onActualCostChange — this is the "track which node changed" logic.
+     *  Works the same regardless of which field is active; the id -> value map doesn't care. */
     const handleLeafEdit = (nodeId: number, val: number) => {
         setChangedNodes((prev) => {
             const baseline = effectiveBaseline[nodeId] ?? 0;
@@ -206,7 +237,8 @@ export default function CostBreakdownHierarchy({
     };
 
     const defaultSubmit = async (nodes: Record<number, number>): Promise<SubmitResult> => {
-        const res = await fetch(`/api/projects/${projectId}/actual-cost`, {
+        const endpoint = isAssessment ? "predicted-cost" : "actual-cost";
+        const res = await fetch(`/api/projects/${projectId}/${endpoint}`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ changedNodes: nodes }),
@@ -214,7 +246,15 @@ export default function CostBreakdownHierarchy({
         const data = await res.json().catch(() => ({}));
         return {
             success: res.ok && data.success !== false,
-            message: data.message ?? (res.ok ? "Actual costs updated." : "Failed to update actual costs."),
+            message:
+                data.message ??
+                (res.ok
+                    ? isAssessment
+                        ? "Predicted costs saved."
+                        : "Actual costs updated."
+                    : isAssessment
+                        ? "Failed to save predicted costs."
+                        : "Failed to update actual costs."),
         };
     };
 
@@ -247,89 +287,127 @@ export default function CostBreakdownHierarchy({
     return (
         <>
             <div className="mb-4">
-                {/* ---------------- Statement card ---------------- */}
-                <section className="relative mb-6 overflow-hidden rounded-3xl border border-[#E4E1D8] bg-[#FDFDFC] p-6 shadow-[0_1px_2px_rgba(30,38,33,0.04)] sm:p-8">
-                    {/* faint ledger rule in the corner — a quiet nod to the statement/audit feel */}
-                    <div
-                        className="pointer-events-none absolute -right-10 -top-10 h-40 w-40 rounded-full opacity-[0.4]"
-                        style={{ background: `radial-gradient(circle, ${TONE.neutral.border}55 0%, transparent 70%)` }}
-                    />
-
-                    <div className="relative flex flex-wrap items-start justify-between gap-5">
-                        <div>
-                            <div
-                                className="text-[11px] uppercase tracking-[0.14em] text-[#8A938C]"
-                                style={{ fontFamily: "var(--font-mono)" }}
-                            >
-                                Actual cost to date
-                            </div>
-                            <div className="mt-1.5 flex flex-wrap items-baseline gap-x-3 gap-y-1">
-                                <span
-                                    className="font-serif text-[34px] font-semibold leading-none tabular-nums sm:text-[42px]"
-                                    style={{ color: TONE[actualTone].text }}
-                                >
-                                    {formatMoney(totalActual)}
-                                </span>
-                                <span
-                                    className="text-[13px] font-medium"
-                                    style={{ color: delta === 0 ? "#8A938C" : TONE[actualTone].text }}
-                                >
-                                    {deltaLabel}
-                                </span>
-                            </div>
-                            <div className="mt-1 text-[12.5px] text-[#8A938C]">
-                                Predicted {formatMoney(comparisonBase)}
-                            </div>
-                        </div>
-
-                        {/* Budget stamp — reads like an audit seal, tone mirrors budget status */}
+                {/* ---------------- Statement / summary card ---------------- */}
+                {isAssessment ? (
+                    <section className="relative mb-6 overflow-hidden rounded-3xl border border-[#E4E1D8] bg-[#FDFDFC] p-6 shadow-[0_1px_2px_rgba(30,38,33,0.04)] sm:p-8">
                         <div
-                            className="flex shrink-0 -rotate-2 items-center gap-2 rounded-lg border-2 border-dashed px-3.5 py-2"
-                            style={{ borderColor: TONE[budgetTone].solid, color: TONE[budgetTone].text }}
-                        >
-                            {!hasBudget ? (
-                                <Wallet size={15} />
-                            ) : isOverBudget ? (
-                                <TrendingUp size={15} />
-                            ) : (
-                                <ShieldCheck size={15} />
-                            )}
-                            <span
-                                className="text-[11.5px] font-bold uppercase tracking-[0.06em]"
-                                style={{ fontFamily: "var(--font-mono)" }}
-                            >
-                                {!hasBudget ? "No budget set" : isOverBudget ? "Over budget" : "Within budget"}
-                            </span>
+                            className="pointer-events-none absolute -right-10 -top-10 h-40 w-40 rounded-full opacity-[0.4]"
+                            style={{ background: `radial-gradient(circle, ${TONE.neutral.border}55 0%, transparent 70%)` }}
+                        />
+                        <div className="relative flex flex-wrap items-start justify-between gap-5">
+                            <div>
+                                <div
+                                    className="text-[11px] uppercase tracking-[0.14em] text-[#8A938C]"
+                                    style={{ fontFamily: "var(--font-mono)" }}
+                                >
+                                    Total predicted cost
+                                </div>
+                                <div className="mt-1.5 flex flex-wrap items-baseline gap-x-3 gap-y-1">
+                                    <span className="font-serif text-[34px] font-semibold leading-none tabular-nums text-[#2C4A3A] sm:text-[42px]">
+                                        {formatMoney(totalLive)}
+                                    </span>
+                                </div>
+                                <div className="mt-1 text-[12.5px] text-[#8A938C]">
+                                    Enter predicted costs against each element below.
+                                </div>
+                            </div>
+                            <div className="flex shrink-0 items-center gap-2 rounded-lg border-2 border-dashed border-[#CFE0D6] px-3.5 py-2 text-[#2C4A3A]">
+                                <CircleDollarSign size={15} />
+                                <span
+                                    className="text-[11.5px] font-bold uppercase tracking-[0.06em]"
+                                    style={{ fontFamily: "var(--font-mono)" }}
+                                >
+                                    Initial assessment
+                                </span>
+                            </div>
                         </div>
-                    </div>
-
-                    {/* ---------------- Gauge bar: budgeted / predicted / actual on one axis ---------------- */}
-                    <CostGaugeBar
-                        budgeted={totalBudgeted}
-                        predicted={predictedCost}
-                        actual={totalActual}
-                        tone={actualTone}
-                    />
-
-                    {/* ---------------- Figures row ---------------- */}
-                    <div className="relative mt-6 grid grid-cols-3 gap-4 border-t border-dashed border-[#E4E1D8] pt-4">
-                        <Figure label="Budgeted" value={formatMoney(totalBudgeted)} />
-                        <Figure
-                            label="Predicted"
-                            value={predictedCost !== undefined ? formatMoney(predictedCost) : "\u2014"}
+                    </section>
+                ) : (
+                    <section className="relative mb-6 overflow-hidden rounded-3xl border border-[#E4E1D8] bg-[#FDFDFC] p-6 shadow-[0_1px_2px_rgba(30,38,33,0.04)] sm:p-8">
+                        {/* faint ledger rule in the corner — a quiet nod to the statement/audit feel */}
+                        <div
+                            className="pointer-events-none absolute -right-10 -top-10 h-40 w-40 rounded-full opacity-[0.4]"
+                            style={{ background: `radial-gradient(circle, ${TONE.neutral.border}55 0%, transparent 70%)` }}
                         />
-                        <Figure
-                            label={hasBudget ? "Budget" : "Budget"}
-                            value={hasBudget ? formatMoney(projectBudget as number) : "N/A"}
-                            valueColor={hasBudget ? undefined : "#8A938C"}
+
+                        <div className="relative flex flex-wrap items-start justify-between gap-5">
+                            <div>
+                                <div
+                                    className="text-[11px] uppercase tracking-[0.14em] text-[#8A938C]"
+                                    style={{ fontFamily: "var(--font-mono)" }}
+                                >
+                                    Actual cost to date
+                                </div>
+                                <div className="mt-1.5 flex flex-wrap items-baseline gap-x-3 gap-y-1">
+                                    <span
+                                        className="font-serif text-[34px] font-semibold leading-none tabular-nums sm:text-[42px]"
+                                        style={{ color: TONE[actualTone].text }}
+                                    >
+                                        {formatMoney(totalLive)}
+                                    </span>
+                                    <span
+                                        className="text-[13px] font-medium"
+                                        style={{ color: delta === 0 ? "#8A938C" : TONE[actualTone].text }}
+                                    >
+                                        {deltaLabel}
+                                    </span>
+                                </div>
+                                <div className="mt-1 text-[12.5px] text-[#8A938C]">
+                                    Predicted {formatMoney(comparisonBase)}
+                                </div>
+                            </div>
+
+                            {/* Budget stamp — reads like an audit seal, tone mirrors budget status */}
+                            <div
+                                className="flex shrink-0 -rotate-2 items-center gap-2 rounded-lg border-2 border-dashed px-3.5 py-2"
+                                style={{ borderColor: TONE[budgetTone].solid, color: TONE[budgetTone].text }}
+                            >
+                                {!hasBudget ? (
+                                    <Wallet size={15} />
+                                ) : isOverBudget ? (
+                                    <TrendingUp size={15} />
+                                ) : (
+                                    <ShieldCheck size={15} />
+                                )}
+                                <span
+                                    className="text-[11.5px] font-bold uppercase tracking-[0.06em]"
+                                    style={{ fontFamily: "var(--font-mono)" }}
+                                >
+                                    {!hasBudget ? "No budget set" : isOverBudget ? "Over budget" : "Within budget"}
+                                </span>
+                            </div>
+                        </div>
+
+                        {/* ---------------- Gauge bar: budgeted / predicted / actual on one axis ---------------- */}
+                        <CostGaugeBar
+                            budgeted={totalBudgeted}
+                            predicted={predictedCost}
+                            actual={totalLive}
+                            tone={actualTone}
                         />
-                    </div>
-                </section>
+
+                        {/* ---------------- Figures row ---------------- */}
+                        <div className="relative mt-6 grid grid-cols-3 gap-4 border-t border-dashed border-[#E4E1D8] pt-4">
+                            <Figure label="Budgeted" value={formatMoney(totalBudgeted)} />
+                            <Figure
+                                label="Predicted"
+                                value={predictedCost !== undefined ? formatMoney(predictedCost) : "\u2014"}
+                            />
+                            <Figure
+                                label="Budget"
+                                value={hasBudget ? formatMoney(projectBudget as number) : "N/A"}
+                                valueColor={hasBudget ? undefined : "#8A938C"}
+                            />
+                        </div>
+                    </section>
+                )}
 
                 {/* ---------------- Editable tree ---------------- */}
                 <div className="mb-4 flex items-center justify-between gap-3">
                     <p className="text-[13px] text-[#8A938C]">
-                        Enter actual costs against each line item — the statement above updates as you type.
+                        {isAssessment
+                            ? "Enter predicted costs against each line item — the total above updates as you type."
+                            : "Enter actual costs against each line item — the statement above updates as you type."}
                     </p>
                     {hasChanges && (
                         <button
@@ -344,7 +422,13 @@ export default function CostBreakdownHierarchy({
                 </div>
 
                 <div className="rounded-3xl border border-[#E4E1D8] bg-[#FDFDFC] p-2 sm:p-3">
-                    <CostBreakdownTree key={treeKey} data={treeData} onActualCostChange={handleLeafEdit} hideTotals />
+                    <CostBreakdownTree
+                        key={treeKey}
+                        data={treeData}
+                        onActualCostChange={handleLeafEdit}
+                        hideTotals
+                        mode={mode}
+                    />
                 </div>
             </div>
 
@@ -406,7 +490,7 @@ export default function CostBreakdownHierarchy({
  * A single axis showing budgeted, predicted, and actual spend at once — the statement's
  * signature element. The filled bar is the running actual; the two tick marks are reference
  * points, so a glance tells you both "how much" and "compared to what" without reading three
- * separate cards.
+ * separate cards. Only rendered in "comparison" mode.
  */
 function CostGaugeBar({
     budgeted,

@@ -20,11 +20,12 @@ import { type CostBreakdown } from "@/components/project/CostBreakdownTree";
 import CostBreakdownHierarchy from "@/components/project/CostBreakdownHierarchy";
 
 type Project = {
+    id?: number;
     building_type?: string | null;
     category?: string | null;
     classification?: string | null;
     size?: string | number | null;
-    budget?: string | number | null;
+    budget?: string | null;
     adjusted_cost?: string | number | null;
     year?: string | number | null;
     location?: string | null;
@@ -57,9 +58,13 @@ export default function ProjectDetailTabs({
     const [projectData, setProjectData] = useState<Project | null>(null);
     const [costBreakdownData, setCostBreakdownData] = useState<CostBreakdown | null>(null);
 
+    const [changedNodes, setChangedNodes] = useState<Record<number, number>>({});
+    const [hasChanges, setHasChanges] = useState(false);
+
     useEffect(() => {
         if (selectedProject) {
             const projectDetails = {
+                id: selectedProject.projectData.id,
                 building_type: selectedProject.projectData.building_type_name,
                 category: selectedProject.projectData.category,
                 classification: selectedProject.projectData.classification,
@@ -78,6 +83,14 @@ export default function ProjectDetailTabs({
         }
     }, [selectedProject]);
 
+    const handleChangedNodesUpdate = (
+    nodes: Record<number, number>,
+    dirty: boolean
+) => {
+    setChangedNodes(nodes);
+    setHasChanges(dirty);
+};
+
     return (
         <div>
             {/* ---------------- Tab bar (outside the card) ---------------- */}
@@ -92,8 +105,8 @@ export default function ProjectDetailTabs({
                             onClick={() => setActiveTab(tab.key)}
                             aria-current={isActive ? "page" : undefined}
                             className={`flex items-center gap-1.5 rounded-full px-4 py-2 text-[13px] font-medium transition-all focus-visible:outline focus-visible:outline-offset-2 focus-visible:outline-[#3E6B52] ${isActive
-                                    ? "bg-[#3E6B52] text-[#F6F6F2] shadow-[0_10px_24px_rgba(62,107,82,0.24)]"
-                                    : "border border-[#E4E1D8] bg-white text-[#5B655F] hover:-translate-y-0.5 hover:border-[#C9D3CC] hover:text-[#3E6B52] hover:shadow-[0_10px_24px_rgba(30,38,33,0.08)]"
+                                ? "bg-[#3E6B52] text-[#F6F6F2] shadow-[0_10px_24px_rgba(62,107,82,0.24)]"
+                                : "border border-[#E4E1D8] bg-white text-[#5B655F] hover:-translate-y-0.5 hover:border-[#C9D3CC] hover:text-[#3E6B52] hover:shadow-[0_10px_24px_rgba(30,38,33,0.08)]"
                                 }`}
                         >
                             <Icon size={14} />
@@ -188,12 +201,21 @@ export default function ProjectDetailTabs({
                     {activeTab === "cost" &&
                         (costBreakdownData ? (
                             <CostBreakdownHierarchy
+                                projectId={projectData?.id}
+                                predictedCost={
+                                    projectData?.adjusted_cost != null
+                                        ? Number(projectData.adjusted_cost)
+                                        : undefined
+                                }
+                                projectBudget={
+                                    projectData?.budget
+                                        ? parseFloat(projectData.budget)
+                                        : undefined
+                                }
                                 value={costBreakdownData}
                                 onChange={() => { }}
-                                onSubmit={async () => ({
-                                    success: true,
-                                    message: "Mock submit successful",
-                                })}
+                                onChangedNodesUpdate={handleChangedNodesUpdate}
+                                mode="comparison"
                             />
                         ) : (
                             <EmptyTabState label="Cost breakdown" />

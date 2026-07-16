@@ -11,6 +11,7 @@ type User = {
     last_name: string;
     profile_pic: string;
     profile_picture?: string;
+    created_at?: string;
 };
 
 type AuthContextValue = {
