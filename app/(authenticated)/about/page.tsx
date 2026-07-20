@@ -12,7 +12,7 @@ import {
   Users,
 } from "lucide-react";
 
-import { BackToHomeButton } from "@/components/ui/BackToHomeButton";
+import { BackButton } from "@/components/ui/BackButton";
 
 type SearchParams = {
   tab?: string | string[];
@@ -142,7 +142,7 @@ export default async function AboutPage({
 
   return (
     <div className="space-y-6 py-8">
-      <BackToHomeButton />
+      <BackButton />
       <HeroTitleBlock activeTab={activeTab} />
       {activeTab === "about-us" ? <AboutUsTab /> : <ProjectTeamTab />}
     </div>

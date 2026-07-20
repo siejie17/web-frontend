@@ -21,14 +21,14 @@ import {
     ChevronDown,
     LogOut,
     UserRound,
-    Sparkles,
-    X,
     Info,
 } from "lucide-react";
 import { Plus_Jakarta_Sans, Inter, IBM_Plex_Mono } from "next/font/google";
+import Link from "next/link";
 
+import AIAvatar from "@/components/ai/AIAvatar";
 import { useAuth } from "@/contexts/AuthContext";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 
 const display = Plus_Jakarta_Sans({
     subsets: ["latin"],
@@ -83,6 +83,9 @@ export default function AuthenticatedLayout({
     const menuRef = useRef<HTMLDivElement>(null);
 
     const router = useRouter();
+    const pathname = usePathname();
+
+    const logoHref = pathname.includes("/dashboard") ? "#" : "/dashboard";
 
     useEffect(() => {
         function handleClickOutside(event: MouseEvent) {
@@ -108,34 +111,46 @@ export default function AuthenticatedLayout({
     };
 
     return (
-        <div
-            className={`${display.variable} ${body.variable} ${mono.variable} min-h-screen bg-[#F6F6F2] text-[#1E2621]`}
-            style={{ fontFamily: "var(--font-body)" }}
-        >
+      <div className={`${display.variable} ${body.variable} ${mono.variable} relative min-h-screen text-[#1E2621]`}>
+
+          {/* 1. Base Background Image Layer */}
+          <div
+            className="absolute inset-0 -z-10"
+            style={{
+              backgroundImage: "url('/images/main-background.png')",
+              backgroundSize: "cover",
+              backgroundPosition: "center",
+              backgroundAttachment: "fixed",
+            }}
+          />
+
+          {/* 2. Opacity Tint Overlay Layer (Sits right on top of the image) */}
+          <div className="pointer-events-none absolute inset-0 -z-10 bg-[#F6F6F2]/50" />
+
             {/* z-40: page-level content (e.g. modals) that needs to sit above
           the header should use z-50, since this header is sticky and
           otherwise ties on stacking order with same-z-index siblings. */}
-            <header className="sticky top-0 z-40 flex items-center justify-between border-b border-[#E4E1D8] bg-[#F6F6F2]/95 px-10 py-5">
-                <div className="flex items-center gap-2.5">
+            <header className="sticky top-0 z-40 flex items-center justify-between border-b border-[#E4E1D8]/80 bg-white/78 px-10 py-5 shadow-[0_1px_12px_rgba(30,38,33,0.05)] backdrop-blur-lg">
+                <Link href={logoHref} className="flex items-center gap-2.5 transition-opacity hover:opacity-90">
                     <img
                         src="/logo/proformax-ori.png"
-                        alt="ProFormaX"
+                        alt="ProFormaX Logo"
                         className="h-8 w-8 object-contain"
                     />
                     <span
-                        className="text-[18px] font-bold tracking-[-0.01em]"
-                        style={{ fontFamily: "var(--font-display)" }}
+                        className="font-display text-[18px] font-bold tracking-[-0.01em]"
+                        style={{ fontFamily: "var(--font-display)" }} // Keep if not configured in tailwind.config
                     >
                         ProFormaX
                     </span>
-                </div>
+                </Link>
 
                 <div className="relative" ref={menuRef}>
                     <button
-                        onClick={() => setMenuOpen((v) => !v)}
-                        aria-haspopup="menu"
-                        aria-expanded={menuOpen}
-                        className="flex items-center gap-2 rounded-full py-1 pl-1 pr-2.5 transition-colors hover:bg-[#EEF2EC] focus-visible:outline focus-visible:outline-offset-2 focus-visible:outline-[#3E6B52]"
+                      onClick={() => setMenuOpen((v) => !v)}
+                      aria-haspopup="menu"
+                      aria-expanded={menuOpen}
+                      className="flex items-center gap-2 rounded-full py-1 pl-1 pr-2.5 transition-colors hover:bg-[#3E6B52]/[0.08] focus-visible:outline focus-visible:outline-offset-2 focus-visible:outline-[#3E6B52]"
                     >
                         {currentUser.profilePicture ? (
                             <img
@@ -153,14 +168,14 @@ export default function AuthenticatedLayout({
                         )}
                         <ChevronDown
                             size={16}
-                            className={`text-[#5B655F] transition-transform ${menuOpen ? "rotate-180" : ""}`}
+                            className={`text-[#5B655F] transition-transform duration-200 ${menuOpen ? "rotate-180" : ""}`}
                         />
                     </button>
 
                     {menuOpen && (
                         <div
                             role="menu"
-                            className="absolute right-0 top-[calc(100%+8px)] w-55 overflow-hidden rounded-[14px] border border-[#E4E1D8] bg-white shadow-[0_12px_32px_rgba(30,38,33,0.10)]"
+                            className="absolute right-0 top-[calc(100%+8px)] w-56 overflow-hidden rounded-[14px] border border-[#E4E1D8] bg-white shadow-[0_12px_32px_rgba(30,38,33,0.10)] animate-in fade-in slide-in-from-top-2 duration-150"
                         >
                             <div className="border-b border-[#EFEDE6] px-4 py-3.5">
                                 <div className="text-[13px] font-semibold">{currentUser.fullName}</div>
@@ -173,7 +188,11 @@ export default function AuthenticatedLayout({
                                 label="Profile"
                                 action={() => router.push("/profile")}
                             />
-                            <MenuItem icon={<Info size={16} />} label="About" action={() => router.push("/about")} />
+                            <MenuItem
+                                icon={<Info size={16} />}
+                                label="About"
+                                action={() => router.push("/about")}
+                            />
                             <div className="my-1 h-px bg-[#EFEDE6]" />
                             <MenuItem
                                 icon={<LogOut size={16} />}
@@ -215,49 +234,5 @@ function MenuItem({
             {icon}
             {label}
         </button>
-    );
-}
-
-/* ---------------- AI Avatar (stub for future assistant) ---------------- */
-
-function AIAvatar() {
-    const [open, setOpen] = useState(false);
-
-    return (
-        <div className="fixed bottom-7 right-7 z-30">
-            {open && (
-                <div className="absolute bottom-16.5 right-0 w-65 rounded-2xl border border-[#E4E1D8] bg-white p-4.5 shadow-[0_16px_40px_rgba(30,38,33,0.14)]">
-                    <div className="flex items-start justify-between">
-                        <span className="text-[14px] font-semibold">
-                            ProFormaX Assistant
-                        </span>
-                        <button
-                            onClick={() => setOpen(false)}
-                            aria-label="Close assistant preview"
-                            className="text-[#8A938C] hover:text-[#5B655F]"
-                        >
-                            <X size={15} />
-                        </button>
-                    </div>
-                    <p className="mt-2 text-[13px] leading-relaxed text-[#5B655F]">
-                        Ask about energy modeling, certifications, or portfolio trends. This
-                        assistant is in active development.
-                    </p>
-                    <span className="mt-3 inline-block rounded-full bg-[#FBF3E7] px-2 py-0.75 text-[11px] text-[#C08A3E]">
-                        Coming soon
-                    </span>
-                </div>
-            )}
-
-            <button
-                onClick={() => setOpen((v) => !v)}
-                aria-label="Open AI assistant"
-                className="relative flex h-14 w-14 items-center justify-center rounded-full bg-[#1E2621] shadow-[0_10px_28px_rgba(30,38,33,0.28)]"
-            >
-                <span className="absolute -inset-1 animate-[pfx-pulse_2.4s_ease-out_infinite] rounded-full border-[1.5px] border-[#C08A3E] opacity-50" />
-                <Sparkles size={20} className="text-[#F6F6F2]" />
-                <span className="absolute right-0.5 top-0.5 h-2.25 w-2.25 rounded-full border-2 border-[#1E2621] bg-[#C08A3E]" />
-            </button>
-        </div>
     );
 }

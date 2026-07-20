@@ -5,8 +5,6 @@ import { useEffect, useState } from "react";
 import {
   AtSign,
   Bell,
-  History,
-  Info,
   KeyRound,
   Mail,
   User,
@@ -21,11 +19,9 @@ import EditFieldModal from "@/components/profile/EditFieldModal";
 import EditPictureModal from "@/components/profile/EditPictureModal";
 import GlassPanel from "@/components/profile/GlassPanel";
 import InfoTile from "@/components/profile/InfoTile";
-import NavigationCard from "@/components/profile/NavigationCard";
 import PreferenceCard from "@/components/profile/PreferenceCard";
 import ProfileHero from "@/components/profile/ProfileHero";
-import UserStats from "@/components/profile/UserStats";
-import { BackToHomeButton } from "@/components/ui/BackToHomeButton";
+import { BackButton } from "@/components/ui/BackButton";
 
 type PreferenceState = {
   emailNotifications: boolean;
@@ -220,7 +216,10 @@ export default function ProfileClient() {
       className="py-4"
     >
       <div className="mx-auto max-w-5xl space-y-8 px-4 py-2">
-        <BackToHomeButton />
+        <BackButton
+          text="Dashboard"
+          redirect="/dashboard"
+        />
         <ProfileHero
           fullName={fullName}
           role={"Member"}
@@ -349,7 +348,7 @@ export default function ProfileClient() {
             }
 
             const res = await fetch(`/api/user-password?userId=${user.id}`, {
-              method: "PATCH",
+              method: "PUT",
               credentials: "include",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({

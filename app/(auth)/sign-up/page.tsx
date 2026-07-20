@@ -5,7 +5,6 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Eye, EyeOff, UserPlus, ArrowRight, Info } from "lucide-react";
 
-import api from "@/lib/api";
 import TextField from "@/components/ui/TextField";
 import Button from "@/components/ui/Button";
 import Modal from "@/components/ui/Modal";
@@ -113,13 +112,23 @@ export default function RegisterPage() {
         setLoading(true);
 
         try {
-            await api.post("/register", {
-                first_name: firstName.value,
-                last_name: lastName.value,
-                email: email.value,
-                password: password.value,
-                password_confirmation: confirmPassword.value,
+            const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/register`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                credentials: "include",
+                body: JSON.stringify({
+                    first_name: firstName.value,
+                    last_name: lastName.value,
+                    email: email.value,
+                    password: password.value,
+                    password_confirmation: confirmPassword.value,
+                }),
             });
+
+            if (!res.ok) {
+                const data = await res.json().catch(() => null);
+                throw { response: { data } };
+            }
 
             setIsVerifyModalOpen(true);
         } catch (err: any) {

@@ -30,6 +30,7 @@ import {
   ChevronLeft,
 } from "lucide-react";
 import { FormInputs } from "@/types/form";
+import { BackButton } from "@/components/ui/BackButton";
 
 const currentYear = new Date().getFullYear();
 const YEAR_LIST = Array.from({ length: 6 }, (_, i) => String(currentYear + i));
@@ -44,10 +45,6 @@ export default function NewAssessmentPage() {
   const [formInputs, setFormInputs] = useState<FormInputs>();
 
   const [loading, setLoading] = useState(true);
-  useEffect(() => {
-    const t = setTimeout(() => setLoading(false), 450);
-    return () => clearTimeout(t);
-  }, []);
 
   const [projectName, setProjectName] = useState("");
 
@@ -92,6 +89,8 @@ export default function NewAssessmentPage() {
         setFormInputs(data);
       } catch (error) {
         console.error("Error fetching form inputs:", error);
+      } finally {
+        setLoading(false);
       }
     };
 
@@ -221,7 +220,7 @@ export default function NewAssessmentPage() {
 
   /* ---- submit ---- */
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
     const next: Errors = {};
@@ -251,25 +250,35 @@ export default function NewAssessmentPage() {
         projectName: projectName.trim(),
         buildingType,
         category,
-        classification: classification || null,
-        managementOption: managementOption || null,
+        buildingClassification: classification || null,
+        has_management: managementOption || null,
         year,
         buildingSize: parseFloat(buildingSizeDisplay),
-        projectBudget: budgetDisplay ? parseFloat(budgetDisplay) : null,
+        projectBudget: budgetDisplay
+          ? parseFloat(budgetDisplay.replace(/,/g, ""))
+          : null,
         state,
         region: region || null,
         structure,
-        ratingScale,
+        certifiedRatingScale: ratingScale,
+        costPreviewWay: "Detailed"
       };
 
-      console.log("Form submitted:", data);
-
-      requestAnimationFrame(() => {
-        successRef.current?.scrollIntoView({
-          behavior: "smooth",
-          block: "start",
-        });
+      const res = await fetch("/api/assessment/results", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(data),
       });
+
+      const result = await res.json().catch(() => null);
+
+      if (result) {
+        // sessionStorage.setItem("assessment_result", JSON.stringify(result));
+        localStorage.setItem("assessment_result", JSON.stringify(result));
+        router.push("/assessments/new/results");
+      }
     } else {
       const firstErrorField = Object.keys(next).find((k) => next[k]);
       if (firstErrorField) {
@@ -283,20 +292,10 @@ export default function NewAssessmentPage() {
 
   return (
     <div className="mx-auto max-w-275 pb-10 pt-6">
-      {/* ---------------- Breadcrumb ---------------- */}
-      <nav
-        aria-label="Breadcrumb"
-        className="mb-5 flex items-center gap-1.5 text-[12.5px] text-[#8A938C]"
-      >
-        <button
-          type="button"
-          onClick={() => router.push("/dashboard")}
-          className="flex items-center gap-1 rounded-sm transition-colors hover:text-[#3E6B52] hover:underline underline-offset-2 focus-visible:outline focus-visible:outline-offset-2 focus-visible:outline-[#3E6B52] cursor-pointer"
-        >
-          <ChevronLeft size={14} className="shrink-0 font-bold" />
-          Back to Dashboard
-        </button>
-      </nav>
+      <BackButton
+        text="Dashboard"
+        redirect="/dashboard"
+      />
 
       {/* ---------------- Intro ---------------- */}
       <section className="mb-8 rounded-3xl border border-[#E4E1D8] bg-[#FCFCF8] p-6 shadow-[0_8px_24px_rgba(30,38,33,0.04)] sm:p-8">
@@ -1098,6 +1097,9 @@ function FieldHint({
 function FormSkeleton() {
   return (
     <div className="space-y-8">
+      <p className="text-[13px] leading-relaxed text-[#8A938C]">
+        Loading form inputs…
+      </p>
       {[0, 1, 2].map((section) => (
         <div key={section} className="space-y-4">
           <div>

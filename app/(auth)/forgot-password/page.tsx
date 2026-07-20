@@ -5,7 +5,6 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { KeyRound, ArrowRight } from "lucide-react";
 
-import api from "@/lib/api";
 import TextField from "@/components/ui/TextField";
 import Button from "@/components/ui/Button";
 
@@ -30,7 +29,18 @@ export default function ForgotPasswordPage() {
         setLoading(true);
 
         try {
-            await api.post("/forgot-password", { email: email.value });
+            const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/forgot-password`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                credentials: "include",
+                body: JSON.stringify({ email: email.value }),
+            });
+
+            if (!res.ok) {
+                const data = await res.json().catch(() => null);
+                throw { response: { data } };
+            }
+
             router.push("/login?passwordResetEmailSent=true");
         } catch (err: any) {
             const message = err.response?.data?.message || "Network or server error";

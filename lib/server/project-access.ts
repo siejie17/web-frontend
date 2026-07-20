@@ -120,3 +120,15 @@ export async function getOwnedProject(projectId: string) {
 
     return { user, project, selectedProject };
 }
+
+export async function getOwnedProjects() {
+    const user = await getCurrentUser();
+
+    if (!user) {
+        return { user: null, projects: null };
+    }
+
+    const projectsList = await getUserProjects(user.id);
+
+    return { user, projectsList };
+}

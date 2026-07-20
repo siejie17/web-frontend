@@ -65,7 +65,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     return (
         <AuthContext.Provider value={{ user, login, logout }}>
-            {!loading ? children : null}
+            {!loading ? children : (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-mist">
+                    <div className="flex items-center gap-1.5">
+                        <span className="h-2 w-2 animate-bounce rounded-full bg-sage [animation-delay:0ms]" />
+                        <span className="h-2 w-2 animate-bounce rounded-full bg-sage-light [animation-delay:150ms]" />
+                        <span className="h-2 w-2 animate-bounce rounded-full bg-sage [animation-delay:300ms]" />
+                    </div>
+                </div>
+            )}
         </AuthContext.Provider>
     );
 }
