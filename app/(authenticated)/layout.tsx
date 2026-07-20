@@ -124,86 +124,89 @@ export default function AuthenticatedLayout({
             }}
           />
 
-          {/* 2. Opacity Tint Overlay Layer (Sits right on top of the image) */}
+        {/* 2. Opacity Tint Overlay Layer (Sits right on top of the image) */}
+
           <div className="pointer-events-none absolute inset-0 -z-10 bg-[#F6F6F2]/50" />
 
             {/* z-40: page-level content (e.g. modals) that needs to sit above
           the header should use z-50, since this header is sticky and
           otherwise ties on stacking order with same-z-index siblings. */}
-            <header className="sticky top-0 z-40 flex items-center justify-between border-b border-[#E4E1D8]/80 bg-white/78 px-10 py-5 shadow-[0_1px_12px_rgba(30,38,33,0.05)] backdrop-blur-lg">
-                <Link href={logoHref} className="flex items-center gap-2.5 transition-opacity hover:opacity-90">
-                    <img
-                        src="/logo/proformax-ori.png"
-                        alt="ProFormaX Logo"
-                        className="h-8 w-8 object-contain"
-                    />
-                    <span
-                        className="font-display text-[18px] font-bold tracking-[-0.01em]"
-                        style={{ fontFamily: "var(--font-display)" }} // Keep if not configured in tailwind.config
-                    >
-                        ProFormaX
-                    </span>
-                </Link>
+        {!pathname.includes("/assessments/new/results") && (
+          <header className="sticky top-0 z-40 flex items-center justify-between border-b border-[#E4E1D8]/80 bg-white/78 px-10 py-5 shadow-[0_1px_12px_rgba(30,38,33,0.05)] backdrop-blur-lg">
+            <Link href={logoHref} className="flex items-center gap-2.5 transition-opacity hover:opacity-90">
+              <img
+                src="/logo/proformax-ori.png"
+                alt="ProFormaX Logo"
+                className="h-8 w-8 object-contain"
+              />
+              <span
+                className="font-display text-[18px] font-bold tracking-[-0.01em]"
+                style={{ fontFamily: "var(--font-display)" }} // Keep if not configured in tailwind.config
+              >
+                ProFormaX
+              </span>
+            </Link>
 
-                <div className="relative" ref={menuRef}>
-                    <button
-                      onClick={() => setMenuOpen((v) => !v)}
-                      aria-haspopup="menu"
-                      aria-expanded={menuOpen}
-                      className="flex items-center gap-2 rounded-full py-1 pl-1 pr-2.5 transition-colors hover:bg-[#3E6B52]/[0.08] focus-visible:outline focus-visible:outline-offset-2 focus-visible:outline-[#3E6B52]"
-                    >
-                        {currentUser.profilePicture ? (
-                            <img
-                                src={`data:image/jpeg;base64,${currentUser.profilePicture}`}
-                                alt={currentUser.fullName}
-                                className="h-8 w-8 rounded-full object-cover"
-                            />
-                        ) : (
-                            <span
-                                className="flex h-8 w-8 items-center justify-center rounded-full bg-[#3E6B52] text-[13px] font-semibold text-[#F6F6F2]"
-                                style={{ fontFamily: "var(--font-display)" }}
-                            >
-                                {currentUser.initials}
-                            </span>
-                        )}
-                        <ChevronDown
-                            size={16}
-                            className={`text-[#5B655F] transition-transform duration-200 ${menuOpen ? "rotate-180" : ""}`}
-                        />
-                    </button>
+            <div className="relative" ref={menuRef}>
+              <button
+                onClick={() => setMenuOpen((v) => !v)}
+                aria-haspopup="menu"
+                aria-expanded={menuOpen}
+                className="flex items-center gap-2 rounded-full py-1 pl-1 pr-2.5 transition-colors hover:bg-[#3E6B52]/[0.08] focus-visible:outline focus-visible:outline-offset-2 focus-visible:outline-[#3E6B52]"
+              >
+                {currentUser.profilePicture ? (
+                  <img
+                    src={`data:image/jpeg;base64,${currentUser.profilePicture}`}
+                    alt={currentUser.fullName}
+                    className="h-8 w-8 rounded-full object-cover"
+                  />
+                ) : (
+                  <span
+                    className="flex h-8 w-8 items-center justify-center rounded-full bg-[#3E6B52] text-[13px] font-semibold text-[#F6F6F2]"
+                    style={{ fontFamily: "var(--font-display)" }}
+                  >
+                    {currentUser.initials}
+                  </span>
+                )}
+                <ChevronDown
+                  size={16}
+                  className={`text-[#5B655F] transition-transform duration-200 ${menuOpen ? "rotate-180" : ""}`}
+                />
+              </button>
 
-                    {menuOpen && (
-                        <div
-                            role="menu"
-                            className="absolute right-0 top-[calc(100%+8px)] w-56 overflow-hidden rounded-[14px] border border-[#E4E1D8] bg-white shadow-[0_12px_32px_rgba(30,38,33,0.10)] animate-in fade-in slide-in-from-top-2 duration-150"
-                        >
-                            <div className="border-b border-[#EFEDE6] px-4 py-3.5">
-                                <div className="text-[13px] font-semibold">{currentUser.fullName}</div>
-                                <div className="mt-0.5 text-[12px] text-[#5B655F]">
-                                    {currentUser.email}
-                                </div>
-                            </div>
-                            <MenuItem
-                                icon={<UserRound size={16} />}
-                                label="Profile"
-                                action={() => router.push("/profile")}
-                            />
-                            <MenuItem
-                                icon={<Info size={16} />}
-                                label="About"
-                                action={() => router.push("/about")}
-                            />
-                            <div className="my-1 h-px bg-[#EFEDE6]" />
-                            <MenuItem
-                                icon={<LogOut size={16} />}
-                                label="Sign out"
-                                danger
-                                action={handleLogout}
-                            />
-                        </div>
-                    )}
+              {menuOpen && (
+                <div
+                  role="menu"
+                  className="absolute right-0 top-[calc(100%+8px)] w-56 overflow-hidden rounded-[14px] border border-[#E4E1D8] bg-white shadow-[0_12px_32px_rgba(30,38,33,0.10)] animate-in fade-in slide-in-from-top-2 duration-150"
+                >
+                  <div className="border-b border-[#EFEDE6] px-4 py-3.5">
+                    <div className="text-[13px] font-semibold">{currentUser.fullName}</div>
+                    <div className="mt-0.5 text-[12px] text-[#5B655F]">
+                      {currentUser.email}
+                    </div>
+                  </div>
+                  <MenuItem
+                    icon={<UserRound size={16} />}
+                    label="Profile"
+                    action={() => router.push("/profile")}
+                  />
+                  <MenuItem
+                    icon={<Info size={16} />}
+                    label="About"
+                    action={() => router.push("/about")}
+                  />
+                  <div className="my-1 h-px bg-[#EFEDE6]" />
+                  <MenuItem
+                    icon={<LogOut size={16} />}
+                    label="Sign out"
+                    danger
+                    action={handleLogout}
+                  />
                 </div>
-            </header>
+              )}
+            </div>
+          </header>
+        )}
 
             {/* Single <main> landmark for every authenticated page. */}
             <main className="mx-auto max-w-380 px-10">{children}</main>

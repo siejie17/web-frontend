@@ -28,12 +28,17 @@ import {
   AlertCircle,
   Check,
   ChevronLeft,
+  AlertTriangle,
+  ArrowRight,
+  X,
 } from "lucide-react";
 import { FormInputs } from "@/types/form";
 import { BackButton } from "@/components/ui/BackButton";
 
 const currentYear = new Date().getFullYear();
 const YEAR_LIST = Array.from({ length: 6 }, (_, i) => String(currentYear + i));
+
+const CERT_TIERS = ["Not Certified", "Certified", "Silver", "Gold", "Platinum"] as const;
 
 type Errors = Record<string, string>;
 
@@ -67,6 +72,8 @@ export default function NewAssessmentPage() {
     null,
   );
   const [submitted, setSubmitted] = useState(false);
+  const [showNotCertModal, setShowNotCertModal] = useState(false);
+  const pendingSubmitRef = useRef<(() => Promise<void>) | null>(null);
   const successRef = useRef<HTMLDivElement>(null);
 
   // close any open dropdown on outside click
@@ -220,6 +227,41 @@ export default function NewAssessmentPage() {
 
   /* ---- submit ---- */
 
+  const runAssessment = async () => {
+    const data = {
+      projectName: projectName.trim(),
+      buildingType,
+      category,
+      buildingClassification: classification || null,
+      has_management: managementOption || null,
+      year,
+      buildingSize: parseFloat(buildingSizeDisplay),
+      projectBudget: budgetDisplay
+        ? parseFloat(budgetDisplay.replace(/,/g, ""))
+        : null,
+      state,
+      region: region || null,
+      structure,
+      certifiedRatingScale: ratingScale,
+      costPreviewWay: "Detailed"
+    };
+
+    const res = await fetch("/api/assessment/results", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(data),
+    });
+
+    const result = await res.json().catch(() => null);
+
+    if (result) {
+      localStorage.setItem("assessment_result", JSON.stringify(result));
+      router.push("/assessments/new/results");
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
@@ -246,39 +288,12 @@ export default function NewAssessmentPage() {
     setSubmitted(ok);
 
     if (ok) {
-      const data = {
-        projectName: projectName.trim(),
-        buildingType,
-        category,
-        buildingClassification: classification || null,
-        has_management: managementOption || null,
-        year,
-        buildingSize: parseFloat(buildingSizeDisplay),
-        projectBudget: budgetDisplay
-          ? parseFloat(budgetDisplay.replace(/,/g, ""))
-          : null,
-        state,
-        region: region || null,
-        structure,
-        certifiedRatingScale: ratingScale,
-        costPreviewWay: "Detailed"
-      };
-
-      const res = await fetch("/api/assessment/results", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(data),
-      });
-
-      const result = await res.json().catch(() => null);
-
-      if (result) {
-        // sessionStorage.setItem("assessment_result", JSON.stringify(result));
-        localStorage.setItem("assessment_result", JSON.stringify(result));
-        router.push("/assessments/new/results");
+      const isNotCert = ratingScale?.toLowerCase().includes("not certified");
+      if (isNotCert) {
+        setShowNotCertModal(true);
+        return;
       }
+      await runAssessment();
     } else {
       const firstErrorField = Object.keys(next).find((k) => next[k]);
       if (firstErrorField) {
@@ -290,7 +305,13 @@ export default function NewAssessmentPage() {
     }
   };
 
+  const handleNotCertConfirm = async () => {
+    setShowNotCertModal(false);
+    await runAssessment();
+  };
+
   return (
+    <>
     <div className="mx-auto max-w-275 pb-10 pt-6">
       <BackButton
         text="Dashboard"
@@ -320,22 +341,6 @@ export default function NewAssessmentPage() {
           </div>
         </div>
       </section>
-
-      {submitted && (
-        <div
-          ref={successRef}
-          role="status"
-          className="mb-6 flex scroll-mt-6 items-center gap-3 rounded-2xl border border-[#CFE0D6] bg-[#EEF2EC] px-5 py-4 text-[13.5px] text-[#2C4A3A]"
-        >
-          <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[#3E6B52] text-[#F6F6F2]">
-            <Check size={14} />
-          </span>
-          <span>
-            Looks good — you may proceed to submit this assessment to get your
-            results.
-          </span>
-        </div>
-      )}
 
       {/* ---------------- Form shell ---------------- */}
       <form
@@ -668,11 +673,7 @@ export default function NewAssessmentPage() {
               </FormSection>
 
               <div className="mt-6 flex flex-col items-center gap-3 border-t border-[#EFEDE6] pt-7 sm:flex-row sm:justify-between">
-                <p className="text-[12.5px] text-[#8A938C]">
-                  {isComplete
-                    ? "All set — you can revisit and edit these details after submitting."
-                    : "You can revisit and edit these details after submitting."}
-                </p>
+                <p className="text-[12.5px] text-[#8A938C]" />
                 <button
                   type="submit"
                   className={`w-full rounded-full py-3.5 text-[14.5px] font-semibold shadow-[0_12px_28px_rgba(62,107,82,0.24)] transition-all focus-visible:outline focus-visible:outline-offset-2 focus-visible:outline-[#3E6B52] sm:w-auto sm:px-10 ${
@@ -689,6 +690,127 @@ export default function NewAssessmentPage() {
         </div>
       </form>
     </div>
+
+    {/* ── Not Certified confirmation modal ── */}
+    {showNotCertModal && (
+      <div
+        className="fixed inset-0 z-50 flex items-center justify-center bg-[#1E2621]/50 p-4 backdrop-blur-md animate-[fadeIn_0.2s_ease-out]"
+        onClick={() => setShowNotCertModal(false)}
+      >
+        <div
+          className="relative w-full max-w-sm overflow-hidden rounded-[28px] border border-[#EDEAE1] bg-white shadow-[0_32px_64px_-12px_rgba(30,38,33,0.28)] animate-[riseIn_0.28s_cubic-bezier(0.16,1,0.3,1)]"
+          onClick={(e) => e.stopPropagation()}
+        >
+          {/* Ambient top glow */}
+          <div
+            aria-hidden="true"
+            className="pointer-events-none absolute -top-24 left-1/2 h-48 w-[120%] -translate-x-1/2 rounded-full opacity-60 blur-3xl"
+            style={{
+              background: "radial-gradient(closest-side, rgba(192,138,62,0.20), transparent)",
+            }}
+          />
+
+          <button
+            type="button"
+            onClick={() => setShowNotCertModal(false)}
+            aria-label="Close"
+            className="absolute right-4 top-4 z-10 flex h-8 w-8 items-center justify-center rounded-full text-[#9BA39C] transition-colors hover:bg-[#F6F6F2] hover:text-[#5B655F]"
+          >
+            <X size={16} />
+          </button>
+
+          <div className="relative px-7 pb-7 pt-8">
+            {/* Icon badge */}
+            <div className="mb-5 flex justify-center">
+              <div className="relative flex h-14 w-14 items-center justify-center">
+                <span className="absolute inset-0 rounded-full bg-[#FFF1E0]" />
+                <span className="absolute inset-0 animate-[pulseRing_2.4s_ease-out_infinite] rounded-full ring-2 ring-[#EFC98A]" />
+                <AlertTriangle size={22} className="relative text-[#C08A3E]" strokeWidth={2} />
+              </div>
+            </div>
+
+            {/* Header */}
+            <div className="text-center">
+              <h3
+                id="not-cert-modal-title"
+                className="text-[17px] font-semibold tracking-tight text-[#1E2621]"
+                style={{ fontFamily: "var(--font-display)" }}
+              >
+                Not Certified option selected
+              </h3>
+              <p className="mx-auto mt-2 max-w-[280px] text-[13.5px] leading-relaxed text-[#5B655F]">
+                Your project will skip Green Building Index assessment and won&apos;t
+                carry a verified green credential.
+              </p>
+            </div>
+
+            {/* Tier ladder */}
+            <div className="mt-6 rounded-2xl border border-[#EDEAE1] bg-[#FAFAF7] px-4 py-4">
+              <div className="flex items-center justify-between gap-1.5">
+                {CERT_TIERS.map((tier, i) => {
+                  const active = tier === "Not Certified";
+                  return (
+                    <div key={tier} className="flex flex-1 items-center gap-1.5">
+                      <div className="flex flex-1 flex-col items-center gap-1.5">
+                        <span
+                          className={`h-2 w-full rounded-full transition-colors ${
+                            active ? "bg-[#C08A3E]" : "bg-[#E4E1D8]"
+                          }`}
+                        />
+                        <span
+                          className={`text-center text-[9.5px] font-medium leading-tight ${
+                            active ? "text-[#B8935B]" : "text-[#9BA39C]"
+                          }`}
+                        >
+                          {tier}
+                        </span>
+                      </div>
+                      {i < CERT_TIERS.length - 1 && (
+                        <ArrowRight
+                          size={10}
+                          strokeWidth={2.5}
+                          className="mb-4 shrink-0 text-[#D8D4C8]"
+                        />
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+              <p className="mt-3 text-center text-[12px] leading-relaxed text-[#5B655F]">
+                Consider targeting at least{" "}
+                <span className="font-semibold text-[#B8935B]">Certified</span> {" "}to
+                showcase your project&apos;s green credentials.
+              </p>
+            </div>
+
+            <p className="mt-5 text-center text-[13px] leading-relaxed text-[#5B655F]">
+              Proceed with{" "}
+              <span className="font-semibold text-[#1E2621]">Not Certified</span>{" "}
+              anyway?
+            </p>
+
+            {/* Actions */}
+            <div className="mt-6 flex flex-col-reverse gap-2.5 sm:flex-row">
+              <button
+                type="button"
+                onClick={() => setShowNotCertModal(false)}
+                className="flex-1 rounded-full border border-[#E4E1D8] bg-white px-4 py-3 text-[13px] font-semibold text-[#5B655F] transition-all hover:border-[#D8D4C8] hover:bg-[#F6F6F2] active:scale-[0.98]"
+              >
+                Let me change it
+              </button>
+              <button
+                type="button"
+                onClick={handleNotCertConfirm}
+                className="flex-1 rounded-full bg-gradient-to-b from-[#CC9752] to-[#B8823A] px-4 py-3 text-[13px] font-semibold text-white shadow-[0_10px_24px_rgba(192,138,62,0.32)] transition-all hover:-translate-y-0.5 hover:shadow-[0_16px_32px_rgba(192,138,62,0.40)] active:translate-y-0 active:scale-[0.98]"
+              >
+                Yes, proceed
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    )}
+    </>
   );
 }
 

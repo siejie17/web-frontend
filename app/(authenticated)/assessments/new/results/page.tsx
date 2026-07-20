@@ -36,6 +36,15 @@ const TABS = [
   { key: "gbi", label: "GBI Assessment", icon: ClipboardCheck },
 ] as const;
 
+function tabsForRating(scaleLabel: string | undefined): readonly (typeof TABS[number])[] {
+  if (!scaleLabel) return TABS;
+  const name = scaleLabel.split("(")[0].trim().toLowerCase();
+  if (name.includes("not certified")) {
+    return TABS.filter((t) => t.key !== "gbi");
+  }
+  return TABS;
+}
+
 type TabKey = (typeof TABS)[number]["key"];
 
 /* ── GBI certification ladder ──
@@ -174,6 +183,20 @@ export default function AssessmentResultsPage() {
     [projectDetails],
   );
 
+  const isNotCert = activeTierIndex === 0;
+
+  const tabs = useMemo(
+    () => tabsForRating(projectDetails?.certifiedRatingScale),
+    [projectDetails],
+  );
+
+  // If the GBI tab was removed (Not Certified), switch back to "cost"
+  useEffect(() => {
+    if (isNotCert && activeTab === "gbi") {
+      setActiveTab("cost");
+    }
+  }, [isNotCert, activeTab]);
+
   const confirmLeave = useCallback((action: () => void) => {
     pendingAction.current = action;
     setShowLeaveModal(true);
@@ -228,25 +251,67 @@ export default function AssessmentResultsPage() {
 
   return (
     <>
-    <div className="mx-auto max-w-275 pb-4 pt-6">
-      <div className="mb-6">
-        <h1
-          className="text-[24px] font-semibold leading-tight text-[#1E2621] sm:text-[28px]"
-          style={{ fontFamily: "var(--font-display)" }}
-        >
-          Assessment Result
-        </h1>
-        <p className="mt-1 text-[13.5px] text-[#5B655F]">
-          Predicted cost breakdown and GBI assessment for this project.
-        </p>
-      </div>
+        <div className="relative mx-auto max-w-275 pb-4 pt-6">
+          {/* Floating back button — pinned to the left edge of the viewport,
+              vertically aligned with the title, breaking out of max-w-275.
+              Falls back to an inline button when there isn't room outside
+              the content column. */}
+          <button
+            type="button"
+            onClick={handleBack}
+            className="fixed left-8 top-5 z-30 hidden items-center gap-1.5 rounded-full border border-[#E4E1D8] bg-white px-5 py-2.5 text-[13px] font-semibold text-[#1E2621] shadow-[0_4px_12px_rgba(30,38,33,0.05)] transition-colors duration-200 hover:bg-[#FBFAF7] xl:inline-flex"
+          >
+            <ChevronLeft size={16} />
+            Back
+          </button>
+
+          <div className="mb-6">
+            <button
+              type="button"
+              onClick={handleBack}
+              className="mb-4 inline-flex items-center gap-1.5 rounded-full border border-[#E4E1D8] bg-white px-5 py-2.5 text-[13px] font-semibold text-[#1E2621] shadow-[0_4px_12px_rgba(30,38,33,0.05)] transition-colors duration-200 hover:bg-[#FBFAF7] xl:hidden"
+            >
+              <ChevronLeft size={16} />
+              Back
+            </button>
+            <h1
+              className="text-[24px] font-semibold leading-tight text-[#1E2621] sm:text-[28px]"
+              style={{ fontFamily: "var(--font-display)" }}
+            >
+              Assessment Result
+            </h1>
+            <p className="mt-1 text-[13.5px] text-[#5B655F]">
+              Predicted cost breakdown and GBI assessment for this project.
+            </p>
+          </div>
 
       {projectDetails && (
         <ProjectHero details={projectDetails} activeTierIndex={activeTierIndex} />
       )}
 
+      {/* Not Certified banner */}
+      {isNotCert && (
+        <div className="mb-5 flex items-start gap-3 rounded-2xl border border-[#E4DFC0] bg-[#FFF9E6] px-5 py-4">
+          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#C08A3E] text-white">
+            <AlertTriangle size={15} />
+          </span>
+          <div>
+            <p className="text-[13px] font-semibold text-[#8A6420]">
+              GBI Assessment not available
+            </p>
+            <p className="mt-1 text-[12.5px] leading-relaxed text-[#71603F]">
+              You selected <span className="font-medium">Not Certified</span> {" "} as your target rating. To unlock the
+              Green Building Index assessment and showcase your project&apos;s green credentials, update your
+              target rating to at least <span className="font-medium text-[#B8935B]">Certified</span>. Consider
+              adding green elements to your project — every point counts toward a more sustainable and
+              valuable build.
+            </p>
+          </div>
+        </div>
+      )}
+
       <div className="mb-4 flex flex-wrap gap-1.5">
-        {TABS.map((tab) => {
+        {tabs.map((tab) => {
           const Icon = tab.icon;
           const isActive = activeTab === tab.key;
           return (
@@ -312,15 +377,7 @@ export default function AssessmentResultsPage() {
         </div>
 
         {/* Bottom action bar */}
-        <div className="flex flex-col-reverse items-stretch gap-3 py-6 sm:flex-row sm:items-center sm:justify-between">
-          <button
-            type="button"
-            onClick={handleBack}
-            className="inline-flex items-center justify-center gap-1.5 rounded-full border border-[#E4E1D8] bg-white px-6 py-3 text-sm font-semibold text-[#1E2621] shadow-[0_4px_12px_rgba(30,38,33,0.05)] transition-colors duration-200 hover:bg-[#FBFAF7] sm:px-8"
-          >
-            <ChevronLeft size={16} />
-            Back to New Assessment
-          </button>
+        <div className="flex justify-end py-6">
           <button
             type="button"
             className="rounded-full bg-[#3E6B52] px-6 py-3 text-[14px] font-semibold text-[#F6F6F2] shadow-[0_12px_28px_rgba(62,107,82,0.24)] transition-all hover:-translate-y-0.5 hover:shadow-[0_16px_36px_rgba(62,107,82,0.30)] focus-visible:outline focus-visible:outline-offset-2 focus-visible:outline-[#3E6B52] sm:px-8"

@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import {
     ChevronRight,
     Award,
@@ -14,6 +14,7 @@ import {
     Plus,
     Check,
     X,
+    Trash2,
 } from "lucide-react";
 
 /* ---------------- Types ---------------- */
@@ -179,6 +180,11 @@ export default function CostBreakdownTree({
     onAddChild,
     onDeleteNode,
     onDescriptionChange,
+    addMode = false,
+    onSplitLeaf,
+    deleteMode = false,
+    onDeleteLeaf,
+    onAddRootCategory,
 }: {
     data: CostBreakdown;
     /** Optional: fires on every leaf edit (with a clean, parsed number), e.g. to persist to the server.
@@ -199,10 +205,26 @@ export default function CostBreakdownTree({
     onDeleteNode?: (nodeId: number) => void;
     /** Fires as the user types a node's name. */
     onDescriptionChange?: (nodeId: number, value: string) => void;
+    /** When true, eligible leaf nodes show a "+" icon for splitting, and an
+     *  "Add Other Category" button appears below the tree. */
+    addMode?: boolean;
+    deleteMode?: boolean;
+    /** Called when the user clicks "+" on a leaf node that can be split. */
+    onSplitLeaf?: (nodeId: number) => void;
+    /** Called when the user clicks the trash icon on a row while in delete mode. */
+    onDeleteLeaf?: (nodeId: number) => void;
+    /** Called when the user clicks "Add Other Category" at the bottom of the tree. */
+    onAddRootCategory?: () => void;
 }) {
     const field: EditableField = mode === "assessment" ? "cost" : "actual_cost";
 
     const [edits, setEdits] = useState<Record<number, string>>(() => collectInitialEdits(data, field));
+    const prevDataRef = useRef(data);
+    // Re-initialise edits when data changes structurally (e.g. new nodes from split/add)
+    if (data !== prevDataRef.current) {
+        prevDataRef.current = data;
+        setEdits(collectInitialEdits(data, field));
+    }
     const [expanded, setExpanded] = useState<Set<number>>(() => new Set());
     const [focusedId, setFocusedId] = useState<number | null>(null);
     // Row currently showing the inline "delete this?" confirm bar in place of its normal actions.
@@ -322,28 +344,38 @@ export default function CostBreakdownTree({
 
                     <div className="min-w-0 flex-1">
                         {/* Table header — sits inside the same bordered box as the rows, sharing its corners */}
-                        <div className="flex items-stretch border-b border-[#EFEDE6] bg-[#FBFAF7]">
+                        <div className="flex items-center border-b border-[#EFEDE6] bg-[#FBFAF7]">
                             <span
-                                className="flex flex-1 items-center py-2.5 pl-3 text-[10.5px] font-semibold uppercase tracking-[0.1em] text-[#8A938C]"
+                                className="flex flex-1 items-center justify-center py-2.5 text-center text-[10.5px] font-semibold uppercase tracking-[0.1em] text-[#8A938C]"
                                 style={{ fontFamily: "var(--font-mono)" }}
                             >
                                 Element
                             </span>
+
                             {!isAssessment && (
                                 <span
-                                    className={`${COL_BUDGET} hidden shrink-0 items-center justify-end border-l border-[#EFEDE6] py-2.5 pr-3 text-[10.5px] font-semibold uppercase tracking-[0.1em] text-[#8A938C] sm:flex`}
+                                    className={`${COL_BUDGET} hidden shrink-0 items-center justify-center border-l border-[#EFEDE6] py-2.5 text-center text-[10.5px] font-semibold uppercase tracking-[0.1em] text-[#8A938C] sm:flex`}
                                     style={{ fontFamily: "var(--font-mono)" }}
                                 >
                                     Predicted
                                 </span>
                             )}
+
                             <span
-                                className={`${COL_ACTUAL} flex shrink-0 items-center justify-end border-l border-[#EFEDE6] py-2.5 pr-3 text-[10.5px] font-semibold uppercase tracking-[0.1em] text-[#8A938C]`}
+                                className={`${COL_ACTUAL} flex shrink-0 items-center justify-center border-l border-[#EFEDE6] py-2.5 text-center text-[10.5px] font-semibold uppercase tracking-[0.1em] text-[#8A938C]`}
                                 style={{ fontFamily: "var(--font-mono)" }}
                             >
                                 {isAssessment ? "Cost" : "Actual"}
                             </span>
-                            {editable && <span className="w-[52px] shrink-0 border-l border-[#EFEDE6]" aria-hidden />}
+
+                            {(editable || addMode || deleteMode) && (
+                                <span
+                                    className="flex w-[70px] shrink-0 items-center justify-center border-l border-[#EFEDE6] py-2.5 text-center text-[10.5px] font-semibold uppercase tracking-[0.1em] text-[#8A938C]"
+                                    style={{ fontFamily: "var(--font-mono)" }}
+                                >
+                                    Action
+                                </span>
+                            )}
                         </div>
 
                         {topEntries.map(([key, node], i) => (
@@ -360,6 +392,8 @@ export default function CostBreakdownTree({
                                 mode={mode}
                                 field={field}
                                 editable={editable}
+                                addMode={addMode}
+                                deleteMode={deleteMode}
                                 confirmingDeleteId={confirmingDeleteId}
                                 onToggle={toggleNode}
                                 onLeafChange={handleLeafChange}
@@ -369,11 +403,22 @@ export default function CostBreakdownTree({
                                 onRequestDelete={setConfirmingDeleteId}
                                 onDeleteNode={onDeleteNode}
                                 onDescriptionChange={onDescriptionChange}
+                                onSplitLeaf={onSplitLeaf}
+                                onDeleteLeaf={onDeleteLeaf}
                                 isLast={i === topEntries.length - 1}
                             />
                         ))}
 
-                        {editable && (
+                        {addMode ? (
+                            <button
+                                type="button"
+                                onClick={onAddRootCategory}
+                                className="flex w-full items-center justify-center gap-1.5 border-t border-dashed border-[#E4E1D8] bg-[#FBFAF7] py-3 text-[12.5px] font-medium text-[#5B655F] transition-colors hover:bg-[#EEF2EC] hover:text-[#2C4A3A] focus-visible:outline focus-visible:outline-offset-[-2px] focus-visible:outline-[#2C4A3A]"
+                            >
+                                <Plus size={13} />
+                                Add Other Category
+                            </button>
+                        ) : editable ? (
                             <button
                                 type="button"
                                 onClick={() => handleAddChild(null)}
@@ -382,7 +427,7 @@ export default function CostBreakdownTree({
                                 <Plus size={13} />
                                 Add top-level cost code
                             </button>
-                        )}
+                        ) : null}
                     </div>
                 </div>
             </div>
@@ -404,6 +449,8 @@ function CostRow({
     mode,
     field,
     editable,
+    addMode,
+    deleteMode = false,
     confirmingDeleteId,
     onToggle,
     onLeafChange,
@@ -413,6 +460,8 @@ function CostRow({
     onRequestDelete,
     onDeleteNode,
     onDescriptionChange,
+    onSplitLeaf,
+    onDeleteLeaf,
     isLast,
 }: {
     rowKey: string;
@@ -429,6 +478,8 @@ function CostRow({
     mode: CostBreakdownMode;
     field: EditableField;
     editable: boolean;
+    addMode: boolean;
+    deleteMode?: boolean;
     confirmingDeleteId: number | null;
     onToggle: (id: number) => void;
     onLeafChange: (id: number, raw: string) => void;
@@ -438,6 +489,8 @@ function CostRow({
     onRequestDelete: (id: number | null) => void;
     onDeleteNode?: (nodeId: number) => void;
     onDescriptionChange?: (nodeId: number, value: string) => void;
+    onSplitLeaf?: (nodeId: number) => void;
+    onDeleteLeaf?: (nodeId: number) => void;
     isLast: boolean;
 }) {
     const hasChildren = !!node.children;
@@ -623,7 +676,7 @@ function CostRow({
                             ) : (
                                 <div className="relative w-full">
                                     <span
-                                        className="pointer-events-none absolute inset-y-0 left-1 flex items-center text-[10.5px] font-medium text-[#ADA695]"
+                                        className="pointer-events-none absolute inset-y-0 left-1.5 flex items-center text-[10.5px] font-medium text-[#ADA695]"
                                         style={{ fontFamily: "var(--font-mono)" }}
                                     >
                                         RM
@@ -632,15 +685,11 @@ function CostRow({
                                         type="text"
                                         inputMode="decimal"
                                         placeholder="0.00"
-                                        value={
-                                            focusedId === node.id
-                                                ? edits[node.id] ?? ""
-                                                : formatWithCommas(edits[node.id])
-                                        }
+                                        value={formatWithCommas(edits[node.id])}
                                         onChange={(e) => onLeafChange(node.id, e.target.value)}
                                         onFocus={() => onLeafFocus(node.id)}
                                         onBlur={() => onLeafBlur(node.id)}
-                                        className="w-full border-b border-[#E4E1D8] bg-transparent py-1.5 pl-6 pr-1 text-right text-[13px] tabular-nums text-[#1E2621] transition-colors focus:border-[#2C4A3A] focus:bg-[#FBFAF7] focus:outline-none"
+                                        className="w-full rounded-lg border border-[#D6D1C3] bg-[#FCFBF8] py-1.5 pl-6 pr-2 text-right text-[13px] tabular-nums text-[#1E2621] shadow-[inset_0_1px_2px_rgba(30,38,33,0.05)] transition-colors hover:border-[#C4CBC4] focus:border-[#2C4A3A] focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#2C4A3A]/15"
                                         style={{ fontFamily: "var(--font-mono)", letterSpacing: "0.01em" }}
                                     />
                                 </div>
@@ -649,31 +698,59 @@ function CostRow({
                     </>
                 )}
 
-                {/* ---- Row actions (editable mode only) ---- */}
-                {editable && !isConfirmingDelete && (
-                    <span className={`flex w-[52px] shrink-0 items-center justify-center gap-1 ${divider}`}>
-                        <button
-                            type="button"
-                            title="Add child item"
-                            onClick={(e) => {
-                                e.stopPropagation();
-                                onAddChild(node.id);
-                            }}
-                            className="flex h-6 w-6 items-center justify-center rounded-full text-[#8A938C] opacity-0 transition-opacity hover:bg-[#EEF2EC] hover:text-[#2C4A3A] focus-visible:opacity-100 group-hover:opacity-100"
-                        >
-                            <Plus size={13} />
-                        </button>
-                        <button
-                            type="button"
-                            title="Delete"
-                            onClick={(e) => {
-                                e.stopPropagation();
-                                onRequestDelete(node.id);
-                            }}
-                            className="flex h-6 w-6 items-center justify-center rounded-full text-[#8A938C] opacity-0 transition-opacity hover:bg-[#FBEDEB] hover:text-[#B0453A] focus-visible:opacity-100 group-hover:opacity-100"
-                        >
-                            <X size={13} />
-                        </button>
+                {/* ---- Row actions ---- */}
+                {(addMode || editable || deleteMode) && !isConfirmingDelete && (
+                    <span className={`flex w-[70px] shrink-0 items-center justify-center gap-1 ${divider}`}>
+                        {addMode && !hasChildren && depth < 2 ? (
+                            <button
+                                type="button"
+                                title="Split this item"
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    onSplitLeaf?.(node.id);
+                                }}
+                                className="flex h-6 w-6 items-center justify-center rounded-full text-sage transition-colors hover:bg-sage-100 hover:text-sage-dark focus-visible:outline focus-visible:outline-offset-2 focus-visible:outline-sage"
+                            >
+                                <Plus size={13} strokeWidth={2.5} />
+                            </button>
+                        ) : editable ? (
+                            <>
+                                <button
+                                    type="button"
+                                    title="Add child item"
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        onAddChild(node.id);
+                                    }}
+                                    className="flex h-6 w-6 items-center justify-center rounded-full text-[#8A938C] opacity-0 transition-opacity hover:bg-[#EEF2EC] hover:text-[#2C4A3A] focus-visible:opacity-100 group-hover:opacity-100"
+                                >
+                                    <Plus size={13} />
+                                </button>
+                                <button
+                                    type="button"
+                                    title="Delete"
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        onRequestDelete(node.id);
+                                    }}
+                                    className="flex h-6 w-6 items-center justify-center rounded-full text-[#8A938C] opacity-0 transition-opacity hover:bg-[#FBEDEB] hover:text-[#B0453A] focus-visible:opacity-100 group-hover:opacity-100"
+                                >
+                                    <X size={13} />
+                                </button>
+                            </>
+                        ) : deleteMode && !isCert ? (
+                            <button
+                                type="button"
+                                title="Delete this item"
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    onDeleteLeaf?.(node.id);
+                                }}
+                                className="flex h-7 w-7 items-center justify-center rounded-full bg-[#FBEDEB] text-[#B0453A] transition-colors hover:bg-[#E7C1BA] hover:text-[#8C3D33]"
+                            >
+                                <Trash2 size={14} />
+                            </button>
+                        ) : null}
                     </span>
                 )}
             </div>
@@ -694,6 +771,8 @@ function CostRow({
                             mode={mode}
                             field={field}
                             editable={editable}
+                            addMode={addMode}
+                            deleteMode={deleteMode}
                             confirmingDeleteId={confirmingDeleteId}
                             onToggle={onToggle}
                             onLeafChange={onLeafChange}
@@ -703,6 +782,8 @@ function CostRow({
                             onRequestDelete={onRequestDelete}
                             onDeleteNode={onDeleteNode}
                             onDescriptionChange={onDescriptionChange}
+                            onSplitLeaf={onSplitLeaf}
+                            onDeleteLeaf={onDeleteLeaf}
                             isLast={i === entries.length - 1}
                         />
                     ))}

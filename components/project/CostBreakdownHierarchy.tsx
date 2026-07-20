@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import { Wallet, TrendingUp, ShieldCheck, CheckCircle2, RotateCcw, CircleDollarSign } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Wallet, TrendingUp, ShieldCheck, CheckCircle2, RotateCcw, CircleDollarSign, Trash2 } from "lucide-react";
 
 import CostBreakdownTree, {
     type CostBreakdown,
@@ -94,6 +94,134 @@ function sumBudgeted(data: CostBreakdown | null | undefined): number {
     return Object.values(data).reduce((sum, node) => sum + node.cost, 0);
 }
 
+/* ---------------- Tree mutation helpers ---------------- */
+
+function findMaxId(tree: CostBreakdown): number {
+    let max = 0;
+    const walk = (nodes: Record<string, CostNode>) => {
+        for (const node of Object.values(nodes)) {
+            if (node.id > max) max = node.id;
+            if (node.children) walk(node.children);
+        }
+    };
+    walk(tree);
+    return max;
+}
+
+function nextTopKey(tree: CostBreakdown): string {
+    const existing = new Set(Object.keys(tree));
+    for (let i = 0; i < 26; i++) {
+        const key = String.fromCharCode(65 + i);
+        if (!existing.has(key)) return key;
+    }
+    for (let i = 0; i < 26; i++) {
+        for (let j = 0; j < 26; j++) {
+            const key = String.fromCharCode(65 + i) + String.fromCharCode(65 + j);
+            if (!existing.has(key)) return key;
+        }
+    }
+    return "ZZ";
+}
+
+function getExistingCategoryNames(tree: CostBreakdown): Set<string> {
+    const names = new Set<string>();
+    for (const node of Object.values(tree)) {
+        names.add(node.description.toLowerCase());
+    }
+    return names;
+}
+
+function collectDescendantIds(node: CostNode): number[] {
+    const ids: number[] = [];
+    const walk = (n: CostNode) => {
+        ids.push(n.id);
+        if (n.children) Object.values(n.children).forEach(walk);
+    };
+    walk(node);
+    return ids;
+}
+
+/** Remove a node by id from a Record of siblings and renumber subsequent sibling keys.
+ *  Returns the ids of all removed nodes (the node itself + its descendants). */
+function removeNodeFromSiblings(
+    siblings: Record<string, CostNode>,
+    targetId: number
+): { deletedIds: number[] } | null {
+    let deletedKey = "";
+    let deletedNode: CostNode | null = null;
+    for (const [key, node] of Object.entries(siblings)) {
+        if (node.id === targetId) {
+            deletedKey = key;
+            deletedNode = node;
+            break;
+        }
+    }
+    if (!deletedNode) return null;
+
+    const deletedIds = collectDescendantIds(deletedNode);
+    const sortedKeys = Object.keys(siblings).sort((a, b) => {
+        const an = parseInt(a, 10);
+        const bn = parseInt(b, 10);
+        if (!isNaN(an) && !isNaN(bn)) return an - bn;
+        if (a.length !== b.length) return a.length - b.length;
+        return a.localeCompare(b);
+    });
+
+    const result: Record<string, CostNode> = {};
+    let pastDeleted = false;
+    for (const key of sortedKeys) {
+        if (key === deletedKey) { pastDeleted = true; continue; }
+        if (pastDeleted) {
+            const numVal = parseInt(key, 10);
+            if (!isNaN(numVal)) {
+                result[String(numVal - 1)] = siblings[key];
+            } else if (key.length === 1 && key >= "A" && key <= "Z") {
+                result[String.fromCharCode(key.charCodeAt(0) - 1)] = siblings[key];
+            } else {
+                result[key] = siblings[key];
+            }
+        } else {
+            result[key] = siblings[key];
+        }
+    }
+
+    // Mutate the original Record in place
+    for (const key of Object.keys(siblings)) delete siblings[key];
+    for (const [key, node] of Object.entries(result)) siblings[key] = node;
+
+    return { deletedIds };
+}
+
+function mutateNode(
+    nodes: Record<string, CostNode>,
+    nodeId: number,
+    mutator: (node: CostNode) => void
+): boolean {
+    for (const node of Object.values(nodes)) {
+        if (node.id === nodeId) {
+            mutator(node);
+            return true;
+        }
+        if (node.children && mutateNode(node.children, nodeId, mutator)) return true;
+    }
+    return false;
+}
+
+function sumLeaves(tree: CostBreakdown, overrides?: Record<number, number>): number {
+    let total = 0;
+    const walk = (nodes: Record<string, CostNode>) => {
+        for (const node of Object.values(nodes)) {
+            if (node.children) {
+                walk(node.children);
+            } else {
+                total += overrides?.[node.id] ?? node.cost;
+            }
+        }
+    };
+    walk(tree);
+    return total;
+}
+
 /* ---------------- Component ---------------- */
 
 export type SubmitResult = { success: boolean; message: string };
@@ -135,6 +263,15 @@ export default function CostBreakdownHierarchy({
 }) {
     const isAssessment = mode === "assessment";
 
+    const [addMode, setAddMode] = useState(false);
+    const [deleteMode, setDeleteMode] = useState(false);
+    const [showDeleteConfirmModal, setShowDeleteConfirmModal] = useState(false);
+    const [deletingNodeId, setDeletingNodeId] = useState<number | null>(null);
+    const [localTree, setLocalTree] = useState<CostBreakdown | null>(null);
+    const [showAddCategoryModal, setShowAddCategoryModal] = useState(false);
+    const [showSplitModal, setShowSplitModal] = useState(false);
+    const [splittingNodeId, setSplittingNodeId] = useState<number | null>(null);
+
     // Leaf id -> baseline value for the active mode's field, as loaded from the server.
     const baselineMap = useMemo(() => buildBaselineMap(value, mode), [value, mode]);
     // Leaf id -> value from a change that was already submitted successfully this session.
@@ -155,6 +292,7 @@ export default function CostBreakdownHierarchy({
     useEffect(() => {
         setSavedOverrides({});
         setChangedNodes({});
+        setLocalTree(null);
         setTreeKey((k) => k + 1);
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [projectId, mode]);
@@ -189,11 +327,14 @@ export default function CostBreakdownHierarchy({
     // Live total for the active field = baseline/saved values, overlaid with whatever's currently unsaved-edited.
     // In assessment mode this is simply "total predicted cost entered so far"; in comparison mode it's "total actual".
     const totalLive = useMemo(() => {
+        if (localTree) {
+            return sumLeaves(localTree, changedNodes);
+        }
         return Object.entries(effectiveBaseline).reduce(
             (sum, [id, base]) => sum + (changedNodes[Number(id)] ?? base),
             0
         );
-    }, [effectiveBaseline, changedNodes]);
+    }, [localTree, effectiveBaseline, changedNodes]);
 
     const hasBudget = projectBudget !== null && projectBudget !== undefined;
     const budgetComparison = isAssessment ? totalLive : totalBudgeted;
@@ -229,7 +370,206 @@ export default function CostBreakdownHierarchy({
 
     const handleResetChanges = () => {
         setChangedNodes({});
+        setLocalTree(null);
         setTreeKey((k) => k + 1); // remounts the tree, re-reading treeData (baseline + saved, not unsaved edits)
+    };
+
+    const handleEnterAddMode = () => {
+        const merged = structuredClone(localTree ?? treeData);
+        // Bake any pending value edits into the tree before structural editing
+        for (const [nodeIdStr, val] of Object.entries(changedNodes)) {
+            mutateNode(merged, Number(nodeIdStr), (node) => { node.cost = val; });
+        }
+        setLocalTree(merged);
+        setChangedNodes({});
+        setAddMode(true);
+    };
+
+    const handleExitAddMode = () => {
+        setAddMode(false);
+        if (localTree) {
+            // Bake value edits into localTree so they survive the mode exit
+            for (const [nodeIdStr, val] of Object.entries(changedNodes)) {
+                mutateNode(localTree, Number(nodeIdStr), (node) => { node.cost = val; });
+            }
+            setChangedNodes({});
+            onChange?.(localTree);
+        }
+    };
+
+    const handleEnterDeleteMode = () => {
+        const merged = structuredClone(localTree ?? treeData);
+        for (const [nodeIdStr, val] of Object.entries(changedNodes)) {
+            mutateNode(merged, Number(nodeIdStr), (node) => { node.cost = val; });
+        }
+        setLocalTree(merged);
+        setChangedNodes({});
+        setDeleteMode(true);
+    };
+
+    const handleExitDeleteMode = () => {
+        setDeleteMode(false);
+        if (localTree) {
+            for (const [nodeIdStr, val] of Object.entries(changedNodes)) {
+                mutateNode(localTree, Number(nodeIdStr), (node) => { node.cost = val; });
+            }
+            setChangedNodes({});
+            onChange?.(localTree);
+        }
+    };
+
+    const handleDeleteRequest = (nodeId: number) => {
+        setDeletingNodeId(nodeId);
+        setShowDeleteConfirmModal(true);
+    };
+
+    const handleDeleteConfirm = () => {
+        if (deletingNodeId === null || !localTree) return;
+        const nextTree = structuredClone(localTree);
+        // Bake pending value edits into the clone so they survive the re-initialisation
+        for (const [nodeIdStr, val] of Object.entries(changedNodes)) {
+            mutateNode(nextTree, Number(nodeIdStr), (node) => { node.cost = val; });
+        }
+        const deletedIds: number[] = [];
+
+        const findAndRemove = (nodes: Record<string, CostNode>): boolean => {
+            const result = removeNodeFromSiblings(nodes, deletingNodeId);
+            if (result) {
+                deletedIds.push(...result.deletedIds);
+                return true;
+            }
+            for (const node of Object.values(nodes)) {
+                if (node.children && findAndRemove(node.children)) return true;
+            }
+            return false;
+        };
+
+        findAndRemove(nextTree);
+        setLocalTree(nextTree);
+        onChange?.(nextTree);
+        // Remove any changedNodes entries for the deleted nodes (others are baked into nextTree)
+        setChangedNodes({});
+        setShowDeleteConfirmModal(false);
+        setDeletingNodeId(null);
+    };
+
+    const handleSplitRequest = (nodeId: number) => {
+        setSplittingNodeId(nodeId);
+        setShowSplitModal(true);
+    };
+
+    const handleSplitConfirm = (childName: string, cost: number) => {
+        if (splittingNodeId === null || !localTree) return;
+        const nextTree = structuredClone(localTree);
+        // Bake pending value edits into the clone so they survive the re-initialisation
+        for (const [nodeIdStr, val] of Object.entries(changedNodes)) {
+            mutateNode(nextTree, Number(nodeIdStr), (node) => { node.cost = val; });
+        }
+        const maxId = findMaxId(nextTree);
+        mutateNode(nextTree, splittingNodeId, (node) => {
+            const inheritedId = maxId + 1;
+            const newId = maxId + 2;
+            node.children = {
+                "1": {
+                    id: inheritedId,
+                    description: node.description,
+                    cost: node.cost,
+                    is_certification: 0,
+                },
+                "2": {
+                    id: newId,
+                    description: childName,
+                    cost: cost,
+                    is_certification: 0,
+                },
+            };
+        });
+        setLocalTree(nextTree);
+        setChangedNodes({});
+        onChange?.(nextTree);
+        setShowSplitModal(false);
+        setSplittingNodeId(null);
+    };
+
+    const splittingNodeName = splittingNodeId !== null && localTree
+        ? (() => {
+              let name = "";
+              const walk = (nodes: Record<string, CostNode>) => {
+                  for (const n of Object.values(nodes)) {
+                      if (n.id === splittingNodeId) { name = n.description; return true; }
+                      if (n.children && walk(n.children)) return true;
+                  }
+                  return false;
+              };
+              walk(localTree);
+              return name;
+          })()
+        : "";
+
+    const deletingNodeName = deletingNodeId !== null && localTree
+        ? (() => {
+              let name = "";
+              const walk = (nodes: Record<string, CostNode>) => {
+                  for (const n of Object.values(nodes)) {
+                      if (n.id === deletingNodeId) { name = n.description; return true; }
+                      if (n.children && walk(n.children)) return true;
+                  }
+                  return false;
+              };
+              walk(localTree);
+              return name;
+          })()
+        : "";
+
+    const handleAddCategory = (formData: {
+        categoryType: "Customise" | "Others";
+        categoryName: string;
+        childName: string;
+        cost: number;
+    }) => {
+        if (!localTree) return;
+        const nextTree = structuredClone(localTree);
+        // Bake pending value edits into the clone so they survive the re-initialisation
+        for (const [nodeIdStr, val] of Object.entries(changedNodes)) {
+            mutateNode(nextTree, Number(nodeIdStr), (node) => { node.cost = val; });
+        }
+        const maxId = findMaxId(nextTree);
+        const key = nextTopKey(nextTree);
+        const name =
+            formData.categoryType === "Others"
+                ? "OTHERS"
+                : formData.categoryName.trim();
+
+        const newNodeId = maxId + 1;
+
+        if (formData.childName.trim()) {
+            const childId = maxId + 2;
+            nextTree[key] = {
+                id: newNodeId,
+                description: name,
+                cost: 0,
+                is_certification: 0,
+                children: {
+                    "1": {
+                        id: childId,
+                        description: formData.childName.trim(),
+                        cost: formData.cost,
+                        is_certification: 0,
+                    },
+                },
+            };
+        } else {
+            nextTree[key] = {
+                id: newNodeId,
+                description: name,
+                cost: formData.cost,
+                is_certification: 0,
+            };
+        }
+
+        setLocalTree(nextTree);
+        setChangedNodes({});
+        onChange?.(nextTree);
     };
 
     const showToast = (message: string, tone: "success" | "error") => {
@@ -449,39 +789,60 @@ export default function CostBreakdownHierarchy({
 
                 {isAssessment && (
                   <div className="mb-4 flex w-full flex-col items-stretch gap-2.5 px-1 sm:flex-row sm:gap-3 sm:px-4">
-                    <button
-                      type="button"
-                      className="flex flex-1 basis-0 items-center justify-center gap-1.5 rounded-full border bg-white px-4 py-2.5 text-[12.5px] font-semibold shadow-[0_1px_2px_rgba(30,38,33,0.04)] transition-colors"
-                      style={{ borderColor: TONE.good.border, color: TONE.good.text }}
-                      onMouseEnter={(e) => {
-                        e.currentTarget.style.backgroundColor = TONE.good.bg;
-                        e.currentTarget.style.borderColor = TONE.good.solid;
-                      }}
-                      onMouseLeave={(e) => {
-                        e.currentTarget.style.backgroundColor = "#FFFFFF";
-                        e.currentTarget.style.borderColor = TONE.good.border;
-                      }}
-                    >
-                      <CircleDollarSign size={14} />
-                      Add Cost Node
-                    </button>
+                    {!deleteMode && (
+                      <button
+                        type="button"
+                        onClick={addMode ? handleExitAddMode : handleEnterAddMode}
+                        className="flex flex-1 basis-0 items-center justify-center gap-1.5 rounded-full border bg-white px-4 py-2.5 text-[12.5px] font-semibold shadow-[0_1px_2px_rgba(30,38,33,0.04)] transition-colors"
+                        style={{ borderColor: addMode ? TONE.neutral.border : TONE.good.border, color: addMode ? TONE.neutral.text : TONE.good.text }}
+                        onMouseEnter={(e) => {
+                          e.currentTarget.style.backgroundColor = addMode ? TONE.neutral.bg : TONE.good.bg;
+                          e.currentTarget.style.borderColor = addMode ? TONE.neutral.solid : TONE.good.solid;
+                        }}
+                        onMouseLeave={(e) => {
+                          e.currentTarget.style.backgroundColor = "#FFFFFF";
+                          e.currentTarget.style.borderColor = addMode ? TONE.neutral.border : TONE.good.border;
+                        }}
+                      >
+                        <CircleDollarSign size={14} />
+                        {addMode ? "Done Adding Cost Node" : "Add Cost Node"}
+                      </button>
+                    )}
 
-                    <button
-                      type="button"
-                      className="flex flex-1 basis-0 items-center justify-center gap-1.5 rounded-full border border-[#E4E1D8] bg-white px-4 py-2.5 text-[12.5px] font-medium text-[#8A938C] transition-colors hover:border-[#E7C1BA] hover:text-[#B0453A]"
-                    >
-                      Delete Cost Code
-                    </button>
+                    {!addMode && (
+                      <button
+                        type="button"
+                        onClick={deleteMode ? handleExitDeleteMode : handleEnterDeleteMode}
+                        className="flex flex-1 basis-0 items-center justify-center gap-1.5 rounded-full border bg-white px-4 py-2.5 text-[12.5px] font-semibold shadow-[0_1px_2px_rgba(30,38,33,0.04)] transition-colors"
+                        style={{ borderColor: deleteMode ? TONE.neutral.border : TONE.bad.border, color: deleteMode ? TONE.neutral.text : TONE.bad.text }}
+                        onMouseEnter={(e) => {
+                          e.currentTarget.style.backgroundColor = deleteMode ? TONE.neutral.bg : TONE.bad.bg;
+                          e.currentTarget.style.borderColor = deleteMode ? TONE.neutral.solid : TONE.bad.solid;
+                        }}
+                        onMouseLeave={(e) => {
+                          e.currentTarget.style.backgroundColor = "#FFFFFF";
+                          e.currentTarget.style.borderColor = deleteMode ? TONE.neutral.border : TONE.bad.border;
+                        }}
+                      >
+                        <Trash2 size={14} />
+                        {deleteMode ? "Done Deleting" : "Delete Cost Code"}
+                      </button>
+                    )}
                   </div>
                 )}
 
                 <div className=" bg-[#FDFDFC] p-2 sm:p-3">
                     <CostBreakdownTree
                         key={treeKey}
-                        data={treeData}
+                        data={localTree ?? treeData}
                         onActualCostChange={handleLeafEdit}
                         hideTotals
                         mode={mode}
+                        addMode={addMode}
+                        deleteMode={deleteMode}
+                        onSplitLeaf={handleSplitRequest}
+                        onDeleteLeaf={handleDeleteRequest}
+                        onAddRootCategory={() => setShowAddCategoryModal(true)}
                     />
                 </div>
             </div>
@@ -534,6 +895,76 @@ export default function CostBreakdownHierarchy({
                     style={{ backgroundColor: toast.tone === "success" ? TONE.good.solid : TONE.bad.solid }}
                 >
                     {toast.message}
+                </div>
+            )}
+
+            {/* ---------------- Add Category Modal ---------------- */}
+            <AddCategoryModal
+                open={showAddCategoryModal}
+                onClose={() => setShowAddCategoryModal(false)}
+                existingNames={getExistingCategoryNames(localTree ?? treeData)}
+                onSubmit={(formData) => {
+                    handleAddCategory(formData);
+                    setShowAddCategoryModal(false);
+                }}
+            />
+
+            {/* ---------------- Split Node Modal ---------------- */}
+            <SplitNodeModal
+                open={showSplitModal}
+                parentName={splittingNodeName}
+                parentCost={(() => {
+                    if (splittingNodeId === null || !localTree) return 0;
+                    let cost = 0;
+                    const walk = (nodes: Record<string, CostNode>) => {
+                        for (const n of Object.values(nodes)) {
+                            if (n.id === splittingNodeId) { cost = n.cost; return true; }
+                            if (n.children && walk(n.children)) return true;
+                        }
+                        return false;
+                    };
+                    walk(localTree);
+                    return cost;
+                })()}
+                onClose={() => {
+                    setShowSplitModal(false);
+                    setSplittingNodeId(null);
+                }}
+                onConfirm={handleSplitConfirm}
+            />
+
+            {/* ---------------- Delete Confirm Modal ---------------- */}
+            {showDeleteConfirmModal && (
+                <div
+                    className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-sm"
+                    onClick={() => { setShowDeleteConfirmModal(false); setDeletingNodeId(null); }}
+                >
+                    <div
+                        className="mx-4 w-full max-w-sm rounded-3xl border border-[#E4E1D8] bg-white p-6 shadow-[0_24px_48px_rgba(30,38,33,0.12)] sm:p-8"
+                        onClick={(e) => e.stopPropagation()}
+                    >
+                        <h3 className="mb-2 text-lg font-semibold text-[#1E2621]">Delete this item?</h3>
+                        <p className="mb-6 text-[13px] leading-relaxed text-[#5B655F]">
+                            You are about to delete <span className="font-medium text-[#1E2621]">{deletingNodeName}</span> and all its sub-items. This cannot be undone.
+                        </p>
+                        <div className="flex gap-3">
+                            <button
+                                type="button"
+                                onClick={() => { setShowDeleteConfirmModal(false); setDeletingNodeId(null); }}
+                                className="flex flex-1 items-center justify-center rounded-2xl border border-[#E4E1D8] bg-white px-4 py-2.5 text-[13px] font-medium text-[#5B655F] transition-colors hover:bg-[#FBFAF7]"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                type="button"
+                                onClick={handleDeleteConfirm}
+                                className="flex flex-1 items-center justify-center gap-1.5 rounded-2xl bg-[#B0453A] px-4 py-2.5 text-[13px] font-semibold text-white shadow-sm transition-colors hover:bg-[#963B31]"
+                            >
+                                <Trash2 size={14} />
+                                Delete
+                            </button>
+                        </div>
+                    </div>
                 </div>
             )}
         </>
@@ -633,6 +1064,367 @@ function Figure({
                 title={value}
             >
                 {value}
+            </div>
+        </div>
+    );
+}
+
+/* ---------------- Split Node Modal ---------------- */
+
+function SplitNodeModal({
+    open,
+    parentName,
+    parentCost,
+    onClose,
+    onConfirm,
+}: {
+    open: boolean;
+    parentName: string;
+    parentCost: number;
+    onClose: () => void;
+    onConfirm: (childName: string, cost: number) => void;
+}) {
+    const costInputRef = useRef<HTMLInputElement>(null);
+    const [childName, setChildName] = useState("");
+    const [rawDigits, setRawDigits] = useState("");
+    const [childNameError, setChildNameError] = useState("");
+    const [costError, setCostError] = useState("");
+
+    const displayCost = rawDigits
+        ? (parseInt(rawDigits, 10) / 100).toLocaleString("en-MY", { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+        : "0.00";
+
+    // Keep cursor at the end after each value update
+    useEffect(() => {
+        if (costInputRef.current) {
+            costInputRef.current.setSelectionRange(displayCost.length, displayCost.length);
+        }
+    }, [displayCost]);
+
+    if (!open) return null;
+
+    const handleSubmit = () => {
+        setChildNameError("");
+        setCostError("");
+        let valid = true;
+        if (!childName.trim()) {
+            setChildNameError("Give this sub-item a name.");
+            valid = false;
+        }
+        if (!rawDigits) {
+            setCostError("Enter a cost for this sub-item.");
+            valid = false;
+        }
+        if (!valid) return;
+        const cost = parseInt(rawDigits, 10) / 100;
+        onConfirm(childName.trim(), cost);
+        setChildName("");
+        setRawDigits("");
+        setChildNameError("");
+        setCostError("");
+    };
+
+    const handleClose = () => {
+        setChildNameError("");
+        setCostError("");
+        setChildName("");
+        setRawDigits("");
+        onClose();
+    };
+
+    return (
+        <div
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-sm"
+            onClick={handleClose}
+        >
+            <div
+                className="mx-4 w-full max-w-md rounded-3xl border border-[#E4E1D8] bg-white p-6 shadow-[0_24px_48px_rgba(30,38,33,0.12)] sm:p-8"
+                onClick={(e) => e.stopPropagation()}
+            >
+                <h3 className="mb-5 text-lg font-semibold text-[#1E2621]">Break down this item</h3>
+                <p className="-mt-3 mb-5 text-[13px] text-[#8A938C]">
+                    Add a sub-item to <span className="font-medium text-[#5B655F]">{parentName}</span>
+                </p>
+
+                <div className="space-y-4">
+                    <div>
+                        <label className="mb-1.5 block text-[12px] font-medium text-[#5B655F]">
+                            Name for the new sub-item
+                        </label>
+                        <input
+                            type="text"
+                            value={childName}
+                            onChange={(e) => { setChildName(e.target.value); setChildNameError(""); }}
+                            placeholder="e.g. Basic Piling"
+                            className={`w-full rounded-xl border px-3.5 py-2.5 text-[13.5px] text-[#1E2621] placeholder:text-[#ADA695] focus:outline-none focus:ring-2 ${
+                                childNameError ? "border-[#B0453A] focus:border-[#B0453A] focus:ring-[#B0453A]/20" : "border-[#E4E1D8] focus:border-[#3E6B52] focus:ring-[#3E6B52]/20"
+                            }`}
+                        />
+                        {childNameError && (
+                            <p className="mt-1 text-[11.5px] font-medium text-[#B0453A]">{childNameError}</p>
+                        )}
+                    </div>
+
+                    <div>
+                        <label className="mb-1.5 block text-[12px] font-medium text-[#5B655F]">
+                            Cost for this sub-item (RM)
+                        </label>
+                        <input
+                            ref={costInputRef}
+                            type="text"
+                            inputMode="decimal"
+                            value={displayCost}
+                            onChange={() => { if (costError) setCostError(""); }}
+                            onKeyDown={(e) => {
+                                if (e.key === "Backspace") {
+                                    e.preventDefault();
+                                    setRawDigits((prev) => prev.slice(0, -1));
+                                } else if (/^\d$/.test(e.key)) {
+                                    e.preventDefault();
+                                    setRawDigits((prev) => prev + e.key);
+                                }
+                            }}
+                            className={`w-full rounded-xl border px-3.5 py-2.5 text-[13.5px] text-[#1E2621] placeholder:text-[#ADA695] focus:outline-none focus:ring-2 ${
+                                costError ? "border-[#B0453A] focus:border-[#B0453A] focus:ring-[#B0453A]/20" : "border-[#E4E1D8] focus:border-[#3E6B52] focus:ring-[#3E6B52]/20"
+                            }`}
+                        />
+                        {costError && (
+                            <p className="mt-1 text-[11.5px] font-medium text-[#B0453A]">{costError}</p>
+                        )}
+                    </div>
+                </div>
+
+                <p className="mt-3 text-[12px] text-[#ADA695]">
+                    The item &ldquo;{parentName}&rdquo; will keep its current cost. The sub-item you add here is extra.
+                </p>
+
+                <div className="mt-6 flex gap-3">
+                    <button
+                        type="button"
+                        onClick={handleClose}
+                        className="flex-1 rounded-xl border border-[#E4E1D8] bg-white px-4 py-2.5 text-[13px] font-medium text-[#5B655F] transition-colors hover:border-[#C9D3CC] hover:text-[#2C4A3A]"
+                    >
+                        Cancel
+                    </button>
+                    <button
+                        type="button"
+                        onClick={handleSubmit}
+                        className="flex-1 rounded-xl bg-[#3E6B52] px-4 py-2.5 text-[13px] font-semibold text-white transition-colors hover:bg-[#325A44]"
+                    >
+                        Add sub-item
+                    </button>
+                </div>
+            </div>
+        </div>
+    );
+}
+
+/* ---------------- Add Category Modal ---------------- */
+
+function AddCategoryModal({
+    open,
+    onClose,
+    existingNames,
+    onSubmit,
+}: {
+    open: boolean;
+    onClose: () => void;
+    existingNames: Set<string>;
+    onSubmit: (data: {
+        categoryType: "Customise" | "Others";
+        categoryName: string;
+        childName: string;
+        cost: number;
+    }) => void;
+}) {
+    const costInputRef = useRef<HTMLInputElement>(null);
+    const [categoryType, setCategoryType] = useState<"Customise" | "Others">("Customise");
+    const [categoryName, setCategoryName] = useState("");
+    const [childName, setChildName] = useState("");
+    const [rawDigits, setRawDigits] = useState("");
+    const [categoryNameError, setCategoryNameError] = useState("");
+    const [costError, setCostError] = useState("");
+
+    const displayCost = rawDigits
+        ? (parseInt(rawDigits, 10) / 100).toLocaleString("en-MY", { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+        : "0.00";
+
+    useEffect(() => {
+        if (costInputRef.current) {
+            costInputRef.current.setSelectionRange(displayCost.length, displayCost.length);
+        }
+    }, [displayCost]);
+
+    if (!open) return null;
+
+    const handleSubmit = () => {
+        setCategoryNameError("");
+        setCostError("");
+        let valid = true;
+        if (!rawDigits) {
+            setCostError("Enter a cost for this category.");
+            valid = false;
+        }
+        const cost = parseInt(rawDigits || "0", 10) / 100;
+        if (categoryType === "Customise") {
+            const trimmed = categoryName.trim().toLowerCase();
+            if (!trimmed) {
+                setCategoryNameError("Give this category a name.");
+                valid = false;
+            } else if (trimmed === "certification" || trimmed === "others") {
+                setCategoryNameError(`"${categoryName.trim()}" is a reserved name — pick something else.`);
+                valid = false;
+            } else if (existingNames.has(trimmed)) {
+                setCategoryNameError(`"${categoryName.trim()}" already exists — try a different name.`);
+                valid = false;
+            }
+        }
+        if (!valid) return;
+        onSubmit({
+            categoryType,
+            categoryName: categoryName.trim(),
+            childName: childName.trim(),
+            cost,
+        });
+        setCategoryName("");
+        setChildName("");
+        setRawDigits("");
+        setCategoryType("Customise");
+        setCategoryNameError("");
+        setCostError("");
+    };
+
+    const handleClose = () => {
+        setCategoryNameError("");
+        setCostError("");
+        setCategoryName("");
+        setChildName("");
+        setRawDigits("");
+        setCategoryType("Customise");
+        onClose();
+    };
+
+    return (
+        <div
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-sm"
+            onClick={handleClose}
+        >
+            <div
+                className="mx-4 w-full max-w-md rounded-3xl border border-[#E4E1D8] bg-white p-6 shadow-[0_24px_48px_rgba(30,38,33,0.12)] sm:p-8"
+                onClick={(e) => e.stopPropagation()}
+            >
+                <h3 className="mb-5 text-lg font-semibold text-[#1E2621]">Add a new category</h3>
+
+                <div className="space-y-4">
+{existingNames.has("others") ? null : (
+                    <div>
+                        <label className="mb-1.5 block text-[12px] font-medium text-[#5B655F]">
+                            Category
+                        </label>
+                        <div className="flex rounded-xl border border-[#E4E1D8] bg-[#F6F6F2] p-0.5">
+                            <button
+                                type="button"
+                                onClick={() => setCategoryType("Customise")}
+                                className={`flex-1 rounded-lg px-3.5 py-2 text-[12.5px] font-medium transition-all ${
+                                    categoryType === "Customise"
+                                        ? "bg-white text-[#1E2621] shadow-[0_1px_3px_rgba(30,38,33,0.08)]"
+                                        : "text-[#8A938C] hover:text-[#5B655F]"
+                                }`}
+                            >
+                                Customise
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => setCategoryType("Others")}
+                                className={`flex-1 rounded-lg px-3.5 py-2 text-[12.5px] font-medium transition-all ${
+                                    categoryType === "Others"
+                                        ? "bg-white text-[#1E2621] shadow-[0_1px_3px_rgba(30,38,33,0.08)]"
+                                        : "text-[#8A938C] hover:text-[#5B655F]"
+                                }`}
+                            >
+                                Others
+                            </button>
+                        </div>
+                    </div>
+                    )}
+
+                    <div>
+                        <label className="mb-1.5 block text-[12px] font-medium text-[#5B655F]">
+                            Category name
+                        </label>
+                        <input
+                            type="text"
+                            value={categoryType === "Others" ? "OTHERS" : categoryName}
+                            onChange={(e) => { setCategoryName(e.target.value); setCategoryNameError(""); }}
+                            disabled={categoryType === "Others"}
+                            placeholder="e.g. Mechanical & Electrical"
+                            className={`w-full rounded-xl border px-3.5 py-2.5 text-[13.5px] text-[#1E2621] placeholder:text-[#ADA695] focus:outline-none focus:ring-2 disabled:cursor-not-allowed disabled:bg-[#F6F6F2] disabled:text-[#8A938C] ${
+                                categoryNameError ? "border-[#B0453A] focus:border-[#B0453A] focus:ring-[#B0453A]/20" : "border-[#E4E1D8] focus:border-[#3E6B52] focus:ring-[#3E6B52]/20"
+                            }`}
+                        />
+                        {categoryNameError && (
+                            <p className="mt-1 text-[11.5px] font-medium text-[#B0453A]">{categoryNameError}</p>
+                        )}
+                    </div>
+
+                    <div>
+                        <label className="mb-1.5 block text-[12px] font-medium text-[#5B655F]">
+                            Sub-item name <span className="text-[#ADA695]">(optional)</span>
+                        </label>
+                        <input
+                            type="text"
+                            value={childName}
+                            onChange={(e) => setChildName(e.target.value)}
+                            placeholder="Add a sub-item, or leave blank to assign the cost to this category"
+                            className="w-full rounded-xl border border-[#E4E1D8] bg-white px-3.5 py-2.5 text-[13.5px] text-[#1E2621] placeholder:text-[#ADA695] focus:border-[#3E6B52] focus:outline-none focus:ring-2 focus:ring-[#3E6B52]/20"
+                        />
+                    </div>
+
+                    <div>
+                        <label className="mb-1.5 block text-[12px] font-medium text-[#5B655F]">
+                            Cost for this category (RM)
+                        </label>
+                        <input
+                            ref={costInputRef}
+                            type="text"
+                            inputMode="decimal"
+                            value={displayCost}
+                            onChange={() => { if (costError) setCostError(""); }}
+                            onKeyDown={(e) => {
+                                if (e.key === "Backspace") {
+                                    e.preventDefault();
+                                    setRawDigits((prev) => prev.slice(0, -1));
+                                } else if (/^\d$/.test(e.key)) {
+                                    e.preventDefault();
+                                    setRawDigits((prev) => prev + e.key);
+                                }
+                            }}
+                            className={`w-full rounded-xl border px-3.5 py-2.5 text-[13.5px] text-[#1E2621] placeholder:text-[#ADA695] focus:outline-none focus:ring-2 ${
+                                costError ? "border-[#B0453A] focus:border-[#B0453A] focus:ring-[#B0453A]/20" : "border-[#E4E1D8] focus:border-[#3E6B52] focus:ring-[#3E6B52]/20"
+                            }`}
+                        />
+                        {costError && (
+                            <p className="mt-1 text-[11.5px] font-medium text-[#B0453A]">{costError}</p>
+                        )}
+                    </div>
+                </div>
+
+                <div className="mt-6 flex gap-3">
+                    <button
+                        type="button"
+                        onClick={handleClose}
+                        className="flex-1 rounded-xl border border-[#E4E1D8] bg-white px-4 py-2.5 text-[13px] font-medium text-[#5B655F] transition-colors hover:border-[#C9D3CC] hover:text-[#2C4A3A]"
+                    >
+                        Cancel
+                    </button>
+                    <button
+                        type="button"
+                        onClick={handleSubmit}
+                        className="flex-1 rounded-xl bg-[#3E6B52] px-4 py-2.5 text-[13px] font-semibold text-white transition-colors hover:bg-[#325A44]"
+                    >
+                        Add
+                    </button>
+                </div>
             </div>
         </div>
     );
