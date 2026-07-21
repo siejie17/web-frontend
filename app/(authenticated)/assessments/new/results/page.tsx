@@ -117,6 +117,7 @@ export default function AssessmentResultsPage() {
   const [activeTab, setActiveTab] = useState<TabKey>("cost");
   const [showLeaveModal, setShowLeaveModal] = useState(false);
   const pendingAction = useRef<(() => void) | null>(null);
+  const popStateRef = useRef<((e: PopStateEvent) => void) | null>(null);
 
   useEffect(() => {
     const results = localStorage.getItem("assessment_result");
@@ -197,13 +198,13 @@ export default function AssessmentResultsPage() {
     }
   }, [isNotCert, activeTab]);
 
-  const confirmLeave = useCallback((action: () => void) => {
-    pendingAction.current = action;
-    setShowLeaveModal(true);
-  }, []);
-
   const handleConfirmLeave = useCallback(() => {
     setShowLeaveModal(false);
+    // Remove the popstate guard before navigating so the back action doesn't trigger another popstate
+    if (popStateRef.current) {
+      window.removeEventListener("popstate", popStateRef.current);
+      popStateRef.current = null;
+    }
     pendingAction.current?.();
     pendingAction.current = null;
   }, []);
@@ -221,9 +222,13 @@ export default function AssessmentResultsPage() {
     window.addEventListener("beforeunload", handleBeforeUnload);
 
     const handlePopState = () => {
-      confirmLeave(() => {});
+      // Re-push current URL so the page doesn't navigate away
       window.history.pushState(null, "", window.location.href);
+      pendingAction.current = () => router.back();
+      setShowLeaveModal(true);
     };
+    popStateRef.current = handlePopState;
+    // Add a buffer entry so the first back popstate is intercepted on the same URL
     window.history.pushState(null, "", window.location.href);
     window.addEventListener("popstate", handlePopState);
 
@@ -231,11 +236,12 @@ export default function AssessmentResultsPage() {
       window.removeEventListener("beforeunload", handleBeforeUnload);
       window.removeEventListener("popstate", handlePopState);
     };
-  }, [confirmLeave]);
+  }, [router]);
 
   const handleBack = useCallback(() => {
-    confirmLeave(() => router.push("/assessments/new"));
-  }, [confirmLeave, router]);
+    pendingAction.current = () => router.push("/assessments/new");
+    setShowLeaveModal(true);
+  }, [router]);
 
   /* ── GreenElementsScreen state ── */
   const [criteriaMarks, setCriteriaMarks] = useState<Record<string, number>>({});
