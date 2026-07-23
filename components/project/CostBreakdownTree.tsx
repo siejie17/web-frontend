@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
     ChevronRight,
     Award,
@@ -25,6 +25,7 @@ export type CostNode = {
     cost: number;
     actual_cost?: number;
     is_certification: number;
+    certificationLabel?: string;
     children?: Record<string, CostNode>;
 };
 
@@ -96,6 +97,9 @@ function computeFieldSum(node: CostNode, edits: Record<number, string>, field: E
             (sum, child) => sum + computeFieldSum(child, edits, field),
             0
         );
+    }
+    if (node.is_certification === 1) {
+        return node[field] ?? 0;
     }
     return parseEdit(edits[node.id]);
 }
@@ -219,12 +223,6 @@ export default function CostBreakdownTree({
     const field: EditableField = mode === "assessment" ? "cost" : "actual_cost";
 
     const [edits, setEdits] = useState<Record<number, string>>(() => collectInitialEdits(data, field));
-    const prevDataRef = useRef(data);
-    // Re-initialise edits when data changes structurally (e.g. new nodes from split/add)
-    if (data !== prevDataRef.current) {
-        prevDataRef.current = data;
-        setEdits(collectInitialEdits(data, field));
-    }
     const [expanded, setExpanded] = useState<Set<number>>(() => new Set());
     const [focusedId, setFocusedId] = useState<number | null>(null);
     // Row currently showing the inline "delete this?" confirm bar in place of its normal actions.
@@ -236,7 +234,33 @@ export default function CostBreakdownTree({
     const isOverBudget = variance > 0;
 
     const allTopIds = useMemo(() => Object.values(data).map((n) => n.id), [data]);
-    const allExpanded = allTopIds.length > 0 && allTopIds.every((id) => expanded.has(id));
+  const allExpanded = allTopIds.length > 0 && allTopIds.every((id) => expanded.has(id));
+
+  useEffect(() => {
+      setEdits((prev) => {
+          const next = { ...prev };
+
+          const visit = (node: CostNode) => {
+              if (node.children) {
+                  Object.values(node.children).forEach(visit);
+              } else {
+                  if (!(node.id in next)) {
+                      const raw =
+                          field === "cost"
+                              ? node.cost
+                              : node.actual_cost;
+
+                      next[node.id] =
+                          raw !== undefined && raw !== null ? String(raw) : "";
+                  }
+              }
+          };
+
+          Object.values(data).forEach(visit);
+
+          return next;
+      });
+  }, [data, field]);
 
     const toggleAll = () => {
         setExpanded(allExpanded ? new Set() : new Set(allTopIds));
@@ -552,7 +576,7 @@ function CostRow({
                 )}
 
                 {/* ---- Element column ---- */}
-                <div className={`flex min-w-0 flex-1 items-center gap-2.5 py-3 pr-3 ${depth === 0 ? "pl-3" : "pl-0"}`}>
+                <div className={`flex min-w-0 flex-1 items-center gap-2.5 py-3 pr-3 ${depth === 0 ? "pl-3" : "pl-2"}`}>
                     <span className="flex w-4 shrink-0 items-center justify-center text-[#8A938C]">
                         {hasChildren && (
                             <ChevronRight
@@ -574,7 +598,7 @@ function CostRow({
 
                     <div className="flex min-w-0 flex-1 flex-col justify-center">
                         <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                            {editable ? (
+                          {editable ? (
                                 <input
                                     type="text"
                                     value={node.description}
@@ -598,7 +622,7 @@ function CostRow({
                             {isCert && (
                                 <span className="flex shrink-0 items-center gap-1 rounded-full border border-[#D9B968] bg-white/70 px-2 py-0.5 text-[10px] font-medium text-[#8A6420] shadow-[0_1px_1px_rgba(138,100,32,0.08)]">
                                     <Award size={10.5} />
-                                    Certification
+                                    {node.certificationLabel ?? "Certification"}
                                 </span>
                             )}
                         </div>
@@ -665,7 +689,7 @@ function CostRow({
                             className={`${COL_ACTUAL} ${divider} flex shrink-0 items-center py-2.5 pl-2 pr-2.5 sm:pl-3 sm:pr-3`}
                             onClick={(e) => e.stopPropagation()}
                         >
-                            {hasChildren ? (
+                          {(hasChildren || isCert) ? (
                                 <span
                                     className="w-full text-right text-[13px] font-semibold tabular-nums text-[#2C4A3A]"
                                     style={{ fontFamily: "var(--font-mono)", letterSpacing: "0.01em" }}
@@ -701,7 +725,7 @@ function CostRow({
                 {/* ---- Row actions ---- */}
                 {(addMode || editable || deleteMode) && !isConfirmingDelete && (
                     <span className={`flex w-[70px] shrink-0 items-center justify-center gap-1 ${divider}`}>
-                        {addMode && !hasChildren && depth < 2 ? (
+                        {addMode && !isCert && !hasChildren && depth < 2 ? (
                             <button
                                 type="button"
                                 title="Split this item"

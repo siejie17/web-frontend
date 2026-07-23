@@ -12,12 +12,20 @@
  * Signature element: an "at a glance" stat strip in the intro (total
  * assessed / average rating / most common certification target) turns the
  * page into a small dashboard for the person's own assessment history rather
- * than a plain list, and the rating chip is replaced by a horizontal gauge
- * that visualizes the score instead of just labeling it.
+ * than a plain list, and the rating chip is replaced by a segmented gauge
+ * (with zone ticks at 30/60) that visualizes the score instead of just
+ * labeling it.
  *
  * New utility: rating-tier filter chips (Strong / Moderate / Needs work) sit
- * next to search, since "how did my projects score" is a real question this
- * page should answer directly.
+ * right under search, each carrying a live count of how many of the
+ * currently-searched projects fall in that tier — since "how did my
+ * projects score" is a real question this page should answer directly,
+ * not just imply.
+ *
+ * Motion: the timeline crossfades/slides in on filter or page change
+ * (framer-motion, already used elsewhere in the app), with a light stagger
+ * per card so the list feels like it's assembling itself rather than
+ * snapping in.
  *
  * Responsiveness:
  * - Outer padding scales px-4 -> sm:px-6 -> md:px-10; intro padding
@@ -35,6 +43,7 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
+import { AnimatePresence, motion } from "framer-motion";
 import {
   Award,
   Calendar,
@@ -45,7 +54,6 @@ import {
   MapPin,
   Ruler,
   Search,
-  SlidersHorizontal,
   Wallet,
   X,
 } from "lucide-react";
@@ -99,7 +107,27 @@ function ratingTone(rating: number) {
   };
 }
 
+function ratingTier(rating: number): Exclude<Tier, "all"> {
+  if (rating >= 60) return "strong";
+  if (rating >= 30) return "moderate";
+  return "weak";
+}
+
+function ratingTierLabel(rating: number) {
+  const tier = ratingTier(rating);
+  if (tier === "strong") return "Strong";
+  if (tier === "moderate") return "Moderate";
+  return "Needs work";
+}
+
 type Tier = "all" | "strong" | "moderate" | "weak";
+
+const TIER_OPTIONS: { id: Tier; label: string }[] = [
+  { id: "all", label: "All" },
+  { id: "strong", label: "Strong · 60+" },
+  { id: "moderate", label: "Moderate · 30–59" },
+  { id: "weak", label: "Needs work · <30" },
+];
 
 /** Matches multiple search tokens against all key textual fields in a project */
 function matchesQuery(project: Project, query: string) {
@@ -120,6 +148,11 @@ function matchesQuery(project: Project, query: string) {
     .toLowerCase();
 
   return tokens.every((token) => searchableText.includes(token));
+}
+
+function matchesTier(project: Project, tier: Tier) {
+  if (tier === "all") return true;
+  return ratingTier(project.rating ?? 0) === tier;
 }
 
 /** Builds a compact page-number list with ellipses, e.g. [1, "…", 4, 5, 6, "…", 20] */
@@ -153,6 +186,34 @@ function groupByYear(items: Project[]) {
   return groups;
 }
 
+/** Powers the "at a glance" stat strip — computed off the full history, not the current filter/page, so it always reads as an overview. */
+function computeStats(projects: Project[]) {
+  const total = projects.length;
+
+  const avgRating =
+    total > 0
+      ? Math.round(
+          projects.reduce((sum, p) => sum + (p.rating ?? 0), 0) / total
+        )
+      : 0;
+
+  const certCounts = new Map<string, number>();
+  for (const p of projects) {
+    const cert = p.target_certification || "Not set";
+    certCounts.set(cert, (certCounts.get(cert) ?? 0) + 1);
+  }
+  let topCert = "—";
+  let topCount = 0;
+  for (const [cert, count] of certCounts) {
+    if (count > topCount) {
+      topCert = cert;
+      topCount = count;
+    }
+  }
+
+  return { total, avgRating, topCert };
+}
+
 const PER_PAGE = 5;
 
 interface ClientProps {
@@ -162,16 +223,32 @@ interface ClientProps {
 export default function ProjectHistoryClient({ initialProjects }: ClientProps) {
   const [page, setPage] = useState(1);
   const [query, setQuery] = useState("");
+  const [tier, setTier] = useState<Tier>("all");
   const [projects] = useState<Project[]>(initialProjects);
+
+  const stats = useMemo(() => computeStats(projects), [projects]);
 
   const searchFiltered = useMemo(
     () => projects.filter((project) => matchesQuery(project, query)),
     [query, projects]
   );
 
+  const tierCounts = useMemo(() => {
+    const counts: Record<Tier, number> = {
+      all: searchFiltered.length,
+      strong: 0,
+      moderate: 0,
+      weak: 0,
+    };
+    for (const p of searchFiltered) {
+      counts[ratingTier(p.rating ?? 0)]++;
+    }
+    return counts;
+  }, [searchFiltered]);
+
   const filteredProjects = useMemo(
-    () => searchFiltered,
-    [searchFiltered]
+    () => searchFiltered.filter((project) => matchesTier(project, tier)),
+    [searchFiltered, tier]
   );
 
   const totalPages = Math.max(1, Math.ceil(filteredProjects.length / PER_PAGE));
@@ -184,6 +261,8 @@ export default function ProjectHistoryClient({ initialProjects }: ClientProps) {
 
   const groups = useMemo(() => groupByYear(paged), [paged]);
 
+  const hasFilters = Boolean(query) || tier !== "all";
+
   const goTo = (p: number) => setPage(Math.min(Math.max(p, 1), totalPages));
 
   const handleSearchChange = (value: string) => {
@@ -191,8 +270,19 @@ export default function ProjectHistoryClient({ initialProjects }: ClientProps) {
     setPage(1);
   };
 
+  const handleTierChange = (value: Tier) => {
+    setTier(value);
+    setPage(1);
+  };
+
+  const clearFilters = () => {
+    setQuery("");
+    setTier("all");
+    setPage(1);
+  };
+
   return (
-    <div className="mx-auto max-w-200 px-4 pb-10 pt-6 sm:px-6 md:px-10">
+    <div className="mx-auto max-w-275 px-4 pb-10 pt-6 sm:px-6 md:px-10">
       {/* ---------------- Breadcrumb ---------------- */}
       <BackButton
         text="Dashboard"
@@ -200,22 +290,54 @@ export default function ProjectHistoryClient({ initialProjects }: ClientProps) {
       />
 
       {/* ---------------- Intro ---------------- */}
-      <section className="mb-6 rounded-3xl border border-[#E4E1D8] bg-[#FCFCF8] p-5 shadow-[0_8px_24px_rgba(30,38,33,0.04)] sm:p-6 md:p-8">
-        <p
-          className="mb-3 text-[11.5px] uppercase tracking-[0.08em] text-[#7C8880] sm:text-[12px]"
-          style={{ fontFamily: "var(--font-mono)" }}
-        >
-          Project history
-        </p>
-        <h1
-          className="text-[26px] font-bold leading-[1.18] tracking-[-0.02em] sm:text-[30px] md:text-[32px]"
-          style={{ fontFamily: "var(--font-display)" }}
-        >
-          Your assessments
-        </h1>
-        <p className="mt-2.5 text-[13.5px] leading-relaxed text-[#5B655F] sm:text-[14px]">
-          Every project you&apos;ve assessed, in order, in one place.
-        </p>
+      <section className="relative mb-6 overflow-hidden rounded-3xl border border-[#E4E1D8] bg-[#FCFCF8] p-5 shadow-[0_8px_24px_rgba(30,38,33,0.04)] sm:p-6 md:p-8">
+        {/* Ambient blueprint grid — same backdrop treatment used across
+            the app's intro cards. */}
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-0"
+          style={{
+            backgroundImage:
+              "linear-gradient(#E4E1D8 1px, transparent 1px), linear-gradient(90deg, #E4E1D8 1px, transparent 1px)",
+            backgroundSize: "28px 28px",
+            maskImage:
+              "radial-gradient(ellipse 65% 100% at 100% 0%, black 0%, transparent 75%)",
+            WebkitMaskImage:
+              "radial-gradient(ellipse 65% 100% at 100% 0%, black 0%, transparent 75%)",
+            opacity: 0.7,
+          }}
+        />
+
+        <div className="relative flex flex-col gap-6 sm:flex-row sm:items-start sm:justify-between">
+          <div>
+            <p
+              className="mb-3 text-[11.5px] uppercase tracking-[0.08em] text-[#7C8880] sm:text-[12px]"
+              style={{ fontFamily: "var(--font-mono)" }}
+            >
+              Project history
+            </p>
+            <h1
+              className="text-[26px] font-bold leading-[1.18] tracking-[-0.02em] sm:text-[30px] md:text-[32px]"
+              style={{ fontFamily: "var(--font-display)" }}
+            >
+              Your assessments
+            </h1>
+            <p className="mt-2.5 max-w-lg text-[13.5px] leading-relaxed text-[#5B655F] sm:text-[14px]">
+              Every project you&apos;ve assessed, in order, in one place.
+            </p>
+          </div>
+
+          {/* Signature emblem: a stack of records, certified */}
+          <div
+            aria-hidden="true"
+            className="relative hidden h-20 w-20 shrink-0 items-center justify-center rounded-2xl border border-dashed border-[#C9D3CC] bg-white/80 backdrop-blur-sm sm:flex"
+          >
+            <Layers3 size={30} className="text-[#2C4A3A]" strokeWidth={1.5} />
+            <span className="absolute -bottom-2.5 -right-2.5 flex h-8 w-8 items-center justify-center rounded-full border-[3px] border-[#FCFCF8] bg-[#3E6B52] text-white shadow-[0_6px_14px_rgba(62,107,82,0.35)]">
+              <Award size={14} />
+            </span>
+          </div>
+        </div>
       </section>
 
       {/* ---------------- Search ---------------- */}
@@ -244,50 +366,64 @@ export default function ProjectHistoryClient({ initialProjects }: ClientProps) {
         )}
       </div>
 
-      {query && (
-        <p className="my-2.5 mx-2 text-[12px] text-[#8A938C] sm:text-[12.5px]">
-          {filteredProjects.length} result
-          {filteredProjects.length !== 1 ? "s" : ""} for &ldquo;{query}&rdquo;
-        </p>
-      )}
-
       {/* ---------------- Timeline ---------------- */}
-      {filteredProjects.length === 0 ? (
-        <EmptyState
-          hasQuery={Boolean(query)}
-          onClear={() => {
-            handleSearchChange("");
-          }}
-        />
-      ) : (
-        <div>
-          {groups.map((group, gi) => (
-            <div key={`${group.year}-${gi}`} className="mb-8 last:mb-0">
-              <div className="mb-4 flex items-center gap-3">
-                <span
-                  className="shrink-0 rounded-full bg-[#3E6B52] px-3 py-1 text-[12px] font-semibold text-[#F6F6F2] sm:text-[13px]"
-                  style={{ fontFamily: "var(--font-mono)" }}
-                >
-                  {group.year}
-                </span>
-                <span className="h-px flex-1 bg-[#E4E1D8]" />
-                <span className="shrink-0 text-[11px] text-[#8A938C] sm:text-[11.5px]">
-                  {group.items.length} project{group.items.length !== 1 ? "s" : ""}
-                </span>
-              </div>
+      <AnimatePresence mode="wait">
+        {filteredProjects.length === 0 ? (
+          <motion.div
+            key="empty"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.2 }}
+          >
+            <EmptyState hasFilters={hasFilters} onClear={clearFilters} />
+          </motion.div>
+        ) : (
+          <motion.div
+            key={`${query}-${tier}-${safePage}`}
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.25, ease: "easeOut" }}
+          >
+            {groups.map((group, gi) => (
+              <div key={`${group.year}-${gi}`} className="mb-8 last:mb-0">
+                <div className="mb-4 flex items-center gap-3">
+                  <span
+                    className="shrink-0 rounded-full bg-[#3E6B52] px-3 py-1 text-[12px] font-semibold text-[#F6F6F2] sm:text-[13px]"
+                    style={{ fontFamily: "var(--font-mono)" }}
+                  >
+                    {group.year}
+                  </span>
+                  <span className="h-px flex-1 bg-[#E4E1D8]" />
+                  <span className="shrink-0 text-[11px] text-[#8A938C] sm:text-[11.5px]">
+                    {group.items.length} project
+                    {group.items.length !== 1 ? "s" : ""}
+                  </span>
+                </div>
 
-              <div className="space-y-3.5 border-l border-[#E4E1D8] pl-4 sm:space-y-4 sm:pl-6">
-                {group.items.map((project) => (
-                  <div key={project.id} className="relative">
-                    <span className="absolute -left-[21px] top-7 h-2.5 w-2.5 rounded-full border-2 border-[#FCFCF8] bg-[#3E6B52] sm:-left-[29px]" />
-                    <ProjectCard project={project} />
-                  </div>
-                ))}
+                <div className="relative space-y-3.5 pl-4 sm:space-y-4 sm:pl-6">
+                  {/* Gradient vine rail, replacing the flat gray border-l */}
+                  <div className="absolute left-0 top-2 bottom-2 w-px bg-gradient-to-b from-[#3E6B52] via-[#8FAF9C] to-[#E4E1D8]" />
+
+                  {group.items.map((project, pi) => (
+                    <motion.div
+                      key={project.id}
+                      className="group relative"
+                      initial={{ opacity: 0, y: 10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ duration: 0.3, delay: pi * 0.04 }}
+                    >
+                      <span className="absolute -left-[21px] top-7 h-2.5 w-2.5 rounded-full border-2 border-[#FCFCF8] bg-[#3E6B52] transition-transform duration-200 group-hover:scale-125 group-hover:shadow-[0_0_0_6px_rgba(62,107,82,0.15)] sm:-left-[29px]" />
+                      <ProjectCard project={project} />
+                    </motion.div>
+                  ))}
+                </div>
               </div>
-            </div>
-          ))}
-        </div>
-      )}
+            ))}
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* ---------------- Pagination ---------------- */}
       {filteredProjects.length > 0 && (
@@ -297,12 +433,49 @@ export default function ProjectHistoryClient({ initialProjects }: ClientProps) {
   );
 }
 
+/* ---------------- Stat card ---------------- */
+function StatCard({
+  icon: Icon,
+  label,
+  value,
+  tone,
+}: {
+  icon: typeof Layers3;
+  label: string;
+  value: string;
+  tone?: { text: string; bg: string; border: string };
+}) {
+  return (
+    <div className="flex items-center gap-2.5 rounded-2xl border border-[#E4E1D8] bg-white px-3 py-3 shadow-[0_4px_12px_rgba(30,38,33,0.03)] sm:gap-3 sm:px-4 sm:py-3.5">
+      <span
+        className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl sm:h-10 sm:w-10 ${
+          tone ? `${tone.bg} ${tone.text}` : "bg-[#3E6B52]/10 text-[#3E6B52]"
+        }`}
+      >
+        <Icon size={16} className="sm:hidden" />
+        <Icon size={18} className="hidden sm:block" />
+      </span>
+      <div className="min-w-0">
+        <p
+          className="truncate text-[14px] font-bold text-[#1E2621] sm:text-[17px]"
+          style={{ fontFamily: "var(--font-display)" }}
+        >
+          {value}
+        </p>
+        <p className="truncate text-[10px] text-[#8A938C] sm:text-[11.5px]">
+          {label}
+        </p>
+      </div>
+    </div>
+  );
+}
+
 /* ---------------- Empty state ---------------- */
 function EmptyState({
-  hasQuery,
+  hasFilters,
   onClear,
 }: {
-  hasQuery: boolean;
+  hasFilters: boolean;
   onClear: () => void;
 }) {
   return (
@@ -317,11 +490,11 @@ function EmptyState({
         No projects found
       </h3>
       <p className="mt-1.5 max-w-sm text-[13px] text-[#5B655F] sm:text-[13.5px]">
-        {hasQuery
+        {hasFilters
           ? "Nothing matches that search or filter. Try a different name, location, year, or rating tier."
           : "Assessed projects will show up here once you run your first assessment."}
       </p>
-      {hasQuery && (
+      {hasFilters && (
         <button
           type="button"
           onClick={onClear}
@@ -339,16 +512,29 @@ function RatingGauge({ rating }: { rating: number }) {
   const tone = ratingTone(rating);
   const pct = Math.max(0, Math.min(100, rating));
   return (
-    <div className={`flex items-center gap-2 rounded-2xl border px-3 py-1.5 sm:px-3.5 sm:py-2 ${tone.bg} ${tone.border}`}>
-      <div className="h-1.5 w-14 shrink-0 overflow-hidden rounded-full bg-black/[0.06] sm:w-16">
+    <div
+      className={`flex flex-col gap-1.5 rounded-2xl border px-3 py-2 sm:px-3.5 sm:py-2.5 ${tone.bg} ${tone.border}`}
+    >
+      <div className="flex items-center justify-between gap-4">
+        <span
+          className={`text-[9.5px] font-semibold uppercase tracking-[0.06em] ${tone.text}`}
+          style={{ fontFamily: "var(--font-mono)" }}
+        >
+          {ratingTierLabel(rating)}
+        </span>
+        <span className={`text-[13px] font-bold sm:text-[14px] ${tone.text}`}>
+          {rating}
+        </span>
+      </div>
+      <div className="relative h-1.5 w-24 overflow-hidden rounded-full bg-black/[0.06] sm:w-28">
+        {/* zone ticks at the 30 / 60 tier boundaries */}
+        <span className="absolute inset-y-0 left-[30%] w-px bg-black/10" />
+        <span className="absolute inset-y-0 left-[60%] w-px bg-black/10" />
         <div
-          className={`h-full rounded-full ${tone.fill}`}
+          className={`h-full rounded-full ${tone.fill} transition-[width] duration-500 ease-out`}
           style={{ width: `${pct}%` }}
         />
       </div>
-      <span className={`text-[13px] font-semibold sm:text-[14px] ${tone.text}`}>
-        {rating}
-      </span>
     </div>
   );
 }
@@ -358,7 +544,7 @@ function ProjectCard({ project }: { project: Project }) {
   return (
     <Link
       href={`/projects/${project.id}`}
-      className="group block overflow-hidden rounded-3xl border border-[#E4E1D8] bg-white shadow-[0_8px_24px_rgba(30,38,33,0.04)] transition-all hover:-translate-y-0.5 hover:border-[#C9D3CC] hover:shadow-[0_16px_36px_rgba(30,38,33,0.08)] focus-visible:outline focus-visible:outline-offset-2 focus-visible:outline-[#3E6B52]"
+      className="group/card block overflow-hidden rounded-3xl border border-[#E4E1D8] bg-white shadow-[0_8px_24px_rgba(30,38,33,0.04)] transition-all hover:-translate-y-0.5 hover:border-[#C9D3CC] hover:shadow-[0_16px_36px_rgba(30,38,33,0.08)] focus-visible:outline focus-visible:outline-offset-2 focus-visible:outline-[#3E6B52]"
     >
       <div className="flex flex-col gap-4 p-5 sm:flex-row sm:items-center sm:justify-between sm:gap-5 sm:p-6 md:p-7">
         <div className="min-w-0 flex-1">
@@ -377,7 +563,7 @@ function ProjectCard({ project }: { project: Project }) {
           </div>
 
           <h3
-            className="truncate text-[16.5px] font-bold leading-tight tracking-[-0.01em] text-[#1E2621] transition-colors group-hover:text-[#3E6B52] sm:text-[18px]"
+            className="truncate text-[16.5px] font-bold leading-tight tracking-[-0.01em] text-[#1E2621] transition-colors group-hover/card:text-[#3E6B52] sm:text-[18px]"
             style={{ fontFamily: "var(--font-display)" }}
           >
             {project.name}

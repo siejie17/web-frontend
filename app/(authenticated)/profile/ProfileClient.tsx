@@ -2,15 +2,22 @@
 
 import { AnimatePresence, motion } from "framer-motion";
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import {
   AtSign,
   Bell,
+  Calendar,
+  ChevronRight,
+  ClipboardList,
+  Info,
   KeyRound,
   Mail,
+  ShieldCheck,
   User,
   Users,
   X,
 } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 
 import { useAuth } from "@/contexts/AuthContext";
 
@@ -43,11 +50,72 @@ type ProfileOverrides = {
   profile_pic?: string;
 };
 
+const QUICK_LINKS: {
+  href: string;
+  label: string;
+  description: string;
+  icon: LucideIcon;
+}[] = [
+  {
+    href: "/assessments/new",
+    label: "New Assessment",
+    description: "Start scoring a project",
+    icon: ClipboardList,
+  },
+  {
+    href: "/assessments/history",
+    label: "History",
+    description: "Review past assessments",
+    icon: Calendar,
+  },
+  {
+    href: "/about",
+    label: "About",
+    description: "Learn more about ProFormaX",
+    icon: Info,
+  },
+];
+
 function SectionLabel({ children }: { children: React.ReactNode }) {
   return (
     <h2 className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[#9BA39C]">
       {children}
     </h2>
+  );
+}
+
+function QuickLinkCard({
+  href,
+  label,
+  description,
+  icon: Icon,
+}: {
+  href: string;
+  label: string;
+  description: string;
+  icon: LucideIcon;
+}) {
+  return (
+    <Link
+      href={href}
+      className="group relative flex flex-col gap-4 rounded-2xl border border-[#E4E1D8] bg-white p-5 shadow-[0_4px_12px_rgba(30,38,33,0.04)] transition-all hover:-translate-y-0.5 hover:border-[#C9D3CC] hover:shadow-[0_10px_24px_rgba(30,38,33,0.08)] active:translate-y-0"
+    >
+      <div className="flex items-center justify-between">
+        <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#3E6B52]/10 text-[#3E6B52] transition-colors group-hover:bg-[#3E6B52] group-hover:text-white">
+          <Icon size={18} />
+        </span>
+        <ChevronRight
+          size={16}
+          className="text-[#C9D3CC] transition-all group-hover:translate-x-0.5 group-hover:text-[#3E6B52]"
+        />
+      </div>
+      <div>
+        <p className="text-[13.5px] font-semibold text-[#1E2621]">{label}</p>
+        <p className="mt-0.5 text-[12px] leading-relaxed text-[#8A938C]">
+          {description}
+        </p>
+      </div>
+    </Link>
   );
 }
 
@@ -220,6 +288,59 @@ export default function ProfileClient() {
           text="Dashboard"
           redirect="/dashboard"
         />
+
+        {/* ---------------- Profile Header ---------------- */}
+        <section className="relative overflow-hidden rounded-3xl border border-[#E4E1D8] bg-[#FCFCF8] p-6 shadow-[0_8px_24px_rgba(30,38,33,0.04)] sm:p-8">
+          {/* Ambient blueprint grid — same backdrop treatment as the
+              assessment intro card, so this reads as the same app. */}
+          <div
+            aria-hidden="true"
+            className="pointer-events-none absolute inset-0"
+            style={{
+              backgroundImage:
+                "linear-gradient(#E4E1D8 1px, transparent 1px), linear-gradient(90deg, #E4E1D8 1px, transparent 1px)",
+              backgroundSize: "28px 28px",
+              maskImage:
+                "radial-gradient(ellipse 65% 100% at 100% 0%, black 0%, transparent 75%)",
+              WebkitMaskImage:
+                "radial-gradient(ellipse 65% 100% at 100% 0%, black 0%, transparent 75%)",
+              opacity: 0.7,
+            }}
+          />
+          <div className="relative flex flex-col gap-6 sm:flex-row sm:items-start sm:justify-between">
+            <div>
+              <p
+                className="mb-3 text-[12px] uppercase tracking-[0.08em] text-[#7C8880]"
+                style={{ fontFamily: "var(--font-mono)" }}
+              >
+                Account
+              </p>
+              <h1
+                className="text-[30px] font-bold leading-[1.15] tracking-[-0.02em] sm:text-[32px]"
+                style={{ fontFamily: "var(--font-display)" }}
+              >
+                My Profile
+              </h1>
+              <p className="mt-3 max-w-lg text-[15px] leading-relaxed text-[#5B655F]">
+                Manage your account details, security, and notification
+                preferences.
+              </p>
+            </div>
+
+            {/* Signature emblem, matching the building/sprout badge on
+                the assessment page — a person, verified. */}
+            <div
+              aria-hidden="true"
+              className="relative hidden h-20 w-20 shrink-0 items-center justify-center rounded-2xl border border-dashed border-[#C9D3CC] bg-white/80 backdrop-blur-sm sm:flex"
+            >
+              <User size={30} className="text-[#2C4A3A]" strokeWidth={1.5} />
+              <span className="absolute -bottom-2.5 -right-2.5 flex h-8 w-8 items-center justify-center rounded-full border-[3px] border-[#FCFCF8] bg-[#3E6B52] text-white shadow-[0_6px_14px_rgba(62,107,82,0.35)]">
+                <ShieldCheck size={14} />
+              </span>
+            </div>
+          </div>
+        </section>
+
         <ProfileHero
           fullName={fullName}
           role={"Member"}
@@ -308,6 +429,16 @@ export default function ProfileClient() {
               />
             </div>
           </GlassPanel>
+        </div>
+
+        {/* ---------------- Quick Links ---------------- */}
+        <div>
+          <SectionLabel>Quick Links</SectionLabel>
+          <div className="mt-3 grid gap-4 sm:grid-cols-3">
+            {QUICK_LINKS.map((link) => (
+              <QuickLinkCard key={link.href} {...link} />
+            ))}
+          </div>
         </div>
       </div>
 

@@ -6,18 +6,23 @@ import { useRouter } from "next/navigation";
 type BackButtonProps = {
   text?: string;
   redirect?: string;
+  action?: () => void;
 };
 
-export function BackButton({ text, redirect } : BackButtonProps) {
+export function BackButton({ text, redirect, action }: BackButtonProps) {
   const router = useRouter();
 
   return (
     <button
       type="button"
-      onClick={() => redirect ? router.push(redirect) : router.back()}
-      className="inline-flex items-center gap-1.5 rounded-full border border-[#E4E1D8] bg-white px-3.5 py-2 mb-4 text-sm font-semibold text-[#1E2621] shadow-[0_4px_12px_rgba(30,38,33,0.05)] transition-colors duration-200 hover:bg-[#FBFAF7]"
+      onClick={() => (redirect ? router.push(redirect) : action ? action() : router.back())}
+      className="group mb-4 inline-flex items-center gap-1.5 text-[12px] font-semibold uppercase tracking-[0.08em] text-[#7C8880] transition-colors duration-200 hover:text-[#3E6B52]"
+      style={{ fontFamily: "var(--font-mono)" }}
     >
-      <ChevronLeft size={16} />
+      <ChevronLeft
+        size={14}
+        className="shrink-0 transition-transform duration-200 group-hover:-translate-x-0.5"
+      />
       {redirect ? `Back to ${text}` : "Back"}
     </button>
   );

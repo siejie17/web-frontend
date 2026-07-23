@@ -141,6 +141,30 @@ function collectDescendantIds(node: CostNode): number[] {
     return ids;
 }
 
+/** After a deletion, if a parent node has exactly one child whose description matches the parent's,
+ *  flatten the child into the parent (parent becomes a leaf with the child's value).
+ *  Repeats until no more flattening is possible. */
+function flattenSingles(nodes: Record<string, CostNode>): void {
+    let changed = true;
+    while (changed) {
+        changed = false;
+        for (const node of Object.values(nodes)) {
+            if (node.children) {
+                flattenSingles(node.children);
+                const keys = Object.keys(node.children);
+                if (keys.length === 1) {
+                    const only = node.children[keys[0]];
+                    if (only.description.trim().toLowerCase() === node.description.trim().toLowerCase()) {
+                        node.cost = only.cost;
+                        delete node.children;
+                        changed = true;
+                    }
+                }
+            }
+        }
+    }
+}
+
 /** Remove a node by id from a Record of siblings and renumber subsequent sibling keys.
  *  Returns the ids of all removed nodes (the node itself + its descendants). */
 function removeNodeFromSiblings(
@@ -318,9 +342,10 @@ export default function CostBreakdownHierarchy({
     // Keep the parent's controlled value in sync with the live tree (baseline + saved + unsaved edits),
     // same contract CostBreakdownEditor uses.
     useEffect(() => {
-        onChange?.(applyOverrides(value, { ...effectiveBaseline, ...changedNodes }, mode));
+        const base = localTree ?? value;
+        onChange?.(applyOverrides(base, { ...effectiveBaseline, ...changedNodes }, mode));
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [effectiveBaseline, changedNodes, mode]);
+    }, [localTree, effectiveBaseline, changedNodes, mode]);
 
     const totalBudgeted = useMemo(() => sumBudgeted(value), [value]);
 
@@ -445,6 +470,7 @@ export default function CostBreakdownHierarchy({
         };
 
         findAndRemove(nextTree);
+        flattenSingles(nextTree);
         setLocalTree(nextTree);
         onChange?.(nextTree);
         // Remove any changedNodes entries for the deleted nodes (others are baked into nextTree)
