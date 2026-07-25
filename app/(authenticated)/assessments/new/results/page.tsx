@@ -339,6 +339,7 @@ export default function AssessmentResultsPage() {
   const [showMarksWarning, setShowMarksWarning] = useState(false);
   const [marksWarning, setMarksWarning] = useState({ target: "", min: 0, current: 0 });
   const [showSubmitConfirm, setShowSubmitConfirm] = useState(false);
+  const [confirmStep, setConfirmStep] = useState<"warning" | "confirm">("confirm");
 
   /* ── Total marks from GreenElementsScreen ── */
   const totalMarks = useMemo(
@@ -667,6 +668,7 @@ export default function AssessmentResultsPage() {
                   setShowCostUpdatedToast={setShowCostUpdatedToast}
                   certifiedScaleRange={certificationsData?.certifiedScaleRange}
                   totalMarks={totalMarks}
+                  activeTierIndex={activeTierIndex}
                 />
               ) : (
                 <EmptyTabState label="GBI assessment" />
@@ -695,6 +697,18 @@ export default function AssessmentResultsPage() {
                   return;
                 }
               }
+              const budget = projectDetails?.projectBudget;
+              const cost = totalCost;
+              if (
+                typeof budget === "number" &&
+                typeof cost === "number" &&
+                cost > budget
+              ) {
+                setConfirmStep("warning");
+                setShowSubmitConfirm(true);
+                return;
+              }
+              setConfirmStep("confirm");
               setShowSubmitConfirm(true);
             }}
             className="rounded-full bg-[#3E6B52] px-6 py-3 text-[14px] font-semibold text-[#F6F6F2] shadow-[0_12px_28px_rgba(62,107,82,0.24)] transition-all hover:-translate-y-0.5 hover:shadow-[0_16px_36px_rgba(62,107,82,0.30)] focus-visible:outline focus-visible:outline-offset-2 focus-visible:outline-[#3E6B52] sm:px-8"
@@ -758,8 +772,8 @@ export default function AssessmentResultsPage() {
                   Marks not achieved
                 </h2>
                 <p className="mt-1 text-[13px] leading-relaxed text-[#5B655F]">
-                  You need at least {marksWarning.min} marks to reach "
-                  {marksWarning.target}", but you currently have{" "}
+                  You need at least {marksWarning.min} marks to reach &quot;
+                  {marksWarning.target}&quot;, but you currently have{" "}
                   {marksWarning.current} marks.
                 </p>
               </div>
@@ -791,42 +805,96 @@ export default function AssessmentResultsPage() {
             onClick={(e) => e.stopPropagation()}
             className="w-full max-w-sm rounded-3xl border border-[#E4E1D8] bg-white p-6 shadow-[0_24px_48px_rgba(30,38,33,0.16)] animate-in fade-in zoom-in-95 slide-in-from-bottom-2 duration-200"
           >
-            <div className="mb-5 flex items-center gap-3">
-              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#EDF3EF] text-[#3E6B52]">
-                <Check size={20} />
-              </span>
-              <div>
-                <h2
-                  className="text-[16px] font-semibold text-[#1E2621]"
-                  style={{ fontFamily: "var(--font-display)" }}
-                >
-                  Submit Assessment
-                </h2>
-                <p className="mt-1 text-[13px] leading-relaxed text-[#5B655F]">
-                  Are you sure you want to submit this assessment?
-                </p>
-              </div>
-            </div>
-            <div className="flex flex-col-reverse gap-3 sm:flex-row">
-              <button
-                type="button"
-                onClick={() => setShowSubmitConfirm(false)}
-                className="flex-1 rounded-full border border-[#E4E1D8] bg-white px-4 py-2.5 text-[13px] font-semibold text-[#5B655F] transition-colors hover:bg-[#F6F6F2] focus-visible:outline focus-visible:outline-offset-2 focus-visible:outline-[#3E6B52]"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setShowSubmitConfirm(false);
-                  handleSubmitAssessment();
-                }}
-                autoFocus
-                className="flex-1 rounded-full bg-[#3E6B52] px-4 py-2.5 text-[13px] font-semibold text-white shadow-[0_8px_20px_rgba(62,107,82,0.24)] transition-all hover:-translate-y-0.5 hover:shadow-[0_12px_28px_rgba(62,107,82,0.30)] focus-visible:outline focus-visible:outline-offset-2 focus-visible:outline-[#3E6B52]"
-              >
-                Confirm
-              </button>
-            </div>
+            {confirmStep === "warning" ? (
+              <>
+                <div className="mb-5 flex items-start gap-3">
+                  <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#FEF3E2] text-[#C08A3E] ring-4 ring-[#FEF3E2]/50">
+                    <AlertTriangle size={20} strokeWidth={2.25} />
+                  </span>
+                  <div className="pt-0.5">
+                    <h2
+                      className="text-[16px] font-semibold text-[#1E2621]"
+                      style={{ fontFamily: "var(--font-display)" }}
+                    >
+                      Budget Exceeded
+                    </h2>
+                    <p className="mt-1 text-[13px] leading-relaxed text-[#5B655F]">
+                      The predicted cost exceeds your project budget. Do you want to proceed with an over-budget status?
+                    </p>
+                  </div>
+                </div>
+                <div className="flex flex-col-reverse gap-3 sm:flex-row">
+                  <button
+                    type="button"
+                    onClick={() => setShowSubmitConfirm(false)}
+                    autoFocus
+                    className="flex-1 rounded-full border border-[#E4E1D8] bg-white px-4 py-2.5 text-[13px] font-semibold text-[#5B655F] transition-colors hover:bg-[#F6F6F2] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#3E6B52]"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setConfirmStep("confirm")}
+                    className="flex-1 rounded-full bg-[#C08A3E] px-4 py-2.5 text-[13px] font-semibold text-white shadow-[0_8px_20px_rgba(192,138,62,0.24)] transition-all hover:-translate-y-0.5 hover:shadow-[0_12px_28px_rgba(192,138,62,0.30)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#C08A3E]"
+                  >
+                    Proceed
+                  </button>
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="mb-5 flex items-center gap-3">
+                  <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#EDF3EF] text-[#3E6B52]">
+                    <Check size={20} />
+                  </span>
+                  <div>
+                    <h2
+                      className="text-[16px] font-semibold text-[#1E2621]"
+                      style={{ fontFamily: "var(--font-display)" }}
+                    >
+                      Submit Assessment
+                    </h2>
+                    <p className="mt-1 text-[13px] leading-relaxed text-[#5B655F]">
+                      Are you sure you want to submit this assessment?
+                    </p>
+                  </div>
+                </div>
+                <div className="flex flex-col-reverse gap-3 sm:flex-row">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (
+                        projectDetails?.projectBudget != null &&
+                        totalCost != null &&
+                        totalCost > projectDetails.projectBudget
+                      ) {
+                        setConfirmStep("warning");
+                      } else {
+                        setShowSubmitConfirm(false);
+                      }
+                    }}
+                    className="flex-1 rounded-full border border-[#E4E1D8] bg-white px-4 py-2.5 text-[13px] font-semibold text-[#5B655F] transition-colors hover:bg-[#F6F6F2] focus-visible:outline focus-visible:outline-offset-2 focus-visible:outline-[#3E6B52]"
+                  >
+                    {projectDetails?.projectBudget != null &&
+                    totalCost != null &&
+                    totalCost > projectDetails.projectBudget
+                      ? "Back"
+                      : "Cancel"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      handleSubmitAssessment();
+                      setTimeout(() => setShowSubmitConfirm(false), 300);
+                    }}
+                    autoFocus
+                    className="flex-1 rounded-full bg-[#3E6B52] px-4 py-2.5 text-[13px] font-semibold text-white shadow-[0_8px_20px_rgba(62,107,82,0.24)] transition-all hover:-translate-y-0.5 hover:shadow-[0_12px_28px_rgba(62,107,82,0.30)] focus-visible:outline focus-visible:outline-offset-2 focus-visible:outline-[#3E6B52]"
+                  >
+                    Submit
+                  </button>
+                </div>
+              </>
+            )}
           </div>
         </div>
       )}

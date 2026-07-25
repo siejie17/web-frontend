@@ -129,6 +129,7 @@ interface GreenElementsScreenProps {
   isRefreshingProject?: boolean;
   certifiedScaleRange?: Record<string, [number, number]>;
   totalMarks?: number;
+  activeTierIndex?: number;
   [key: string]: any;
 }
 
@@ -431,6 +432,7 @@ const GreenElementsScreen = ({
   setShowCostUpdatedToast,
   certifiedScaleRange,
   totalMarks,
+  activeTierIndex,
   ...otherProps
 }: GreenElementsScreenProps) => {
   const isRefreshingProject = otherProps?.isRefreshingProject || false;
@@ -2009,6 +2011,7 @@ const GreenElementsScreen = ({
                   totalMarks={totalMarks}
                   certifiedScaleRange={certifiedScaleRange}
                   criteriaMarks={criteriaMarks}
+                  targetBandIndex={activeTierIndex}
                 />
               )}
 
@@ -2219,10 +2222,12 @@ function CertificationGauge({
   totalMarks,
   certifiedScaleRange,
   criteriaMarks,
+  targetBandIndex,
 }: {
   totalMarks: number;
   certifiedScaleRange: Record<string, [number, number]>;
   criteriaMarks: Record<string, number>;
+  targetBandIndex?: number;
 }) {
   const MAX = 100;
 
@@ -2239,6 +2244,8 @@ function CertificationGauge({
   const activeBand = bands.find(
     (b) => totalMarks >= b.min && totalMarks <= b.max,
   );
+  const targetBand =
+    targetBandIndex !== undefined ? bands[targetBandIndex] : undefined;
 
   return (
     <section className="relative mb-6 mt-3 overflow-hidden rounded-3xl border border-[#E4E1D8] bg-[#FDFDFC] p-5 shadow-[0_1px_2px_rgba(30,38,33,0.04)] sm:p-8">
@@ -2309,6 +2316,36 @@ function CertificationGauge({
             className="absolute top-1/2 h-4 w-[2px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-[#1E2621]"
             style={{ left: `100%` }}
           />
+
+          {targetBand && (
+            <>
+              <div
+                className="absolute -top-2.5 -translate-x-1/2"
+                style={{ left: `${targetBand.left}%` }}
+              >
+                <div
+                  className="flex flex-col items-center gap-5"
+                >
+                  <svg width="12" height="15" viewBox="0 0 12 10" fill="none">
+                    <path d="M6 10L0 0h12z" fill={targetBand.color} />
+                  </svg>
+                  <span
+                    className="whitespace-nowrap text-[9px] font-bold uppercase tracking-[0.06em]"
+                    style={{ color: targetBand.color, fontFamily: "var(--font-mono)" }}
+                  >
+                    Target
+                  </span>
+                </div>
+              </div>
+              <div
+                className="absolute top-0 h-2.5 w-0.5 -translate-x-1/2"
+                style={{
+                  left: `${targetBand.left}%`,
+                  backgroundColor: targetBand.color,
+                }}
+              />
+            </>
+          )}
         </div>
 
         {/* Legend — aligned to each band's actual position on the bar */}

@@ -434,6 +434,7 @@ export default function NewAssessmentPage() {
     };
   }, [
     predictionReady,
+    buildingType,
     category,
     year,
     buildingSizeValue,

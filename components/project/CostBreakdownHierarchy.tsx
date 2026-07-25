@@ -318,7 +318,6 @@ export default function CostBreakdownHierarchy({
         setChangedNodes({});
         setLocalTree(null);
         setTreeKey((k) => k + 1);
-        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [projectId, mode]);
 
     const effectiveBaseline = useMemo(
