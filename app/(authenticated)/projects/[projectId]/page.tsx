@@ -2,9 +2,7 @@ import { redirect, notFound } from "next/navigation";
 
 import { getOwnedProject } from "@/lib/server/project-access";
 import AccessDenied from "@/components/errors/AccessDenied";
-import ProjectDetailTabs from "@/components/tabs/ProjectDetailsTabs";
-import ProjectDetailsHeader from "@/components/project/ProjectDetailsHeader";
-import { BackButton } from "@/components/ui/BackButton";
+import ProjectPageWrapper from "./ProjectPageWrapper";
 
 export default async function ProjectDetailsPage({
     params,
@@ -18,15 +16,5 @@ export default async function ProjectDetailsPage({
     if (!project) return <AccessDenied />;
     if (!selectedProject) return notFound();
 
-    return (
-        <div className="mx-auto max-w-275 pb-10 pt-6">
-            <BackButton />
-
-            {/* ---------------- Header (client component — needs useState to collapse/expand) ---------------- */}
-            <ProjectDetailsHeader project={project} />
-
-            {/* ---------------- Tabbed content ---------------- */}
-            <ProjectDetailTabs selectedProject={selectedProject} />
-        </div>
-    );
+    return <ProjectPageWrapper project={project} selectedProject={selectedProject} />;
 }

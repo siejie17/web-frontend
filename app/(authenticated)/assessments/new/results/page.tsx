@@ -12,6 +12,7 @@ import {
   AlertTriangle,
   X,
   Eye,
+  Plus,
 } from "lucide-react";
 import CostBreakdownHierarchy from "@/components/project/CostBreakdownHierarchy";
 import type {
@@ -21,12 +22,46 @@ import type {
 import { formatMoney } from "@/components/project/CostBreakdownTree";
 import GreenElementsScreen from "@/components/assessment/GreenElementsScreen";
 import { BackButton } from "@/components/ui/BackButton";
+import { useAuth } from "@/contexts/AuthContext";
 
 type ID = string | number;
+
+interface GreenCriterionOption {
+  id: ID;
+  description: string;
+  marks: number;
+}
+
+interface GreenCriterionOptionGroup {
+  id: ID;
+  label: string;
+  options?: GreenCriterionOption[];
+}
+
+interface GreenCriterionSelection {
+  id: ID;
+  description: string;
+  marks: number;
+}
+
+interface GreenCriterionSelectionGroup {
+  id: ID;
+  label: string;
+  selections?: GreenCriterionSelection[];
+}
+
+interface GreenCriterionSubitem {
+  id: ID;
+  description: string;
+}
 
 interface GreenCriterionItem {
   id: string | number;
   is_compulsory?: number;
+  subitems_exist?: boolean;
+  subitems?: GreenCriterionSubitem[];
+  option_groups?: GreenCriterionOptionGroup[];
+  selection_groups?: GreenCriterionSelectionGroup[];
 }
 
 interface GreenCriterionSub {
@@ -177,6 +212,7 @@ function asNumber(v: unknown): number | undefined {
 
 export default function AssessmentResultsPage() {
   const router = useRouter();
+  const { user } = useAuth();
   const [data, setData] = useState<unknown>(null);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<TabKey>("cost");
@@ -184,16 +220,42 @@ export default function AssessmentResultsPage() {
   const pendingAction = useRef<(() => void) | null>(null);
   const popStateRef = useRef<((e: PopStateEvent) => void) | null>(null);
 
+  const [noResults, setNoResults] = useState(false);
+
   useEffect(() => {
-    const results = localStorage.getItem("assessment_result");
+    const results = localStorage.getItem("assessment_result") ?? sessionStorage.getItem("assessment_result");
     if (!results) {
-      router.replace("/assessments/new");
+      setNoResults(true);
+      setLoading(false);
       return;
     }
     try {
-      setData(JSON.parse(results));
+      const parsed = JSON.parse(results);
+      const inner = extractInnerData(parsed);
+      const ge = inner?.green_elements;
+      if (Array.isArray(ge) && ge.length > 0) {
+        const marks: Record<string, number> = {};
+        for (const criterion of ge) {
+          const name = criterion.name;
+          if (!name) continue;
+          let total = 0;
+          for (const item of criterion.items || []) {
+            if (item.is_compulsory === 1)
+              total += (item.marks as number) || 0;
+          }
+          for (const sub of criterion.subcriteria || []) {
+            for (const item of sub.items || []) {
+              if (item.is_compulsory === 1)
+                total += (item.marks as number) || 0;
+            }
+          }
+          marks[name] = total;
+        }
+        setCriteriaMarks(marks);
+      }
+      setData(parsed);
     } catch {
-      router.replace("/assessments/new");
+      setNoResults(true);
     }
     setLoading(false);
   }, [router]);
@@ -340,6 +402,7 @@ export default function AssessmentResultsPage() {
   const [marksWarning, setMarksWarning] = useState({ target: "", min: 0, current: 0 });
   const [showSubmitConfirm, setShowSubmitConfirm] = useState(false);
   const [confirmStep, setConfirmStep] = useState<"warning" | "confirm">("confirm");
+  const [submitting, setSubmitting] = useState(false);
 
   /* ── Total marks from GreenElementsScreen ── */
   const totalMarks = useMemo(
@@ -426,7 +489,9 @@ export default function AssessmentResultsPage() {
     return result;
   }, [costBreakdown, certificationLevel, certificationsData, baseTotal]);
 
-  const handleSubmitAssessment = useCallback(() => {
+  const handleSubmitAssessment = useCallback(async () => {
+    if (!user?.id) return;
+
     const currentTree = currentCostBreakdownRef.current ?? costBreakdownWithCert ?? {};
 
     function sumLeaves(n: CostNode): number {
@@ -499,45 +564,101 @@ export default function AssessmentResultsPage() {
 
     function collectCompulsoryItems(
       elements: GreenCriterion[],
-    ): (string | number)[] {
-      const ids: (string | number)[] = [];
-      for (const c of elements) {
-        for (const item of c.items ?? []) {
-          if (item.is_compulsory === 1 && !isNotCert) ids.push(item.id);
+    ): {
+      items: (string | number)[];
+      subitems: Record<string, (string | number)[]>;
+      options: Record<string, (string | number)[]>;
+      selections: Record<string, (string | number)[]>;
+    } {
+      const result: ReturnType<typeof collectCompulsoryItems> = {
+        items: [],
+        subitems: {},
+        options: {},
+        selections: {},
+      };
+      if (isNotCert) return result;
+
+      function walkItem(item: GreenCriterionItem) {
+        if (item.is_compulsory !== 1) return;
+        result.items.push(item.id);
+
+        if (item.subitems_exist && item.subitems?.length) {
+          result.subitems[String(item.id)] = item.subitems.map((s) => s.id);
         }
-        for (const sub of c.subcriteria ?? []) {
-          for (const item of sub.items ?? []) {
-            if (item.is_compulsory === 1 && !isNotCert) ids.push(item.id);
+
+        for (const group of item.option_groups ?? []) {
+          if (group.options?.length) {
+            result.options[String(group.id)] = group.options.map((o) => o.id);
+          }
+        }
+
+        for (const group of item.selection_groups ?? []) {
+          if (group.selections?.length) {
+            result.selections[String(group.id)] = group.selections.map((s) => s.id);
           }
         }
       }
-      return ids;
+
+      for (const c of elements) {
+        for (const item of c.items ?? []) walkItem(item);
+        for (const sub of c.subcriteria ?? []) {
+          for (const item of sub.items ?? []) walkItem(item);
+        }
+      }
+      return result;
     }
-    for (const id of collectCompulsoryItems(greenElements)) {
+    const compulsoryItems = collectCompulsoryItems(greenElements);
+    for (const id of compulsoryItems.items) {
       const stringId = String(id);
       if (!checkedItemsPayload.includes(stringId)) {
         checkedItemsPayload.push(stringId);
       }
     }
 
-    console.log({
-      rating: totalMarks,
-      form_data: inner?.mapped_form_data,
-      costs: {
-        total_cost: totalCostNum,
-        cost_breakdown: costBreakdownPayload,
-      },
-      checked_items: {
-        checkedItems: checkedItemsPayload,
-        checkedOptions: checkedOptionsPayload,
-        checkedSubitems: checkedSubitemsPayload,
-        customItems: customItemsPayload,
-        selections: selectionsPayload,
-      },
-    });
+    setSubmitting(true);
+    try {
+      const payload = {
+        user_id: user.id,
+        rating: totalMarks,
+        form_data: inner?.mapped_form_data,
+        costs: {
+          total_cost: totalCostNum,
+          cost_breakdown: costBreakdownPayload,
+        },
+        checked_items: {
+          checkedItems: checkedItemsPayload,
+          checkedOptions: checkedOptionsPayload,
+          checkedSubitems: checkedSubitemsPayload,
+          customItems: customItemsPayload,
+          selections: selectionsPayload,
+        },
+        compulsory_items: compulsoryItems,
+      };
+
+      const res = await fetch("/api/assessment/submit-assessment", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+
+      const result = await res.json().catch(() => null);
+
+      if (res.ok && result?.success) {
+        localStorage.removeItem("assessment_result");
+        router.push("/assessments/history");
+      } else {
+        alert(result?.message ?? "Failed to submit assessment.");
+      }
+    } catch {
+      alert("An error occurred while submitting the assessment.");
+    } finally {
+      setSubmitting(false);
+      setShowSubmitConfirm(false);
+    }
   }, [
     costBreakdownWithCert, checkedItems, checkedOptions, checkedSubitems,
     customItems, selectedDropdowns, greenElements, isNotCert, totalMarks, inner,
+    user, router,
   ]);
 
   /* ── Toast on certification level change ── */
@@ -576,13 +697,41 @@ export default function AssessmentResultsPage() {
 
   if (loading) return null;
 
+  if (noResults) {
+    return (
+      <div className="flex min-h-screen flex-col items-center justify-center gap-5 px-4 text-center">
+        <div className="relative flex h-16 w-16 items-center justify-center">
+          <span className="absolute inset-0 rounded-full bg-[#3E6B52]/10" />
+          <span className="absolute inset-2 rounded-full bg-[#3E6B52]/10" />
+          <span className="relative flex h-12 w-12 items-center justify-center rounded-full bg-[#F6F6F2] text-[#3E6B52] ring-1 ring-[#E4E7E2]">
+            <Inbox size={20} strokeWidth={1.75} />
+          </span>
+        </div>
+
+        <div className="max-w-70">
+          <h2 className="text-[16px] font-semibold text-[#1E2621]">
+            No active assessment results
+          </h2>
+          <p className="mt-1.5 text-[13px] leading-relaxed text-[#5B655F]">
+            Start a new assessment to see results appear here.
+          </p>
+        </div>
+
+        <button
+          type="button"
+          onClick={() => router.push("/assessments/new")}
+          className="group flex items-center gap-1.5 rounded-full bg-[#3E6B52] px-5 py-2.5 text-[13px] font-semibold text-white shadow-sm transition-all hover:-translate-y-0.5 hover:bg-[#345A45] hover:shadow-md active:translate-y-0"
+        >
+          <Plus size={15} className="transition-transform group-hover:rotate-90" />
+          New Assessment
+        </button>
+      </div>
+    );
+  }
+
   return (
     <>
       <div className="relative mx-auto max-w-275 pb-4 pt-6">
-        {/* Floating back button — pinned to the left edge of the viewport,
-              vertically aligned with the title, breaking out of max-w-275.
-              Falls back to an inline button when there isn't room outside
-              the content column. */}
         <BackButton action={handleBack} />
 
         <div className="mb-6">
@@ -638,7 +787,7 @@ export default function AssessmentResultsPage() {
                   <CostBreakdownHierarchy
                     value={costBreakdownWithCert}
                     projectBudget={projectDetails?.projectBudget ?? null}
-                    onChange={handleCostBreakdownChange}
+                    onChangeAction={handleCostBreakdownChange}
                     predictedCost={totalCost}
                     mode="assessment"
                   />
@@ -772,7 +921,7 @@ export default function AssessmentResultsPage() {
                   Marks not achieved
                 </h2>
                 <p className="mt-1 text-[13px] leading-relaxed text-[#5B655F]">
-                  You need at least {marksWarning.min} marks to reach &quot;
+                  You need at least {marksWarning.min} &nbsp;marks to reach &quot;
                   {marksWarning.target}&quot;, but you currently have{" "}
                   {marksWarning.current} marks.
                 </p>
@@ -828,14 +977,14 @@ export default function AssessmentResultsPage() {
                     type="button"
                     onClick={() => setShowSubmitConfirm(false)}
                     autoFocus
-                    className="flex-1 rounded-full border border-[#E4E1D8] bg-white px-4 py-2.5 text-[13px] font-semibold text-[#5B655F] transition-colors hover:bg-[#F6F6F2] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#3E6B52]"
+                    className="flex-1 rounded-full border border-[#E4E1D8] bg-white px-4 py-2.5 text-[13px] font-semibold text-[#5B655F] transition-colors hover:bg-[#F6F6F2] focus-visible:outline focus-visible:outline-offset-2 focus-visible:outline-[#3E6B52]"
                   >
                     Cancel
                   </button>
                   <button
                     type="button"
                     onClick={() => setConfirmStep("confirm")}
-                    className="flex-1 rounded-full bg-[#C08A3E] px-4 py-2.5 text-[13px] font-semibold text-white shadow-[0_8px_20px_rgba(192,138,62,0.24)] transition-all hover:-translate-y-0.5 hover:shadow-[0_12px_28px_rgba(192,138,62,0.30)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#C08A3E]"
+                    className="flex-1 rounded-full bg-[#C08A3E] px-4 py-2.5 text-[13px] font-semibold text-white shadow-[0_8px_20px_rgba(192,138,62,0.24)] transition-all hover:-translate-y-0.5 hover:shadow-[0_12px_28px_rgba(192,138,62,0.30)] focus-visible:outline focus-visible:outline-offset-2 focus-visible:outline-[#C08A3E]"
                   >
                     Proceed
                   </button>
@@ -883,14 +1032,12 @@ export default function AssessmentResultsPage() {
                   </button>
                   <button
                     type="button"
-                    onClick={() => {
-                      handleSubmitAssessment();
-                      setTimeout(() => setShowSubmitConfirm(false), 300);
-                    }}
+                    onClick={() => handleSubmitAssessment()}
+                    disabled={submitting}
                     autoFocus
-                    className="flex-1 rounded-full bg-[#3E6B52] px-4 py-2.5 text-[13px] font-semibold text-white shadow-[0_8px_20px_rgba(62,107,82,0.24)] transition-all hover:-translate-y-0.5 hover:shadow-[0_12px_28px_rgba(62,107,82,0.30)] focus-visible:outline focus-visible:outline-offset-2 focus-visible:outline-[#3E6B52]"
+                    className="flex-1 rounded-full bg-[#3E6B52] px-4 py-2.5 text-[13px] font-semibold text-white shadow-[0_8px_20px_rgba(62,107,82,0.24)] transition-all hover:-translate-y-0.5 hover:shadow-[0_12px_28px_rgba(62,107,82,0.30)] focus-visible:outline focus-visible:outline-offset-2 focus-visible:outline-[#3E6B52] disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:translate-y-0"
                   >
-                    Submit
+                    {submitting ? "Submitting…" : "Submit"}
                   </button>
                 </div>
               </>

@@ -280,7 +280,7 @@ function AssessmentHero({
               {meta.status}
             </span>
 
-            <h1 className="mt-4 font-[var(--font-display,inherit)] text-[28px] font-semibold leading-tight tracking-tight text-white sm:text-[34px]">
+            <h1 className="mt-4 font-(--font-display,inherit) text-[28px] leading-tight tracking-tight text-white sm:text-[34px]">
               {meta.assessmentTitle}
             </h1>
 
@@ -330,7 +330,7 @@ function ScoreDial({ summary }: { summary: ScoreSummary }) {
   const actualOffset = c - (summary.actualPct / 100) * c;
 
   return (
-    <div className="relative shrink-0 rounded-2xl border border-white/10 bg-white/[0.04] p-5 backdrop-blur-md">
+    <div className="relative shrink-0 rounded-2xl border border-white/10 bg-white/4 p-5 backdrop-blur-md">
       <svg width={size} height={size} className="-rotate-90">
         <circle
           cx={size / 2}
@@ -397,7 +397,7 @@ function AssessmentSidebar({
   return (
     <nav
       aria-label="Assessment sections"
-      className="sticky top-24 hidden max-h-[calc(100vh-7rem)] w-[268px] shrink-0 overflow-y-auto rounded-2xl border border-[#E5E7E0] bg-white p-3 lg:block"
+      className="sticky top-24 hidden max-h-[calc(100vh-7rem)] w-67 shrink-0 overflow-y-auto rounded-2xl border border-[#E5E7E0] bg-white p-3 lg:block"
     >
       <p className="px-3 pb-2 pt-1.5 text-xs font-semibold uppercase tracking-wide text-[#5B6B63]">
         Sections

@@ -47,11 +47,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                 if (!res.ok) {
                     console.warn("[AuthContext] /api/auth/me returned non-OK status", res.status, data);
                     setUser(null);
+                    window.location.href = "/login";
                     return;
                 }
 
                 const restoredUser = data?.user ?? data;
-                console.log(data);
                 setUser(restoredUser);
             } catch {
                 setUser(null);

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Wallet, TrendingUp, ShieldCheck, CheckCircle2, RotateCcw, CircleDollarSign, Trash2 } from "lucide-react";
+import { Wallet, TrendingUp, ShieldCheck, CheckCircle2, CircleDollarSign, Trash2 } from "lucide-react";
 
 import CostBreakdownTree, {
     type CostBreakdown,
@@ -141,6 +141,21 @@ function collectDescendantIds(node: CostNode): number[] {
     return ids;
 }
 
+function collectLeafValues(tree: CostBreakdown, field: "cost" | "actual_cost"): Record<number, number> {
+    const values: Record<number, number> = {};
+    const walk = (nodes: Record<string, CostNode>) => {
+        for (const node of Object.values(nodes)) {
+            if (node.children) {
+                walk(node.children);
+            } else {
+                values[node.id] = field === "cost" ? node.cost : (node.actual_cost ?? node.cost ?? 0);
+            }
+        }
+    };
+    walk(tree);
+    return values;
+}
+
 /** After a deletion, if a parent node has exactly one child whose description matches the parent's,
  *  flatten the child into the parent (parent becomes a leaf with the child's value).
  *  Repeats until no more flattening is possible. */
@@ -231,14 +246,14 @@ function mutateNode(
     return false;
 }
 
-function sumLeaves(tree: CostBreakdown, overrides?: Record<number, number>): number {
+function sumLeaves(tree: CostBreakdown, overrides?: Record<number, number>, field?: "cost" | "actual_cost"): number {
     let total = 0;
     const walk = (nodes: Record<string, CostNode>) => {
         for (const node of Object.values(nodes)) {
             if (node.children) {
                 walk(node.children);
             } else {
-                total += overrides?.[node.id] ?? node.cost;
+                total += overrides?.[node.id] ?? (field === "actual_cost" ? (node.actual_cost ?? node.cost) : node.cost);
             }
         }
     };
@@ -248,23 +263,28 @@ function sumLeaves(tree: CostBreakdown, overrides?: Record<number, number>): num
 
 /* ---------------- Component ---------------- */
 
+export type NodeAddition = { id: number; parentId: number; description: string; actualCost: number };
+
 export type SubmitResult = { success: boolean; message: string };
 
 export default function CostBreakdownHierarchy({
     value,
-    onChange,
+    onChangeAction,
     projectId,
     predictedCost,
     projectBudget,
-    onSubmit,
-    onChangedNodesUpdate,
+    onSubmitAction,
+    onChangedNodesUpdateAction,
+    onStructuralChangeAction,
+    hideSubmitBar,
+    resetKey = 0,
     mode = "comparison",
 }: {
     /** The "as loaded" tree — source of truth for diffing. Only its leaf values for the active
      *  mode's field are compared. */
     value: CostBreakdown | null | undefined;
     /** Fires with the live tree (baseline + saved + any unsaved edits) any time something changes — same contract as CostBreakdownEditor. */
-    onChange?: (next: CostBreakdown) => void;
+    onChangeAction?: (next: CostBreakdown) => void;
     /** Needed only for the built-in default submit call — omit if you pass `onSubmit` yourself. */
     projectId?: string | number;
     /** Optional reference figure (e.g. an assessment-predicted cost) shown alongside the live actual total.
@@ -273,9 +293,15 @@ export default function CostBreakdownHierarchy({
     /** Optional budget ceiling for the indicator card. Only used in "comparison" mode. */
     projectBudget?: number | null;
     /** Called with only the leaf nodes that changed this session: { [nodeId]: newValue }. */
-    onSubmit?: (changedNodes: Record<number, number>) => Promise<SubmitResult>;
+    onSubmitAction?: (changedNodes: Record<number, number>) => Promise<SubmitResult>;
     /** Fires on every edit so a parent can mirror dirty state (e.g. disable navigation, show an "unsaved" badge). */
-    onChangedNodesUpdate?: (changedNodes: Record<number, number>, hasChanges: boolean) => void;
+    onChangedNodesUpdateAction?: (changedNodes: Record<number, number>, hasChanges: boolean, hasStructuralChanges?: boolean) => void;
+    /** Fires when structural changes (additions/deletions) occur so the parent can track them for submit. */
+    onStructuralChangeAction?: (additions: NodeAddition[], deletions: number[]) => void;
+    /** When true, the built-in submit bar (fixed bottom) is hidden — parent provides its own. */
+    hideSubmitBar?: boolean;
+    /** Increment to force the component to reset all local session state. */
+    resetKey?: number;
     /**
      * "assessment" — single editable cost column, for authoring the initial predicted cost
      *   breakdown from scratch. No predicted/actual/budget statement card; edits write to `cost`.
@@ -286,6 +312,7 @@ export default function CostBreakdownHierarchy({
     mode?: CostBreakdownMode;
 }) {
     const isAssessment = mode === "assessment";
+    const editField = isAssessment ? "cost" : "actual_cost";
 
     const [addMode, setAddMode] = useState(false);
     const [deleteMode, setDeleteMode] = useState(false);
@@ -309,7 +336,7 @@ export default function CostBreakdownHierarchy({
 
     // Can we actually submit anywhere? Without either of these, submission is intentionally disabled
     // rather than throwing — useful while this view is wired up with a stubbed onChange for now.
-    const canSubmit = !!onSubmit || projectId !== undefined;
+    const canSubmit = !!onSubmitAction || projectId !== undefined;
 
     // If the parent hands us a genuinely different tree (new project loaded) or the mode flips,
     // drop local session state so stale edits from one field/mode never leak into the other.
@@ -317,8 +344,11 @@ export default function CostBreakdownHierarchy({
         setSavedOverrides({});
         setChangedNodes({});
         setLocalTree(null);
+        setHasStructuralChanges(false);
+        setPendingAdditions([]);
+        setPendingDeletions([]);
         setTreeKey((k) => k + 1);
-    }, [projectId, mode]);
+    }, [projectId, mode, resetKey]);
 
     const effectiveBaseline = useMemo(
         () => ({ ...baselineMap, ...savedOverrides }),
@@ -331,28 +361,30 @@ export default function CostBreakdownHierarchy({
         [value, savedOverrides, mode]
     );
 
-    const hasChanges = Object.keys(changedNodes).length > 0;
+    const [hasStructuralChanges, setHasStructuralChanges] = useState(false);
+
+    const hasChanges = Object.keys(changedNodes).length > 0 || hasStructuralChanges;
 
     useEffect(() => {
-        onChangedNodesUpdate?.(changedNodes, hasChanges);
+        onChangedNodesUpdateAction?.(changedNodes, hasChanges, hasStructuralChanges);
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [changedNodes, hasChanges]);
+    }, [changedNodes, hasChanges, hasStructuralChanges]);
 
     // Keep the parent's controlled value in sync with the live tree (baseline + saved + unsaved edits),
     // same contract CostBreakdownEditor uses.
     useEffect(() => {
         const base = localTree ?? value;
-        onChange?.(applyOverrides(base, { ...effectiveBaseline, ...changedNodes }, mode));
+        onChangeAction?.(applyOverrides(base, { ...effectiveBaseline, ...changedNodes }, mode));
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [localTree, effectiveBaseline, changedNodes, mode]);
 
-    const totalBudgeted = useMemo(() => sumBudgeted(value), [value]);
+    const totalBudgeted = useMemo(() => sumBudgeted(localTree ?? value), [localTree, value]);
 
     // Live total for the active field = baseline/saved values, overlaid with whatever's currently unsaved-edited.
     // In assessment mode this is simply "total predicted cost entered so far"; in comparison mode it's "total actual".
     const totalLive = useMemo(() => {
         if (localTree) {
-            return sumLeaves(localTree, changedNodes);
+            return sumLeaves(localTree, changedNodes, editField);
         }
         return Object.entries(effectiveBaseline).reduce(
             (sum, [id, base]) => sum + (changedNodes[Number(id)] ?? base),
@@ -377,7 +409,7 @@ export default function CostBreakdownHierarchy({
     const budgetTone: Tone = !hasBudget ? "neutral" : isOverBudget ? "bad" : "good";
     const actualTone: Tone = isActualOverPredicted ? "bad" : "good";
 
-    /** Wired into CostBreakdownTree's onActualCostChange — this is the "track which node changed" logic.
+    /** Wired into CostBreakdownTree's onActualCostChangeAction — this is the "track which node changed" logic.
      *  Works the same regardless of which field is active; the id -> value map doesn't care. */
     const handleLeafEdit = (nodeId: number, val: number) => {
         setChangedNodes((prev) => {
@@ -395,6 +427,10 @@ export default function CostBreakdownHierarchy({
     const handleResetChanges = () => {
         setChangedNodes({});
         setLocalTree(null);
+        setHasStructuralChanges(false);
+        setPendingAdditions([]);
+        setPendingDeletions([]);
+        onStructuralChangeAction?.([], []);
         setTreeKey((k) => k + 1); // remounts the tree, re-reading treeData (baseline + saved, not unsaved edits)
     };
 
@@ -402,7 +438,7 @@ export default function CostBreakdownHierarchy({
         const merged = structuredClone(localTree ?? treeData);
         // Bake any pending value edits into the tree before structural editing
         for (const [nodeIdStr, val] of Object.entries(changedNodes)) {
-            mutateNode(merged, Number(nodeIdStr), (node) => { node.cost = val; });
+            mutateNode(merged, Number(nodeIdStr), (node) => { node[editField] = val; });
         }
         setLocalTree(merged);
         setChangedNodes({});
@@ -412,19 +448,19 @@ export default function CostBreakdownHierarchy({
     const handleExitAddMode = () => {
         setAddMode(false);
         if (localTree) {
-            // Bake value edits into localTree so they survive the mode exit
             for (const [nodeIdStr, val] of Object.entries(changedNodes)) {
-                mutateNode(localTree, Number(nodeIdStr), (node) => { node.cost = val; });
+                mutateNode(localTree, Number(nodeIdStr), (node) => { node[editField] = val; });
             }
             setChangedNodes({});
-            onChange?.(localTree);
+            if (!isAssessment && pendingAdditions.length > 0) setHasStructuralChanges(true);
+            onChangeAction?.(localTree);
         }
     };
 
     const handleEnterDeleteMode = () => {
         const merged = structuredClone(localTree ?? treeData);
         for (const [nodeIdStr, val] of Object.entries(changedNodes)) {
-            mutateNode(merged, Number(nodeIdStr), (node) => { node.cost = val; });
+            mutateNode(merged, Number(nodeIdStr), (node) => { node[editField] = val; });
         }
         setLocalTree(merged);
         setChangedNodes({});
@@ -435,10 +471,11 @@ export default function CostBreakdownHierarchy({
         setDeleteMode(false);
         if (localTree) {
             for (const [nodeIdStr, val] of Object.entries(changedNodes)) {
-                mutateNode(localTree, Number(nodeIdStr), (node) => { node.cost = val; });
+                mutateNode(localTree, Number(nodeIdStr), (node) => { node[editField] = val; });
             }
             setChangedNodes({});
-            onChange?.(localTree);
+            if (!isAssessment && pendingDeletions.length > 0) setHasStructuralChanges(true);
+            onChangeAction?.(localTree);
         }
     };
 
@@ -452,7 +489,7 @@ export default function CostBreakdownHierarchy({
         const nextTree = structuredClone(localTree);
         // Bake pending value edits into the clone so they survive the re-initialisation
         for (const [nodeIdStr, val] of Object.entries(changedNodes)) {
-            mutateNode(nextTree, Number(nodeIdStr), (node) => { node.cost = val; });
+            mutateNode(nextTree, Number(nodeIdStr), (node) => { node[editField] = val; });
         }
         const deletedIds: number[] = [];
 
@@ -471,16 +508,28 @@ export default function CostBreakdownHierarchy({
         findAndRemove(nextTree);
         flattenSingles(nextTree);
         setLocalTree(nextTree);
-        onChange?.(nextTree);
-        // Remove any changedNodes entries for the deleted nodes (others are baked into nextTree)
-        setChangedNodes({});
+        const nextDeletions = [...pendingDeletions, ...deletedIds];
+        setPendingDeletions(nextDeletions);
+        setHasStructuralChanges(true);
+        setPendingAdditions(pendingAdditions.filter((a) => !deletedIds.includes(a.id)));
+        setChangedNodes((prev) => {
+            const next = { ...prev };
+            for (const id of deletedIds) delete next[id];
+            return next;
+        });
+        onStructuralChangeAction?.(pendingAdditions, nextDeletions);
+        onChangeAction?.(nextTree);
         setShowDeleteConfirmModal(false);
         setDeletingNodeId(null);
     };
 
     const handleSplitRequest = (nodeId: number) => {
-        setSplittingNodeId(nodeId);
-        setShowSplitModal(true);
+        if (mode === "comparison") {
+            handleAddChildRequest(nodeId);
+        } else {
+            setSplittingNodeId(nodeId);
+            setShowSplitModal(true);
+        }
     };
 
     const handleSplitConfirm = (childName: string, cost: number) => {
@@ -511,10 +560,71 @@ export default function CostBreakdownHierarchy({
         });
         setLocalTree(nextTree);
         setChangedNodes({});
-        onChange?.(nextTree);
+        onChangeAction?.(nextTree);
         setShowSplitModal(false);
         setSplittingNodeId(null);
     };
+
+    const [pendingAdditions, setPendingAdditions] = useState<NodeAddition[]>([]);
+    const [pendingDeletions, setPendingDeletions] = useState<number[]>([]);
+
+    const [addChildParentId, setAddChildParentId] = useState<number | null>(null);
+    const [showAddChildModal, setShowAddChildModal] = useState(false);
+
+    const handleAddChildRequest = (parentId: number) => {
+        setAddChildParentId(parentId);
+        setShowAddChildModal(true);
+    };
+
+    const handleAddChildConfirm = (childName: string, actualCost: number) => {
+        if (addChildParentId === null || !localTree && !treeData) return;
+        const nextTree = structuredClone(localTree ?? treeData);
+        for (const [nodeIdStr, val] of Object.entries(changedNodes)) {
+            mutateNode(nextTree, Number(nodeIdStr), (node) => { node[editField] = val; });
+        }
+        const maxId = findMaxId(nextTree);
+        const newId = maxId + 1;
+        mutateNode(nextTree, addChildParentId, (node) => {
+            if (!node.children) node.children = {};
+            const childKeys = Object.keys(node.children);
+            const nextKey = childKeys.length > 0
+                ? String(Math.max(...childKeys.map(Number).filter(k => !isNaN(k)), 0) + 1)
+                : "1";
+            node.children[nextKey] = {
+                id: newId,
+                description: childName,
+                cost: editField === "cost" ? actualCost : 0,
+                actual_cost: editField === "cost" ? 0 : actualCost,
+                is_certification: 0,
+            };
+        });
+        setLocalTree(nextTree);
+        const addition: NodeAddition = { id: newId, parentId: addChildParentId, description: childName, actualCost };
+        const nextAdditions = [...pendingAdditions, addition];
+        setPendingAdditions(nextAdditions);
+        setChangedNodes({});
+        setHasStructuralChanges(true);
+        onStructuralChangeAction?.(nextAdditions, pendingDeletions);
+        onChangeAction?.(nextTree);
+        setShowAddChildModal(false);
+        setAddChildParentId(null);
+    };
+
+    const addChildParentName = addChildParentId !== null && (localTree ?? treeData)
+        ? (() => {
+              let name = "";
+              const data = localTree ?? treeData;
+              const walk = (nodes: Record<string, CostNode>) => {
+                  for (const n of Object.values(nodes)) {
+                      if (n.id === addChildParentId) { name = n.description; return true; }
+                      if (n.children && walk(n.children)) return true;
+                  }
+                  return false;
+              };
+              walk(data);
+              return name;
+          })()
+        : "";
 
     const splittingNodeName = splittingNodeId !== null && localTree
         ? (() => {
@@ -594,7 +704,7 @@ export default function CostBreakdownHierarchy({
 
         setLocalTree(nextTree);
         setChangedNodes({});
-        onChange?.(nextTree);
+        onChangeAction?.(nextTree);
     };
 
     const showToast = (message: string, tone: "success" | "error") => {
@@ -629,7 +739,7 @@ export default function CostBreakdownHierarchy({
         setSubmitting(true);
         const snapshot = { ...changedNodes };
         try {
-            const result = onSubmit ? await onSubmit(snapshot) : await defaultSubmit(snapshot);
+            const result = onSubmitAction ? await onSubmitAction(snapshot) : await defaultSubmit(snapshot);
             showToast(result.message, result.success ? "success" : "error");
             if (result.success) {
                 setSavedOverrides((prev) => ({ ...prev, ...snapshot }));
@@ -744,7 +854,7 @@ export default function CostBreakdownHierarchy({
                                     </span>
                                 </div>
                                 <div className="mt-1 text-[12.5px] text-[#8A938C]">
-                                    Predicted {formatMoney(comparisonBase)}
+                                    Predicted {formatMoney(totalBudgeted)}
                                 </div>
                             </div>
 
@@ -779,10 +889,10 @@ export default function CostBreakdownHierarchy({
 
                         {/* ---------------- Figures row ---------------- */}
                         <div className="relative mt-6 grid grid-cols-3 gap-x-3 gap-y-3 border-t border-dashed border-[#E4E1D8] pt-4">
-                            <Figure label="Budgeted" value={formatMoney(totalBudgeted)} />
+                            {/*<Figure label="Budgeted" value={formatMoney(totalBudgeted)} />*/}
                             <Figure
                                 label="Predicted"
-                                value={predictedCost !== undefined ? formatMoney(predictedCost) : "\u2014"}
+                                value={formatMoney(totalBudgeted)}
                             />
                             <Figure
                                 label="Budget"
@@ -795,20 +905,29 @@ export default function CostBreakdownHierarchy({
 
                 {/* ---------------- Editable tree ---------------- */}
                 {!isAssessment && (
-                  <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                    <p className="text-[13px] text-[#8A938C]">
-                      Enter actual costs against each line item — the statement above updates as you type.
-                    </p>
-                    {hasChanges && (
-                      <button
-                        type="button"
-                        onClick={handleResetChanges}
-                        className="flex shrink-0 items-center justify-center gap-1.5 self-start rounded-full border border-[#E4E1D8] bg-white px-3 py-1.5 text-[12.5px] font-medium text-[#5B655F] transition-colors hover:border-[#E7C1BA] hover:text-[#B0453A] sm:self-auto"
-                      >
-                        <RotateCcw size={12.5} />
-                        Reset changes
-                      </button>
-                    )}
+                  <div className="mb-4 flex flex-col gap-2.5">
+                    <div className="flex w-full flex-col gap-2.5 sm:flex-row sm:gap-3">
+                      {!deleteMode && (
+                        <button
+                          type="button"
+                          onClick={addMode ? handleExitAddMode : handleEnterAddMode}
+                          className="flex w-full items-center justify-center gap-1.5 rounded-full border bg-white px-4 py-2.5 text-[12.5px] font-semibold shadow-[0_1px_2px_rgba(30,38,33,0.04)] transition-colors"
+                          style={{ borderColor: addMode ? TONE.neutral.border : TONE.good.border, color: addMode ? TONE.neutral.text : TONE.good.text }}
+                          onMouseEnter={(e) => {
+                            e.currentTarget.style.backgroundColor = addMode ? TONE.neutral.bg : TONE.good.bg;
+                            e.currentTarget.style.borderColor = addMode ? TONE.neutral.solid : TONE.good.solid;
+                          }}
+                          onMouseLeave={(e) => {
+                            e.currentTarget.style.backgroundColor = "#FFFFFF";
+                            e.currentTarget.style.borderColor = addMode ? TONE.neutral.border : TONE.good.border;
+                          }}
+                        >
+                          <CircleDollarSign size={14} />
+                          {addMode ? "Done Adding Cost Node" : "Add Cost Node"}
+                        </button>
+                      )}
+
+                    </div>
                   </div>
                 )}
 
@@ -860,20 +979,20 @@ export default function CostBreakdownHierarchy({
                     <CostBreakdownTree
                         key={treeKey}
                         data={localTree ?? treeData}
-                        onActualCostChange={handleLeafEdit}
+                        onActualCostChangeAction={handleLeafEdit}
                         hideTotals
                         mode={mode}
                         addMode={addMode}
                         deleteMode={deleteMode}
-                        onSplitLeaf={handleSplitRequest}
-                        onDeleteLeaf={handleDeleteRequest}
-                        onAddRootCategory={() => setShowAddCategoryModal(true)}
+                        onSplitLeafAction={handleSplitRequest}
+                        onDeleteLeafAction={handleDeleteRequest}
+                        onAddRootCategoryAction={() => setShowAddCategoryModal(true)}
                     />
                 </div>
             </div>
 
             {/* ---------------- Sticky submit bar ---------------- */}
-            {mode === "comparison" && (
+            {mode === "comparison" && !hideSubmitBar && (
               <div className="fixed inset-x-0 bottom-0 z-10 border-t border-[#E4E1D8] bg-white/95 px-4 py-3 shadow-[0_-4px_16px_rgba(30,38,33,0.05)] backdrop-blur sm:px-5 sm:py-4">
                 <div className="mx-auto flex max-w-275 flex-col gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
                   <span className="text-center text-[12.5px] text-[#8A938C] sm:text-left">
@@ -928,6 +1047,7 @@ export default function CostBreakdownHierarchy({
                 open={showAddCategoryModal}
                 onClose={() => setShowAddCategoryModal(false)}
                 existingNames={getExistingCategoryNames(localTree ?? treeData)}
+                mode={mode}
                 onSubmit={(formData) => {
                     handleAddCategory(formData);
                     setShowAddCategoryModal(false);
@@ -956,6 +1076,18 @@ export default function CostBreakdownHierarchy({
                     setSplittingNodeId(null);
                 }}
                 onConfirm={handleSplitConfirm}
+            />
+
+            {/* ---------------- Add Child Actual Cost Modal (comparison mode) ---------------- */}
+            <AddActualCostChildModal
+                open={showAddChildModal}
+                mode={mode}
+                parentName={addChildParentName}
+                onClose={() => {
+                    setShowAddChildModal(false);
+                    setAddChildParentId(null);
+                }}
+                onConfirm={handleAddChildConfirm}
             />
 
             {/* ---------------- Delete Confirm Modal ---------------- */}
@@ -1032,13 +1164,13 @@ function CostGaugeBar({
                 />
                 {budgeted > 0 && (
                     <div
-                        className="absolute top-1/2 h-4 w-[2px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-[#1E2621]"
+                        className="absolute top-1/2 h-4 w-0.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-[#1E2621]"
                         style={{ left: `${pct(budgeted)}%` }}
                     />
                 )}
                 {showPredictedTick && (
                     <div
-                        className="absolute top-1/2 h-4 w-[2px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-[#8A938C]"
+                        className="absolute top-1/2 h-4 w-0.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-[#8A938C]"
                         style={{ left: `${pct(predicted as number)}%` }}
                     />
                 )}
@@ -1056,7 +1188,7 @@ function LegendDot({ color, label, line = false }: { color: string; label: strin
     return (
         <span className="flex items-center gap-1.5 text-[11px] text-[#8A938C]" style={{ fontFamily: "var(--font-mono)" }}>
             <span
-                className={line ? "inline-block h-3 w-[2px] rounded-full" : "inline-block h-2 w-2 rounded-full"}
+                className={line ? "inline-block h-3 w-0.5 rounded-full" : "inline-block h-2 w-2 rounded-full"}
                 style={{ backgroundColor: color }}
             />
             {label}
@@ -1132,8 +1264,12 @@ function SplitNodeModal({
         setChildNameError("");
         setCostError("");
         let valid = true;
-        if (!childName.trim()) {
+        const trimmedName = childName.trim();
+        if (!trimmedName) {
             setChildNameError("Give this sub-item a name.");
+            valid = false;
+        } else if (trimmedName.toLowerCase() === "others" || trimmedName.toLowerCase() === "certification") {
+            setChildNameError(`"${trimmedName}" is a reserved name \u2014 pick something else.`);
             valid = false;
         }
         if (!rawDigits) {
@@ -1250,11 +1386,13 @@ function AddCategoryModal({
     open,
     onClose,
     existingNames,
+    mode,
     onSubmit,
 }: {
     open: boolean;
     onClose: () => void;
     existingNames: Set<string>;
+    mode?: CostBreakdownMode;
     onSubmit: (data: {
         categoryType: "Customise" | "Others";
         categoryName: string;
@@ -1269,6 +1407,7 @@ function AddCategoryModal({
     const [rawDigits, setRawDigits] = useState("");
     const [categoryNameError, setCategoryNameError] = useState("");
     const [costError, setCostError] = useState("");
+    const [childNameError, setChildNameError] = useState("");
 
     const displayCost = rawDigits
         ? (parseInt(rawDigits, 10) / 100).toLocaleString("en-MY", { minimumFractionDigits: 2, maximumFractionDigits: 2 })
@@ -1285,6 +1424,7 @@ function AddCategoryModal({
     const handleSubmit = () => {
         setCategoryNameError("");
         setCostError("");
+        setChildNameError("");
         let valid = true;
         if (!rawDigits) {
             setCostError("Enter a cost for this category.");
@@ -1297,12 +1437,17 @@ function AddCategoryModal({
                 setCategoryNameError("Give this category a name.");
                 valid = false;
             } else if (trimmed === "certification" || trimmed === "others") {
-                setCategoryNameError(`"${categoryName.trim()}" is a reserved name — pick something else.`);
+                setCategoryNameError(`"${categoryName.trim()}" is a reserved name \u2014 pick something else.`);
                 valid = false;
             } else if (existingNames.has(trimmed)) {
-                setCategoryNameError(`"${categoryName.trim()}" already exists — try a different name.`);
+                setCategoryNameError(`"${categoryName.trim()}" already exists \u2014 try a different name.`);
                 valid = false;
             }
+        }
+        const trimmedChild = childName.trim().toLowerCase();
+        if (childName.trim() && (trimmedChild === "others" || trimmedChild === "certification")) {
+            setChildNameError(`"${childName.trim()}" is a reserved name \u2014 pick something else.`);
+            valid = false;
         }
         if (!valid) return;
         onSubmit({
@@ -1317,6 +1462,7 @@ function AddCategoryModal({
         setCategoryType("Customise");
         setCategoryNameError("");
         setCostError("");
+        setChildNameError("");
     };
 
     const handleClose = () => {
@@ -1341,8 +1487,7 @@ function AddCategoryModal({
                 <h3 className="mb-5 text-lg font-semibold text-[#1E2621]">Add a new category</h3>
 
                 <div className="space-y-4">
-{existingNames.has("others") ? null : (
-                    <div>
+<div>
                         <label className="mb-1.5 block text-[12px] font-medium text-[#5B655F]">
                             Category
                         </label>
@@ -1360,18 +1505,23 @@ function AddCategoryModal({
                             </button>
                             <button
                                 type="button"
+                                disabled={existingNames.has("others")}
                                 onClick={() => setCategoryType("Others")}
                                 className={`flex-1 rounded-lg px-3.5 py-2 text-[12.5px] font-medium transition-all ${
                                     categoryType === "Others"
                                         ? "bg-white text-[#1E2621] shadow-[0_1px_3px_rgba(30,38,33,0.08)]"
+                                        : existingNames.has("others")
+                                        ? "text-[#C4CBC4] cursor-not-allowed"
                                         : "text-[#8A938C] hover:text-[#5B655F]"
                                 }`}
                             >
                                 Others
                             </button>
                         </div>
+                        {existingNames.has("others") && (
+                            <p className="mt-1 text-[11.5px] text-[#ADA695]">"Others" already exists — select Customise to add another category.</p>
+                        )}
                     </div>
-                    )}
 
                     <div>
                         <label className="mb-1.5 block text-[12px] font-medium text-[#5B655F]">
@@ -1401,8 +1551,13 @@ function AddCategoryModal({
                             value={childName}
                             onChange={(e) => setChildName(e.target.value)}
                             placeholder="Add a sub-item, or leave blank to assign the cost to this category"
-                            className="w-full rounded-xl border border-[#E4E1D8] bg-white px-3.5 py-2.5 text-[13.5px] text-[#1E2621] placeholder:text-[#ADA695] focus:border-[#3E6B52] focus:outline-none focus:ring-2 focus:ring-[#3E6B52]/20"
+                            className={`w-full rounded-xl border px-3.5 py-2.5 text-[13.5px] text-[#1E2621] placeholder:text-[#ADA695] focus:outline-none focus:ring-2 ${
+                                childNameError ? "border-[#B0453A] focus:border-[#B0453A] focus:ring-[#B0453A]/20" : "border-[#E4E1D8] focus:border-[#3E6B52] focus:ring-[#3E6B52]/20"
+                            }`}
                         />
+                        {childNameError && (
+                            <p className="mt-1 text-[11.5px] font-medium text-[#B0453A]">{childNameError}</p>
+                        )}
                     </div>
 
                     <div>
@@ -1448,6 +1603,162 @@ function AddCategoryModal({
                         className="flex-1 rounded-xl bg-[#3E6B52] px-4 py-2.5 text-[13px] font-semibold text-white transition-colors hover:bg-[#325A44]"
                     >
                         Add
+                    </button>
+                </div>
+            </div>
+        </div>
+    );
+}
+
+/* ---------------- Add Actual Cost Child Modal (comparison mode) ---------------- */
+
+function AddActualCostChildModal({
+    open,
+    mode,
+    parentName,
+    onClose,
+    onConfirm,
+}: {
+    open: boolean;
+    mode: CostBreakdownMode;
+    parentName: string;
+    onClose: () => void;
+    onConfirm: (childName: string, cost: number) => void;
+}) {
+    const isAssessment = mode === "assessment";
+    const costInputRef = useRef<HTMLInputElement>(null);
+    const [childName, setChildName] = useState("");
+    const [rawDigits, setRawDigits] = useState("");
+    const [childNameError, setChildNameError] = useState("");
+    const [costError, setCostError] = useState("");
+
+    const displayCost = rawDigits
+        ? (parseInt(rawDigits, 10) / 100).toLocaleString("en-MY", { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+        : "0.00";
+
+    useEffect(() => {
+        if (costInputRef.current) {
+            costInputRef.current.setSelectionRange(displayCost.length, displayCost.length);
+        }
+    }, [displayCost]);
+
+    if (!open) return null;
+
+    const handleSubmit = () => {
+        setChildNameError("");
+        setCostError("");
+        let valid = true;
+        const trimmedName = childName.trim();
+        if (!trimmedName) {
+            setChildNameError("Give this sub-item a name.");
+            valid = false;
+        } else if (trimmedName.toLowerCase() === "others" || trimmedName.toLowerCase() === "certification") {
+            setChildNameError(`"${trimmedName}" is a reserved name \u2014 pick something else.`);
+            valid = false;
+        }
+        if (!rawDigits) {
+            setCostError("Enter an actual cost for this sub-item.");
+            valid = false;
+        }
+        if (!valid) return;
+        const actualCost = parseInt(rawDigits, 10) / 100;
+        onConfirm(trimmedName, actualCost);
+        setChildName("");
+        setRawDigits("");
+        setChildNameError("");
+        setCostError("");
+    };
+
+    const handleClose = () => {
+        setChildNameError("");
+        setCostError("");
+        setChildName("");
+        setRawDigits("");
+        onClose();
+    };
+
+    return (
+        <div
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-sm"
+            onClick={handleClose}
+        >
+            <div
+                className="mx-4 w-full max-w-md rounded-3xl border border-[#E4E1D8] bg-white p-6 shadow-[0_24px_48px_rgba(30,38,33,0.12)] sm:p-8"
+                onClick={(e) => e.stopPropagation()}
+            >
+                <h3 className="mb-5 text-lg font-semibold text-[#1E2621]">Add cost item</h3>
+                <p className="-mt-3 mb-5 text-[13px] text-[#8A938C]">
+                    Adding a new sub-item under <span className="font-medium text-[#5B655F]">{parentName}</span>
+                </p>
+
+                <div className="space-y-4">
+                    <div>
+                        <label className="mb-1.5 block text-[12px] font-medium text-[#5B655F]">
+                            Sub-item name
+                        </label>
+                        <input
+                            type="text"
+                            value={childName}
+                            onChange={(e) => { setChildName(e.target.value); setChildNameError(""); }}
+                            placeholder="e.g. Extra foundation works"
+                            className={`w-full rounded-xl border px-3.5 py-2.5 text-[13.5px] text-[#1E2621] placeholder:text-[#ADA695] focus:outline-none focus:ring-2 ${
+                                childNameError ? "border-[#B0453A] focus:border-[#B0453A] focus:ring-[#B0453A]/20" : "border-[#E4E1D8] focus:border-[#3E6B52] focus:ring-[#3E6B52]/20"
+                            }`}
+                        />
+                        {childNameError && (
+                            <p className="mt-1 text-[11.5px] font-medium text-[#B0453A]">{childNameError}</p>
+                        )}
+                    </div>
+
+                    <div>
+                        <label className="mb-1.5 block text-[12px] font-medium text-[#5B655F]">
+                            {isAssessment ? "Predicted cost" : "Actual cost"} (RM)
+                        </label>
+                        <input
+                            ref={costInputRef}
+                            type="text"
+                            inputMode="decimal"
+                            value={displayCost}
+                            onChange={() => { if (costError) setCostError(""); }}
+                            onKeyDown={(e) => {
+                                if (e.key === "Backspace") {
+                                    e.preventDefault();
+                                    setRawDigits((prev) => prev.slice(0, -1));
+                                } else if (/^\d$/.test(e.key)) {
+                                    e.preventDefault();
+                                    setRawDigits((prev) => prev + e.key);
+                                }
+                            }}
+                            className={`w-full rounded-xl border px-3.5 py-2.5 text-[13.5px] text-[#1E2621] placeholder:text-[#ADA695] focus:outline-none focus:ring-2 ${
+                                costError ? "border-[#B0453A] focus:border-[#B0453A] focus:ring-[#B0453A]/20" : "border-[#E4E1D8] focus:border-[#3E6B52] focus:ring-[#3E6B52]/20"
+                            }`}
+                        />
+                        {costError && (
+                            <p className="mt-1 text-[11.5px] font-medium text-[#B0453A]">{costError}</p>
+                        )}
+                    </div>
+                </div>
+
+                {!isAssessment && (
+                <p className="mt-3 text-[12px] text-[#ADA695]">
+                    The predicted cost for this item will be set to RM 0.00 (not editable).
+                </p>
+                )}
+
+                <div className="mt-6 flex gap-3">
+                    <button
+                        type="button"
+                        onClick={handleClose}
+                        className="flex-1 rounded-xl border border-[#E4E1D8] bg-white px-4 py-2.5 text-[13px] font-medium text-[#5B655F] transition-colors hover:border-[#C9D3CC] hover:text-[#2C4A3A]"
+                    >
+                        Cancel
+                    </button>
+                    <button
+                        type="button"
+                        onClick={handleSubmit}
+                        className="flex-1 rounded-xl bg-[#3E6B52] px-4 py-2.5 text-[13px] font-semibold text-white transition-colors hover:bg-[#325A44]"
+                    >
+                        Add item
                     </button>
                 </div>
             </div>

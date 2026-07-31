@@ -52,82 +52,65 @@ import {
   Gauge,
   Layers3,
   MapPin,
+  Minus,
   Ruler,
   Search,
+  TrendingDown,
+  TrendingUp,
   Wallet,
   X,
 } from "lucide-react";
 import { Project } from "@/lib/server/project-access"; // Adjust this import path
 import { BackButton } from "@/components/ui/BackButton";
 
+const T = {
+  ink: "#1E2621",
+  forest: "#3E6B52",
+  forestDeep: "#2A4B3A",
+  cream: "#FBFAF7",
+  hairline: "#E4E1D8",
+  hairlineSoft: "#EFEDE6",
+  muted: "#5B655F",
+  mutedSoft: "#8A938C",
+  chip: "#F6F6F2",
+  clay: "#B14A3D",
+  amber: "#B5842A",
+};
+
 /* ---------------- Helpers ---------------- */
 
-function formatDateTime(value?: string) {
-  if (!value) return "Not provided";
-  const date = new Date(value.replace(" ", "T"));
-  if (Number.isNaN(date.getTime())) return value;
-  return new Intl.DateTimeFormat("en-US", {
-    dateStyle: "medium",
-    timeStyle: "short",
-  }).format(date);
-}
+const formatCurrency = (v: any) =>
+  "RM " + Number(v || 0).toLocaleString("en-MY", { maximumFractionDigits: 0 });
 
-function formatCurrency(value: string) {
-  const n = parseFloat(value);
-  if (Number.isNaN(n)) return value;
-  return `RM ${n.toLocaleString("en-US", { maximumFractionDigits: 0 })}`;
-}
+const formatSize = (v: any) => `${Number(v || 0).toLocaleString()} m²`;
 
-function formatSize(value: string) {
-  const n = parseFloat(value);
-  if (Number.isNaN(n)) return value;
-  return `${n.toLocaleString("en-US")} m²`;
-}
+const formatDateTime = (v: any) =>
+  new Date(v).toLocaleDateString("en-MY", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  });
 
 function ratingTone(rating: number) {
   if (rating >= 60)
-    return {
-      text: "text-[#2C4A3A]",
-      bg: "bg-[#EEF2EC]",
-      border: "border-[#CFE0D6]",
-      fill: "bg-[#3E6B52]",
-    };
+    return { text: T.forest, fill: T.forest, ring: "rgba(62,107,82,0.14)" };
   if (rating >= 30)
-    return {
-      text: "text-[#7A5A20]",
-      bg: "bg-[#FBF3E7]",
-      border: "border-[#EBD8B8]",
-      fill: "bg-[#C08A3E]",
-    };
-  return {
-    text: "text-[#8C3D33]",
-    bg: "bg-[#FBEDEB]",
-    border: "border-[#E7C1BA]",
-    fill: "bg-[#B4483C]",
-  };
+    return { text: T.amber, fill: T.amber, ring: "rgba(181,132,42,0.14)" };
+  return { text: T.clay, fill: T.clay, ring: "rgba(177,74,61,0.14)" };
 }
 
-function ratingTier(rating: number): Exclude<Tier, "all"> {
-  if (rating >= 60) return "strong";
-  if (rating >= 30) return "moderate";
-  return "weak";
-}
-
-function ratingTierLabel(rating: number) {
-  const tier = ratingTier(rating);
-  if (tier === "strong") return "Strong";
-  if (tier === "moderate") return "Moderate";
-  return "Needs work";
+function getCertificationName(
+  certifiedScaleRange: Record<string, [number, number]>,
+  actualRating: number,
+): string {
+  return (
+    Object.entries(certifiedScaleRange).find(
+      ([_, [min, max]]) => actualRating >= min && actualRating <= max,
+    )?.[0] ?? "Unknown"
+  );
 }
 
 type Tier = "all" | "strong" | "moderate" | "weak";
-
-const TIER_OPTIONS: { id: Tier; label: string }[] = [
-  { id: "all", label: "All" },
-  { id: "strong", label: "Strong · 60+" },
-  { id: "moderate", label: "Moderate · 30–59" },
-  { id: "weak", label: "Needs work · <30" },
-];
 
 /** Matches multiple search tokens against all key textual fields in a project */
 function matchesQuery(project: Project, query: string) {
@@ -139,7 +122,7 @@ function matchesQuery(project: Project, query: string) {
     project.category,
     project.location,
     project.year,
-    project.building_type,
+    project.type_name,
     project.classification,
     project.target_certification,
   ]
@@ -148,11 +131,6 @@ function matchesQuery(project: Project, query: string) {
     .toLowerCase();
 
   return tokens.every((token) => searchableText.includes(token));
-}
-
-function matchesTier(project: Project, tier: Tier) {
-  if (tier === "all") return true;
-  return ratingTier(project.rating ?? 0) === tier;
 }
 
 /** Builds a compact page-number list with ellipses, e.g. [1, "…", 4, 5, 6, "…", 20] */
@@ -186,34 +164,6 @@ function groupByYear(items: Project[]) {
   return groups;
 }
 
-/** Powers the "at a glance" stat strip — computed off the full history, not the current filter/page, so it always reads as an overview. */
-function computeStats(projects: Project[]) {
-  const total = projects.length;
-
-  const avgRating =
-    total > 0
-      ? Math.round(
-          projects.reduce((sum, p) => sum + (p.rating ?? 0), 0) / total
-        )
-      : 0;
-
-  const certCounts = new Map<string, number>();
-  for (const p of projects) {
-    const cert = p.target_certification || "Not set";
-    certCounts.set(cert, (certCounts.get(cert) ?? 0) + 1);
-  }
-  let topCert = "—";
-  let topCount = 0;
-  for (const [cert, count] of certCounts) {
-    if (count > topCount) {
-      topCert = cert;
-      topCount = count;
-    }
-  }
-
-  return { total, avgRating, topCert };
-}
-
 const PER_PAGE = 5;
 
 interface ClientProps {
@@ -223,32 +173,16 @@ interface ClientProps {
 export default function ProjectHistoryClient({ initialProjects }: ClientProps) {
   const [page, setPage] = useState(1);
   const [query, setQuery] = useState("");
-  const [tier, setTier] = useState<Tier>("all");
   const [projects] = useState<Project[]>(initialProjects);
-
-  const stats = useMemo(() => computeStats(projects), [projects]);
 
   const searchFiltered = useMemo(
     () => projects.filter((project) => matchesQuery(project, query)),
-    [query, projects]
+    [query, projects],
   );
 
-  const tierCounts = useMemo(() => {
-    const counts: Record<Tier, number> = {
-      all: searchFiltered.length,
-      strong: 0,
-      moderate: 0,
-      weak: 0,
-    };
-    for (const p of searchFiltered) {
-      counts[ratingTier(p.rating ?? 0)]++;
-    }
-    return counts;
-  }, [searchFiltered]);
-
   const filteredProjects = useMemo(
-    () => searchFiltered.filter((project) => matchesTier(project, tier)),
-    [searchFiltered, tier]
+    () => searchFiltered.filter((project) => project),
+    [searchFiltered],
   );
 
   const totalPages = Math.max(1, Math.ceil(filteredProjects.length / PER_PAGE));
@@ -261,7 +195,7 @@ export default function ProjectHistoryClient({ initialProjects }: ClientProps) {
 
   const groups = useMemo(() => groupByYear(paged), [paged]);
 
-  const hasFilters = Boolean(query) || tier !== "all";
+  const hasFilters = Boolean(query);
 
   const goTo = (p: number) => setPage(Math.min(Math.max(p, 1), totalPages));
 
@@ -270,24 +204,15 @@ export default function ProjectHistoryClient({ initialProjects }: ClientProps) {
     setPage(1);
   };
 
-  const handleTierChange = (value: Tier) => {
-    setTier(value);
-    setPage(1);
-  };
-
   const clearFilters = () => {
     setQuery("");
-    setTier("all");
     setPage(1);
   };
 
   return (
     <div className="mx-auto max-w-275 px-4 pb-10 pt-6 sm:px-6 md:px-10">
       {/* ---------------- Breadcrumb ---------------- */}
-      <BackButton
-        text="Dashboard"
-        redirect="/dashboard"
-      />
+      <BackButton text="Dashboard" redirect="/dashboard" />
 
       {/* ---------------- Intro ---------------- */}
       <section className="relative mb-6 overflow-hidden rounded-3xl border border-[#E4E1D8] bg-[#FCFCF8] p-5 shadow-[0_8px_24px_rgba(30,38,33,0.04)] sm:p-6 md:p-8">
@@ -380,7 +305,7 @@ export default function ProjectHistoryClient({ initialProjects }: ClientProps) {
           </motion.div>
         ) : (
           <motion.div
-            key={`${query}-${tier}-${safePage}`}
+            key={`${query}-${safePage}`}
             initial={{ opacity: 0, y: 8 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0 }}
@@ -404,7 +329,7 @@ export default function ProjectHistoryClient({ initialProjects }: ClientProps) {
 
                 <div className="relative space-y-3.5 pl-4 sm:space-y-4 sm:pl-6">
                   {/* Gradient vine rail, replacing the flat gray border-l */}
-                  <div className="absolute left-0 top-2 bottom-2 w-px bg-gradient-to-b from-[#3E6B52] via-[#8FAF9C] to-[#E4E1D8]" />
+                  <div className="absolute left-0 top-2 bottom-2 w-px bg-linear-to-b from-[#3E6B52] via-[#8FAF9C] to-[#E4E1D8]" />
 
                   {group.items.map((project, pi) => (
                     <motion.div
@@ -414,7 +339,7 @@ export default function ProjectHistoryClient({ initialProjects }: ClientProps) {
                       animate={{ opacity: 1, y: 0 }}
                       transition={{ duration: 0.3, delay: pi * 0.04 }}
                     >
-                      <span className="absolute -left-[21px] top-7 h-2.5 w-2.5 rounded-full border-2 border-[#FCFCF8] bg-[#3E6B52] transition-transform duration-200 group-hover:scale-125 group-hover:shadow-[0_0_0_6px_rgba(62,107,82,0.15)] sm:-left-[29px]" />
+                      <span className="absolute -left-5.25 top-7 h-2.5 w-2.5 rounded-full border-2 border-[#FCFCF8] bg-[#3E6B52] transition-transform duration-200 group-hover:scale-125 group-hover:shadow-[0_0_0_6px_rgba(62,107,82,0.15)] sm:-left-7.25" />
                       <ProjectCard project={project} />
                     </motion.div>
                   ))}
@@ -429,43 +354,6 @@ export default function ProjectHistoryClient({ initialProjects }: ClientProps) {
       {filteredProjects.length > 0 && (
         <Pagination page={safePage} totalPages={totalPages} onChange={goTo} />
       )}
-    </div>
-  );
-}
-
-/* ---------------- Stat card ---------------- */
-function StatCard({
-  icon: Icon,
-  label,
-  value,
-  tone,
-}: {
-  icon: typeof Layers3;
-  label: string;
-  value: string;
-  tone?: { text: string; bg: string; border: string };
-}) {
-  return (
-    <div className="flex items-center gap-2.5 rounded-2xl border border-[#E4E1D8] bg-white px-3 py-3 shadow-[0_4px_12px_rgba(30,38,33,0.03)] sm:gap-3 sm:px-4 sm:py-3.5">
-      <span
-        className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl sm:h-10 sm:w-10 ${
-          tone ? `${tone.bg} ${tone.text}` : "bg-[#3E6B52]/10 text-[#3E6B52]"
-        }`}
-      >
-        <Icon size={16} className="sm:hidden" />
-        <Icon size={18} className="hidden sm:block" />
-      </span>
-      <div className="min-w-0">
-        <p
-          className="truncate text-[14px] font-bold text-[#1E2621] sm:text-[17px]"
-          style={{ fontFamily: "var(--font-display)" }}
-        >
-          {value}
-        </p>
-        <p className="truncate text-[10px] text-[#8A938C] sm:text-[11.5px]">
-          {label}
-        </p>
-      </div>
     </div>
   );
 }
@@ -507,104 +395,437 @@ function EmptyState({
   );
 }
 
-/* ---------------- Rating gauge ---------------- */
-function RatingGauge({ rating }: { rating: number }) {
-  const tone = ratingTone(rating);
-  const pct = Math.max(0, Math.min(100, rating));
+function CostVarianceStrip({
+  budget,
+  adjustedCost,
+}: {
+  budget?: string;
+  adjustedCost?: string;
+}) {
+  const b = Number(budget) || 0;
+  const a = Number(adjustedCost) || 0;
+  if (!b && !a) return null;
+
+  const diffPct = b > 0 ? ((a - b) / b) * 100 : 0;
+  const status = diffPct <= -3 ? "under" : diffPct >= 3 ? "over" : "onbudget";
+
+  const statusMeta = {
+    under: {
+      color: T.forest,
+      bg: "rgba(62,107,82,0.09)",
+      icon: TrendingDown,
+      label: "under budget",
+    },
+    over: {
+      color: T.clay,
+      bg: "rgba(177,74,61,0.09)",
+      icon: TrendingUp,
+      label: "over budget",
+    },
+    onbudget: {
+      color: T.amber,
+      bg: "rgba(181,132,42,0.09)",
+      icon: Minus,
+      label: "on budget",
+    },
+  }[status];
+
+  const trackMax = Math.max(b, a, 1) * 1.18;
+  const clamp = (n: number) => Math.min(96, Math.max(4, n));
+  const budgetPos = clamp((b / trackMax) * 100);
+  const predPos = clamp((a / trackMax) * 100);
+  const Icon = statusMeta.icon;
+
   return (
-    <div
-      className={`flex flex-col gap-1.5 rounded-2xl border px-3 py-2 sm:px-3.5 sm:py-2.5 ${tone.bg} ${tone.border}`}
-    >
-      <div className="flex items-center justify-between gap-4">
+    <div className="mt-4 sm:mt-4.5">
+      <div className="mb-2 flex items-center justify-between">
         <span
-          className={`text-[9.5px] font-semibold uppercase tracking-[0.06em] ${tone.text}`}
-          style={{ fontFamily: "var(--font-mono)" }}
+          className="text-[9.5px] font-semibold uppercase tracking-[0.08em]"
+          style={{ fontFamily: "var(--font-mono)", color: T.mutedSoft }}
         >
-          {ratingTierLabel(rating)}
+          Estimate vs. predicted
         </span>
-        <span className={`text-[13px] font-bold sm:text-[14px] ${tone.text}`}>
-          {rating}
+        <span
+          className="flex items-center gap-1 rounded-full px-2 py-[3px] text-[10.5px] font-bold"
+          style={{ background: statusMeta.bg, color: statusMeta.color }}
+        >
+          <Icon size={11} strokeWidth={2.75} />
+          {b > 0 ? `${diffPct > 0 ? "+" : ""}${diffPct.toFixed(1)}%` : "—"}
         </span>
       </div>
-      <div className="relative h-1.5 w-24 overflow-hidden rounded-full bg-black/[0.06] sm:w-28">
-        {/* zone ticks at the 30 / 60 tier boundaries */}
-        <span className="absolute inset-y-0 left-[30%] w-px bg-black/10" />
-        <span className="absolute inset-y-0 left-[60%] w-px bg-black/10" />
+
+      <div className="relative h-6">
+        {/* base track */}
         <div
-          className={`h-full rounded-full ${tone.fill} transition-[width] duration-500 ease-out`}
-          style={{ width: `${pct}%` }}
+          className="absolute left-0 right-0 top-1/2 h-[3px] -translate-y-1/2 rounded-full"
+          style={{ background: T.hairlineSoft }}
+        />
+        {/* budgeted range fill */}
+        <div
+          className="absolute left-0 top-1/2 h-[3px] -translate-y-1/2 rounded-full"
+          style={{ width: `${budgetPos}%`, background: "rgba(30,38,33,0.10)" }}
+        />
+        {/* connecting bracket between the two markers */}
+        <div
+          className="absolute top-1/2 h-[3px] -translate-y-1/2 rounded-full transition-all duration-500"
+          style={{
+            left: `${Math.min(budgetPos, predPos)}%`,
+            width: `${Math.abs(predPos - budgetPos)}%`,
+            background: statusMeta.color,
+            opacity: 0.55,
+          }}
+        />
+        {/* budget marker — diamond */}
+        <div
+          className="absolute top-1/2 h-2 w-2 -translate-x-1/2 -translate-y-1/2 rotate-45"
+          style={{ left: `${budgetPos}%`, background: T.ink }}
+          title={`Budgeted ${formatCurrency(b)}`}
+        />
+        {/* predicted marker — dot */}
+        <div
+          className="absolute top-1/2 h-3 w-3 -translate-x-1/2 -translate-y-1/2 rounded-full ring-2 ring-white transition-all duration-500"
+          style={{ left: `${predPos}%`, background: statusMeta.color }}
+          title={`Predicted ${formatCurrency(a)}`}
         />
       </div>
+
+      <div className="mt-1 flex items-center justify-between text-[11px] sm:text-[11.5px]">
+        <span className="flex items-center gap-1" style={{ color: T.muted }}>
+          <span
+            className="inline-block h-1.5 w-1.5 rotate-45"
+            style={{ background: T.ink }}
+          />
+          Budgeted&nbsp;
+          <span className="font-semibold" style={{ color: T.ink }}>
+            {formatCurrency(b)}
+          </span>
+        </span>
+        <span className="flex items-center gap-1" style={{ color: T.muted }}>
+          <span
+            className="inline-block h-1.5 w-1.5 rounded-full"
+            style={{ background: statusMeta.color }}
+          />
+          Predicted&nbsp;
+          <span className="font-semibold" style={{ color: statusMeta.color }}>
+            {formatCurrency(a)}
+          </span>
+        </span>
+      </div>
     </div>
+  );
+}
+
+/* ---------------- Certification badge colours ---------------- */
+
+function certBadgeStyle(cert: string | null | undefined) {
+  switch (cert) {
+    case "Platinum":
+      return { border: "#CFE0D6", text: "#2C4A3A", bg: "#EEF2EC" };
+    case "Gold":
+      return { border: "#EBD8B8", text: "#7A5A20", bg: "#FBF3E7" };
+    case "Silver":
+      return { border: "#D8D4C8", text: "#5B655F", bg: "#F6F6F2" };
+    case "Certified":
+      return { border: "#EBD8B8", text: "#7A5A20", bg: "#FBF3E7" };
+    default:
+      return { border: "#E7C1BA", text: "#8C3D33", bg: "#FBEDEB" };
+  }
+}
+
+/* ---------------- Score gauge (circular) ---------------- */
+function ScoreGauge({
+  rating,
+  label,
+  certification,
+}: {
+  rating: number;
+  label: string;
+  certification?: string;
+}) {
+  const tone = ratingTone(rating);
+  const pct = Math.max(0, Math.min(100, rating));
+  const r = 21;
+  const c = 2 * Math.PI * r;
+  const offset = c - (pct / 100) * c;
+
+  return (
+    <div
+      className="flex items-center gap-2.5 rounded-2xl border px-3 py-2 sm:px-3.5 sm:py-2.5"
+      style={{ borderColor: T.hairline, background: "#fff" }}
+    >
+      <svg
+        width="50"
+        height="50"
+        viewBox="0 0 50 50"
+        className="shrink-0 -rotate-90"
+      >
+        <circle
+          cx="25"
+          cy="25"
+          r={r}
+          fill="none"
+          stroke={T.hairlineSoft}
+          strokeWidth="4"
+        />
+        <circle
+          cx="25"
+          cy="25"
+          r={r}
+          fill="none"
+          stroke={tone.fill}
+          strokeWidth="4"
+          strokeLinecap="round"
+          strokeDasharray={c}
+          strokeDashoffset={offset}
+          style={{ transition: "stroke-dashoffset 600ms ease-out" }}
+        />
+        <text
+          x="25"
+          y="25"
+          textAnchor="middle"
+          dominantBaseline="central"
+          transform="rotate(90 25 25)"
+          fontSize="13"
+          fontWeight="700"
+          fill={T.ink}
+        >
+          {rating}
+        </text>
+      </svg>
+      <div className="flex flex-col leading-tight">
+        <span
+          className="text-[9px] font-semibold uppercase tracking-[0.06em] mb-1.5"
+          style={{ fontFamily: "var(--font-mono)", color: tone.text }}
+        >
+          {label}
+        </span>
+        <div
+          className="flex shrink-0 -rotate-2 items-center gap-2 rounded-lg border-2 border-dashed px-1.5 py-1"
+          style={{
+            borderColor: certBadgeStyle(certification).border,
+            color: certBadgeStyle(certification).text,
+          }}
+        >
+          <Award size={15} />
+          <span
+            className="text-[8.5px] font-bold uppercase tracking-[0.06em]"
+            style={{ fontFamily: "var(--font-mono)" }}
+          >
+            {certification ?? "N/A"}
+          </span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function CornerTick({ className }: any) {
+  return (
+    <svg
+      width="14"
+      height="14"
+      viewBox="0 0 14 14"
+      className={className}
+      style={{ color: T.mutedSoft }}
+    >
+      <path
+        d="M7 0V5.5M7 14V8.5M0 7H5.5M14 7H8.5"
+        stroke="currentColor"
+        strokeWidth="1"
+      />
+    </svg>
   );
 }
 
 /* ---------------- Project card ---------------- */
 function ProjectCard({ project }: { project: Project }) {
   return (
-    <Link
+    <a
       href={`/projects/${project.id}`}
-      className="group/card block overflow-hidden rounded-3xl border border-[#E4E1D8] bg-white shadow-[0_8px_24px_rgba(30,38,33,0.04)] transition-all hover:-translate-y-0.5 hover:border-[#C9D3CC] hover:shadow-[0_16px_36px_rgba(30,38,33,0.08)] focus-visible:outline focus-visible:outline-offset-2 focus-visible:outline-[#3E6B52]"
+      className="group/card relative block overflow-hidden rounded-3xl border bg-white transition-all hover:-translate-y-0.5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
+      style={{
+        borderColor: T.hairline,
+        boxShadow: "0 8px 24px rgba(30,38,33,0.04)",
+        outlineColor: T.forest,
+      }}
+      onMouseEnter={(e) => {
+        e.currentTarget.style.borderColor = "#C9D3CC";
+        e.currentTarget.style.boxShadow = "0 16px 36px rgba(30,38,33,0.09)";
+      }}
+      onMouseLeave={(e) => {
+        e.currentTarget.style.borderColor = T.hairline;
+        e.currentTarget.style.boxShadow = "0 8px 24px rgba(30,38,33,0.04)";
+      }}
     >
-      <div className="flex flex-col gap-4 p-5 sm:flex-row sm:items-center sm:justify-between sm:gap-5 sm:p-6 md:p-7">
+      {/* graph-paper texture, confined to the right-hand margin so it never
+              sits under text — visible without competing with content */}
+      <div
+        className="pointer-events-none absolute inset-y-0 right-0 hidden w-28 opacity-[0.09] sm:block"
+        style={{
+          backgroundImage: `radial-gradient(circle, ${T.mutedSoft} 1.2px, transparent 1.2px)`,
+          backgroundSize: "14px 14px",
+          maskImage:
+            "linear-gradient(to left, black, black 40%, transparent 100%)",
+          WebkitMaskImage:
+            "linear-gradient(to left, black, black 40%, transparent 100%)",
+        }}
+      />
+
+      <CornerTick className="absolute left-3 top-3 opacity-0 transition-opacity duration-300 group-hover/card:opacity-70" />
+      <CornerTick className="absolute right-3 top-3 rotate-90 opacity-0 transition-opacity duration-300 group-hover/card:opacity-70" />
+
+      <div className="relative flex flex-col gap-4 p-5 sm:flex-row sm:items-start sm:justify-between sm:gap-6 sm:p-6 md:p-7">
         <div className="min-w-0 flex-1">
           <div className="mb-2 flex flex-wrap items-center gap-2">
             <span
-              className="rounded-full bg-[#F6F6F2] px-2.5 py-0.5 text-[10.5px] font-medium uppercase tracking-[0.04em] text-[#7C8880] sm:text-[11px]"
-              style={{ fontFamily: "var(--font-mono)" }}
+              className="rounded-full px-2.5 py-0.5 text-[10.5px] font-medium uppercase tracking-[0.04em] sm:text-[11px]"
+              style={{
+                fontFamily: "var(--font-mono)",
+                background: T.chip,
+                color: T.mutedSoft,
+              }}
             >
-              {project.building_type}
+              {project.type_name}
             </span>
             {project.classification && (
-              <span className="rounded-full bg-[#F6F6F2] px-2.5 py-0.5 text-[10.5px] font-medium text-[#7C8880] sm:text-[11px]">
+              <span
+                className="rounded-full px-2.5 py-0.5 text-[10.5px] font-medium sm:text-[11px]"
+                style={{ background: T.chip, color: T.mutedSoft }}
+              >
                 {project.classification}
               </span>
             )}
           </div>
 
           <h3
-            className="truncate text-[16.5px] font-bold leading-tight tracking-[-0.01em] text-[#1E2621] transition-colors group-hover/card:text-[#3E6B52] sm:text-[18px]"
-            style={{ fontFamily: "var(--font-display)" }}
+            className="truncate text-[16.5px] font-bold leading-tight tracking-[-0.01em] transition-colors sm:text-[18px]"
+            style={{ fontFamily: "var(--font-display)", color: T.ink }}
           >
             {project.name}
           </h3>
-          <p className="mt-1 truncate text-[12.5px] text-[#5B655F] sm:text-[13px]">
+          <p
+            className="mt-1 truncate text-[12.5px] sm:text-[13px]"
+            style={{ color: T.muted }}
+          >
             {project.category} &middot; {project.structure}
           </p>
 
-          <div className="mt-3.5 flex flex-wrap gap-x-4 gap-y-1.5 text-[12px] text-[#5B655F] sm:mt-4 sm:gap-x-5 sm:gap-y-2 sm:text-[12.5px]">
+          <div
+            className="mt-3.5 flex flex-wrap gap-x-4 gap-y-1.5 text-[12px] sm:mt-4 sm:gap-x-5 sm:gap-y-2 sm:text-[12.5px]"
+            style={{ color: T.muted }}
+          >
             <span className="flex items-center gap-1.5">
-              <MapPin size={13} className="shrink-0 text-[#8A938C]" />
+              <MapPin
+                size={13}
+                className="shrink-0"
+                style={{ color: T.mutedSoft }}
+              />
               {project.location}
             </span>
             <span className="flex items-center gap-1.5">
-              <Ruler size={13} className="shrink-0 text-[#8A938C]" />
+              <Ruler
+                size={13}
+                className="shrink-0"
+                style={{ color: T.mutedSoft }}
+              />
               {formatSize(project.size ?? "0")}
             </span>
             <span className="flex items-center gap-1.5">
-              <Wallet size={13} className="shrink-0 text-[#8A938C]" />
-              {formatCurrency(project.budget ?? "0.00")}
-            </span>
-            <span className="flex items-center gap-1.5">
-              <Calendar size={13} className="shrink-0 text-[#8A938C]" />
+              <Calendar
+                size={13}
+                className="shrink-0"
+                style={{ color: T.mutedSoft }}
+              />
               {project.year}
             </span>
           </div>
+
+          <CostVarianceStrip
+            budget={project.budget}
+            adjustedCost={project.adjusted_cost}
+          />
         </div>
 
-        <div className="flex flex-wrap items-center gap-2.5 sm:shrink-0 sm:flex-col sm:items-end sm:gap-2">
-          <RatingGauge rating={project.rating ?? 0} />
-          <span className="flex items-center gap-1.5 text-[11px] text-[#8A938C] sm:text-[11.5px]">
-            <Award size={12} className="shrink-0" />
-            {project.target_certification}
-          </span>
+        <div className="flex flex-row items-center gap-2.5 sm:shrink-0 sm:flex-col sm:items-end sm:gap-2.5">
+          {project.target_certification &&
+          project.target_certification !== "Not Certified" ? (
+            <div className="flex flex-col gap-1.5">
+              <ScoreGauge
+                rating={project.rating ?? 0}
+                label="Predicted"
+                certification={project.target_certification}
+              />
+              {project.actual_rating != null && (
+                <>
+                  <div className="flex items-center gap-2 px-1">
+                    <div className="h-px flex-1 bg-border" />
+                    <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                      vs.
+                    </span>
+                    <div className="h-px flex-1 bg-border" />
+                  </div>
+                  <ScoreGauge
+                    rating={project.actual_rating}
+                    label="Actual"
+                    certification={
+                      project.certifications
+                        ? getCertificationName(
+                            project.certifications
+                              .certifiedScaleRange as Record<
+                              string,
+                              [number, number]
+                            >,
+                            project.actual_rating,
+                          )
+                        : undefined
+                    }
+                  />
+                </>
+              )}
+            </div>
+          ) : (
+            <div className="flex flex-col items-start">
+              <span
+                className="mb-1.5 text-[9px] font-semibold uppercase tracking-[0.06em]"
+                style={{
+                  fontFamily: "var(--font-mono)",
+                  color: certBadgeStyle(project.target_certification).text,
+                }}
+              >
+                Predicted
+              </span>
+
+              <div
+                className="flex shrink-0 -rotate-2 items-center gap-2 rounded-lg border-2 border-dashed px-3 py-2"
+                style={{
+                  borderColor: certBadgeStyle(project.target_certification).border,
+                  color: certBadgeStyle(project.target_certification).text,
+                }}
+              >
+                <Award size={15} />
+                <span
+                  className="text-[10.5px] font-bold uppercase tracking-[0.06em]"
+                  style={{ fontFamily: "var(--font-mono)" }}
+                >
+                  {project.target_certification ?? "N/A"}
+                </span>
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
-      <div className="border-t border-[#EFEDE6] bg-[#FBFAF7] px-5 py-2.5 text-[11px] text-[#8A938C] sm:px-6 sm:text-[11.5px] md:px-7">
+      <div
+        className="relative border-t px-5 py-2.5 text-[11px] sm:px-6 sm:text-[11.5px] md:px-7"
+        style={{
+          borderColor: T.hairlineSoft,
+          background: T.cream,
+          color: T.mutedSoft,
+        }}
+      >
         Created {formatDateTime(project.created_at)}
       </div>
-    </Link>
+    </a>
   );
 }
 
@@ -689,7 +910,7 @@ function Pagination({
             >
               {p}
             </button>
-          )
+          ),
         )}
 
         <button

@@ -508,7 +508,7 @@ export default function ActualGBIMockPage() {
           </div>
           <div className="flex items-center gap-4">
             <div className="text-right">
-              <p className="font-mono text-[10px] uppercase tracking-[0.1em] text-[#8A938C]">
+              <p className="font-mono text-[10px] uppercase tracking-widest text-[#8A938C]">
                 Predicted
               </p>
               <p className="font-mono text-lg font-bold text-[#1C1F1D]/70">
@@ -520,7 +520,7 @@ export default function ActualGBIMockPage() {
             </div>
             <div className="h-8 w-px bg-[#E4E1D8]" />
             <div className="text-right">
-              <p className="font-mono text-[10px] uppercase tracking-[0.1em] text-[#3E6B52]">
+              <p className="font-mono text-[10px] uppercase tracking-widest text-[#3E6B52]">
                 Actual
               </p>
               <p className="font-mono text-lg font-bold text-[#3E6B52]">

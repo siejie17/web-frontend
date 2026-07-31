@@ -1,7 +1,6 @@
 "use client";
 
-import { createContext, ReactNode, useCallback, useContext, useRef } from "react";
-import { usePathname } from "next/navigation";
+import { createContext, ReactNode, useCallback, useContext } from "react";
 import { useState } from "react";
 
 type LoadingContextValue = {
@@ -30,7 +29,7 @@ export function LoadingProvider({ children }: { children: ReactNode }) {
   return (
     <LoadingContext.Provider value={{ isLoading, startLoading, stopLoading }}>
       {isLoading && (
-        <div className="fixed top-0 left-0 right-0 z-[9999] h-0.5 bg-sage-100">
+        <div className="fixed top-0 left-0 right-0 z-9999 h-0.5 bg-sage-100">
           <div className="h-full w-full origin-left animate-loading-bar bg-sage" />
         </div>
       )}

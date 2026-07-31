@@ -24,10 +24,12 @@ export async function GET(request: NextRequest) {
         const data = await res.json().catch(() => null);
 
         if (!res.ok) {
-            return NextResponse.json(
+            const response = NextResponse.json(
                 data ?? { message: "Unable to fetch user" },
                 { status: res.status }
             );
+            response.cookies.delete("session_token");
+            return response;
         }
 
         return NextResponse.json(

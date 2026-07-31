@@ -147,8 +147,8 @@ function PointsBadge({ points, active }: { points: number; active: boolean }) {
     <span
       className={`rounded-full px-2.5 py-1 font-mono text-[11px] font-bold tracking-wide transition-colors duration-150 ${
         active
-          ? "bg-[#3E6B52]/[0.1] text-[#3E6B52]"
-          : "bg-[#1C1F1D]/[0.05] text-[#1C1F1D]/35"
+          ? "bg-[#3E6B52]/10 text-[#3E6B52]"
+          : "bg-[#1C1F1D]/5 text-[#1C1F1D]/35"
       }`}
     >
       {points} pts
@@ -182,7 +182,7 @@ function IconButton({ onPress, icon, color, bg, activeBg }: any) {
     <button
       type="button"
       onClick={onPress}
-      className={`flex h-7 w-7 items-center justify-center rounded-lg ${bg} ${activeBg} transition-all duration-150 active:scale-90 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2`}
+      className={`flex h-7 w-7 items-center justify-center rounded-lg ${bg} ${activeBg} transition-all duration-150 active:scale-90 focus-visible:outline focus-visible:outline-offset-2`}
     >
       <IconCmp size={14} color={color} />
     </button>
@@ -238,7 +238,7 @@ function CustomItemRow({
   onDelete: () => void;
 }) {
   return (
-    <div className="mb-1.5 flex items-center gap-3 rounded-lg border border-[#C08A3E]/25 bg-[#C08A3E]/[0.06] px-3 py-2">
+    <div className="mb-1.5 flex items-center gap-3 rounded-lg border border-[#C08A3E]/25 bg-[#C08A3E]/6 px-3 py-2">
       <span className="flex h-4 w-4 shrink-0 items-center justify-center rounded-[5px] bg-[#C08A3E]">
         <Check size={11} strokeWidth={3} className="text-white" />
       </span>
@@ -325,7 +325,7 @@ function InfoGuideModal({
           >
             <div className="flex items-center justify-between border-b border-[#1E2621]/8 px-5 py-4">
               <div>
-                <p className="text-[10px] font-semibold uppercase tracking-[0.1em] text-[#3E6B52]">
+                <p className="text-[10px] font-semibold uppercase tracking-widest text-[#3E6B52]">
                   {label}
                 </p>
                 <h3 className="font-display text-base font-semibold text-[#1E2621]">
@@ -843,7 +843,7 @@ const GreenElementsScreen = ({
         ),
       }));
     },
-    [checkedOptions],
+    [checkedOptions, setCheckedOptions, setCriteriaMarks],
   );
 
   const handleCustomInputChange = useCallback((itemId: ID, text: string) => {
@@ -1052,7 +1052,7 @@ const GreenElementsScreen = ({
         });
       }
     },
-    [selectedCriterion, criteria, checkedItems, checkedSubitems, customItems],
+    [selectedCriterion, criteria, checkedItems, checkedSubitems, customItems, setCriteriaMarks, setCustomItems],
   );
 
   // Update criteriaTotalMarks whenever criteriaMarks changes
@@ -1320,7 +1320,7 @@ const GreenElementsScreen = ({
         <span className="flex-1 truncate text-sm font-semibold text-[#1C1F1D]">
           {selectedItem.description}
         </span>
-        <span className="shrink-0 rounded-full bg-[#3E6B52]/[0.08] px-2.5 py-1 font-mono text-xs font-bold tracking-wide text-[#3E6B52]">
+        <span className="shrink-0 rounded-full bg-[#3E6B52]/8 px-2.5 py-1 font-mono text-xs font-bold tracking-wide text-[#3E6B52]">
           {selectedItem.marks} pts
         </span>
       </div>
@@ -1374,10 +1374,10 @@ const GreenElementsScreen = ({
           {/* ── Main Card ── */}
           <div
             className={[
-              "group overflow-hidden rounded-[20px] bg-white transition-all duration-200 ease-out",
+              "group overflow-hidden rounded-xl2 bg-white transition-all duration-200 ease-out",
               isChecked && hasCheckbox
-                ? "border border-[#3E6B52]/[0.16] border-l-[3px] border-l-[#3E6B52] shadow-[0_1px_2px_rgba(28,31,29,0.04),0_6px_16px_-8px_rgba(62,107,82,0.18)]"
-                : "border border-[#1C1F1D]/[0.06] shadow-[0_1px_2px_rgba(28,31,29,0.03)] hover:border-[#1C1F1D]/[0.09] hover:shadow-[0_1px_2px_rgba(28,31,29,0.04),0_12px_28px_-14px_rgba(28,31,29,0.14)]",
+                ? "border border-[#3E6B52]/16 border-l-[3px] border-l-[#3E6B52] shadow-[0_1px_2px_rgba(28,31,29,0.04),0_6px_16px_-8px_rgba(62,107,82,0.18)]"
+                : "border border-[#1C1F1D]/6 shadow-[0_1px_2px_rgba(28,31,29,0.03)] hover:border-[#1C1F1D]/9 hover:shadow-[0_1px_2px_rgba(28,31,29,0.04),0_12px_28px_-14px_rgba(28,31,29,0.14)]",
             ].join(" ")}
           >
             <div className="px-5 py-4.5">
@@ -1401,7 +1401,7 @@ const GreenElementsScreen = ({
                     } ${
                       isUnchanged
                         ? "cursor-not-allowed opacity-60"
-                        : "cursor-pointer hover:scale-[1.06] hover:border-[#3E6B52]/70 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#3E6B52]/40"
+                        : "cursor-pointer hover:scale-[1.06] hover:border-[#3E6B52]/70 focus-visible:outline focus-visible:outline-offset-2 focus-visible:outline-[#3E6B52]/40"
                     }`}
                   >
                     {isChecked && (
@@ -1413,7 +1413,7 @@ const GreenElementsScreen = ({
                 {/* Description */}
                 <button
                   type="button"
-                  className="mr-3 flex-1 rounded-lg text-left transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#3E6B52]/30"
+                  className="mr-3 flex-1 rounded-lg text-left transition-colors focus-visible:outline focus-visible:outline-offset-2 focus-visible:outline-[#3E6B52]/30"
                   onClick={
                     isUnchanged
                       ? undefined
@@ -1421,7 +1421,7 @@ const GreenElementsScreen = ({
                   }
                 >
                   <span
-                    className={`text-[13.5px] leading-[20px] tracking-[-0.01em] ${
+                    className={`text-[13.5px] leading-5 tracking-[-0.01em] ${
                       hasSubitems
                         ? "font-semibold text-[#1C1F1D]/90"
                         : isChecked
@@ -1509,8 +1509,8 @@ const GreenElementsScreen = ({
                           key={oi}
                           className={`flex w-full items-center rounded-[14px] px-3.5 py-2.5 text-left transition-all duration-150 ease-out ${
                             isOptChecked
-                              ? "bg-[#3E6B52]/[0.08] ring-1 ring-inset ring-[#3E6B52]/15"
-                              : "bg-[#1C1F1D]/[0.025] hover:bg-[#1C1F1D]/[0.05]"
+                              ? "bg-[#3E6B52]/8 ring-1 ring-inset ring-[#3E6B52]/15"
+                              : "bg-[#1C1F1D]/2.5 hover:bg-[#1C1F1D]/5"
                           }`}
                           onClick={() =>
                             handleOptionToggle(
@@ -1563,7 +1563,7 @@ const GreenElementsScreen = ({
                                   option.sub_description as string,
                                 );
                               }}
-                              className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-[#9CA3AF] transition-colors hover:bg-[#1C1F1D]/[0.06]"
+                              className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-[#9CA3AF] transition-colors hover:bg-[#1C1F1D]/6"
                             >
                               <Info size={14} />
                             </span>
@@ -1634,11 +1634,11 @@ const GreenElementsScreen = ({
                       <div className="mt-4">
                         {/* Section divider */}
                         <div className="mb-2.5 flex items-center gap-2">
-                          <div className="h-px flex-1 bg-[#1C1F1D]/[0.08]" />
+                          <div className="h-px flex-1 bg-[#1C1F1D]/8" />
                           <span className="text-[10.5px] font-semibold uppercase tracking-[0.08em] text-[#1C1F1D]/32">
                             Choose one group
                           </span>
-                          <div className="h-px flex-1 bg-[#1C1F1D]/[0.08]" />
+                          <div className="h-px flex-1 bg-[#1C1F1D]/8" />
                         </div>
 
                         <div className="space-y-2">
@@ -1652,12 +1652,12 @@ const GreenElementsScreen = ({
                             return (
                               <div
                                 key={`${group.id}-${gi}`}
-                                className={`rounded-[16px] border p-3 transition-all duration-200 ease-out ${
+                                className={`rounded-2xl border p-3 transition-all duration-200 ease-out ${
                                   isActive
-                                    ? "border-[#6366F1]/30 bg-[#6366F1]/[0.05] shadow-[0_2px_10px_-4px_rgba(99,102,241,0.18)]"
+                                    ? "border-[#6366F1]/30 bg-[#6366F1]/5 shadow-[0_2px_10px_-4px_rgba(99,102,241,0.18)]"
                                     : isDimmed
-                                      ? "border-[#1C1F1D]/[0.06] bg-[#1C1F1D]/[0.015] opacity-70"
-                                      : "border-[#1C1F1D]/[0.08] bg-[#1C1F1D]/[0.015]"
+                                      ? "border-[#1C1F1D]/6 bg-[#1C1F1D]/1.5 opacity-70"
+                                      : "border-[#1C1F1D]/8 bg-[#1C1F1D]/1.5"
                                 }`}
                               >
                                 {/* Radio row + label */}
@@ -1722,11 +1722,11 @@ const GreenElementsScreen = ({
                                       }));
                                     }
                                   }}
-                                  className="mb-2 flex w-full items-center text-left focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#6366F1]/40 rounded-lg"
+                                  className="mb-2 flex w-full items-center text-left focus-visible:outline focus-visible:outline-offset-2 focus-visible:outline-[#6366F1]/40 rounded-lg"
                                 >
                                   {/* Radio indicator */}
                                   <span
-                                    className={`mr-2.5 flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-full border-[2px] transition-all duration-150 ${
+                                    className={`mr-2.5 flex h-4.5 w-4.5 shrink-0 items-center justify-center rounded-full border-2 transition-all duration-150 ${
                                       isActive
                                         ? "border-[#6366F1]"
                                         : "border-[#1C1F1D]/20"
@@ -1821,7 +1821,7 @@ const GreenElementsScreen = ({
 
           {/* ── Subitems ── */}
           {hasSubitems ? (
-            <div className="mx-0.5 mt-2 rounded-[16px] border border-[#1C1F1D]/[0.05] bg-[#1C1F1D]/[0.012] p-2.5">
+            <div className="mx-0.5 mt-2 rounded-2xl border border-[#1C1F1D]/5 bg-[#1C1F1D]/[0.012] p-2.5">
               {subitems.map((subitem) => (
                 <SubitemRow
                   key={subitem.id}
@@ -1858,6 +1858,10 @@ const GreenElementsScreen = ({
       );
     },
     [
+      handleOptionToggle,
+      setCriteriaMarks,
+      setSelectedDropdowns,
+      setSelectionMarks,
       activeExclusiveGroups,
       checkedItems,
       checkedSubitems,
@@ -1906,7 +1910,7 @@ const GreenElementsScreen = ({
             return (
               <div key={index} className="mb-6">
                 <div className="mb-3 flex items-center gap-2 px-1">
-                  <span className="flex h-7 w-7 items-center justify-center rounded-full bg-[#3E6B52]/[0.09]">
+                  <span className="flex h-7 w-7 items-center justify-center rounded-full bg-[#3E6B52]/9">
                     <Leaf
                       size={14}
                       className="text-[#3E6B52]"
@@ -1930,7 +1934,7 @@ const GreenElementsScreen = ({
   }
 
   return (
-    <div className="flex h-full min-h-[600px] flex-1 flex-col bg-white">
+    <div className="flex h-full min-h-150 flex-1 flex-col bg-white">
       <AnimatePresence>
         {showOverview && (
           <motion.div
@@ -1946,13 +1950,13 @@ const GreenElementsScreen = ({
             >
               {selectedCriterionData && (
                 <div className="flex min-w-0 flex-1 items-center gap-2">
-                  <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[#3E6B52]/[0.09]">
+                  <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[#3E6B52]/9">
                     <Leaf size={12} className="text-[#3E6B52]" />
                   </span>
                   <span className="truncate text-[12.5px] font-semibold text-[#1C1F1D]/85">
                     {selectedCriterionData.name}
                   </span>
-                  <span className="shrink-0 rounded-full bg-[#1C1F1D]/[0.05] px-2 py-0.5 font-mono text-[10.5px] font-bold text-[#1C1F1D]/50">
+                  <span className="shrink-0 rounded-full bg-[#1C1F1D]/5 px-2 py-0.5 font-mono text-[10.5px] font-bold text-[#1C1F1D]/50">
                     {criteriaMarks[selectedCriterionData.name] || 0}/
                     {selectedCriterionData.total_marks || 0}
                   </span>
@@ -1975,7 +1979,7 @@ const GreenElementsScreen = ({
           {/* Empty State Icon */}
           <div className="relative mb-7 flex h-24 w-24 items-center justify-center">
             <div className="absolute inset-0 rounded-full bg-[#3E6B52]/[0.07]" />
-            <div className="absolute inset-2 rounded-full bg-[#3E6B52]/[0.06]" />
+            <div className="absolute inset-2 rounded-full bg-[#3E6B52]/6" />
             <div className="relative flex h-14 w-14 items-center justify-center rounded-full bg-white shadow-[0_2px_8px_rgba(28,31,29,0.06)] ring-1 ring-[#3E6B52]/10">
               <Leaf size={26} strokeWidth={1.8} className="text-[#3E6B52]" />
             </div>
@@ -1990,7 +1994,7 @@ const GreenElementsScreen = ({
           </p>
 
           {/* Action suggestions */}
-          <div className="w-full max-w-md rounded-[20px] border border-[#3E6B52]/12 bg-white p-5 shadow-[0_1px_2px_rgba(28,31,29,0.03),0_8px_24px_-12px_rgba(28,31,29,0.08)]">
+          <div className="w-full max-w-md rounded-xl2 border border-[#3E6B52]/12 bg-white p-5 shadow-[0_1px_2px_rgba(28,31,29,0.03),0_8px_24px_-12px_rgba(28,31,29,0.08)]">
             <p className="mb-2.5 text-[13px] font-bold uppercase tracking-[0.06em] text-[#3E6B52]">
               Suggestions
             </p>
@@ -2020,7 +2024,7 @@ const GreenElementsScreen = ({
                   Assessment Criteria
                 </p>
                 {criteriaTotalMarks !== undefined && (
-                  <span className="hidden rounded-full bg-[#1C1F1D]/[0.05] px-2.5 py-1 font-mono text-[11px] font-bold tracking-wide text-[#1C1F1D]/45 sm:inline">
+                  <span className="hidden rounded-full bg-[#1C1F1D]/5 px-2.5 py-1 font-mono text-[11px] font-bold tracking-wide text-[#1C1F1D]/45 sm:inline">
                     {criteriaTotalMarks} pts total
                   </span>
                 )}
@@ -2045,7 +2049,7 @@ const GreenElementsScreen = ({
                       <span className="flex-1 truncate text-sm font-semibold text-[#1C1F1D]/85">
                         {item.name}
                       </span>
-                      <span className="shrink-0 rounded-full bg-[#1C1F1D]/[0.05] px-2.5 py-1 font-mono text-[11px] font-bold tracking-wide text-[#1C1F1D]/55">
+                      <span className="shrink-0 rounded-full bg-[#1C1F1D]/5 px-2.5 py-1 font-mono text-[11px] font-bold tracking-wide text-[#1C1F1D]/55">
                         {earned}/{total} pts
                       </span>
                     </div>
@@ -2077,9 +2081,9 @@ const GreenElementsScreen = ({
                   const isComplete = pct >= 100;
 
                   return (
-                    <div className="mt-4 flex items-stretch gap-2.5 rounded-[24px] border border-[#1C1F1D]/[0.06] bg-white p-2.5 shadow-[0_1px_2px_rgba(28,31,29,0.03),0_10px_28px_-16px_rgba(28,31,29,0.12)]">
+                    <div className="mt-4 flex items-stretch gap-2.5 rounded-3xl border border-[#1C1F1D]/6 bg-white p-2.5 shadow-[0_1px_2px_rgba(28,31,29,0.03),0_10px_28px_-16px_rgba(28,31,29,0.12)]">
                       {/* Scored box */}
-                      <div className="flex flex-1 flex-col items-center justify-center rounded-[18px] bg-[#3E6B52]/[0.05] py-3.5">
+                      <div className="flex flex-1 flex-col items-center justify-center rounded-[18px] bg-[#3E6B52]/5 py-3.5">
                         <span className="mb-1 text-[10.5px] font-bold uppercase tracking-[0.07em] text-[#3E6B52]/60">
                           Scored
                         </span>
@@ -2096,7 +2100,7 @@ const GreenElementsScreen = ({
                       </div>
 
                       {/* Total box */}
-                      <div className="flex flex-1 flex-col items-center justify-center rounded-[18px] bg-[#1C1F1D]/[0.03] py-3.5">
+                      <div className="flex flex-1 flex-col items-center justify-center rounded-[18px] bg-[#1C1F1D]/3 py-3.5">
                         <span className="mb-1 text-[10.5px] font-bold uppercase tracking-[0.07em] text-[#1C1F1D]/38">
                           Total
                         </span>
@@ -2107,7 +2111,7 @@ const GreenElementsScreen = ({
 
                       {/* Progress box */}
                       <div
-                        className="flex flex-col justify-center gap-2 rounded-[18px] bg-[#1C1F1D]/[0.03] px-4 py-3.5"
+                        className="flex flex-col justify-center gap-2 rounded-[18px] bg-[#1C1F1D]/3 px-4 py-3.5"
                         style={{ flex: 2 }}
                       >
                         <div className="flex items-baseline justify-between">
@@ -2124,12 +2128,12 @@ const GreenElementsScreen = ({
                             </span>
                           )}
                         </div>
-                        <div className="h-[6px] overflow-hidden rounded-full bg-[#1C1F1D]/[0.07]">
+                        <div className="h-1.5 overflow-hidden rounded-full bg-[#1C1F1D]/[0.07]">
                           <motion.div
                             className={`h-full rounded-full ${
                               isComplete
                                 ? "bg-[#3E6B52]"
-                                : "bg-gradient-to-r from-[#3E6B52]/70 to-[#3E6B52]"
+                                : "bg-linear-to-r from-[#3E6B52]/70 to-[#3E6B52]"
                             }`}
                             initial={false}
                             animate={{ width: `${pct}%` }}
@@ -2167,7 +2171,7 @@ const GreenElementsScreen = ({
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0 }}
                     transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
-                    className="rounded-[20px] border border-[#1C1F1D]/[0.07] bg-white mx-10 py-5 shadow-[0_1px_2px_rgba(28,31,29,0.03)]"
+                    className="rounded-xl2 border border-[#1C1F1D]/[0.07] bg-white mx-10 py-5 shadow-[0_1px_2px_rgba(28,31,29,0.03)]"
                 >
                   {renderCriterionItems()}
                 </motion.div>
@@ -2308,12 +2312,12 @@ function CertificationGauge({
           {bands.map((band) => (
             <div
               key={band.key}
-              className="absolute top-1/2 h-4 w-[2px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-[#1E2621]"
+              className="absolute top-1/2 h-4 w-0.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-[#1E2621]"
               style={{ left: `${band.left}%` }}
             />
           ))}
           <div
-            className="absolute top-1/2 h-4 w-[2px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-[#1E2621]"
+            className="absolute top-1/2 h-4 w-0.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-[#1E2621]"
             style={{ left: `100%` }}
           />
 

@@ -23,6 +23,7 @@ import {
   ChevronRight,
   Lock,
   History,
+  Award,
 } from "lucide-react";
 import CustomDropdown from "../form/CustomDropdown";
 
@@ -166,8 +167,8 @@ function PointsBadge({ points, active }: { points: number; active: boolean }) {
     <span
       className={`rounded-full px-2.5 py-1 font-mono text-[11px] font-bold tracking-wide transition-colors duration-150 ${
         active
-          ? "bg-[#3E6B52]/[0.1] text-[#3E6B52]"
-          : "bg-[#1C1F1D]/[0.05] text-[#1C1F1D]/35"
+          ? "bg-[#3E6B52]/10 text-[#3E6B52]"
+          : "bg-[#1C1F1D]/5 text-[#1C1F1D]/35"
       }`}
     >
       {points} pts
@@ -190,7 +191,7 @@ function AddCustomItemRow({
 
   return (
     <div
-      className="mt-3 flex items-center gap-2.5 rounded-[16px] border border-dashed bg-white px-4 py-3.5 transition-all duration-150 focus-within:border-solid focus-within:shadow-[0_1px_3px_rgba(28,31,29,0.05)]"
+      className="mt-3 flex items-center gap-2.5 rounded-2xl border border-dashed bg-white px-4 py-3.5 transition-all duration-150 focus-within:border-solid focus-within:shadow-[0_1px_3px_rgba(28,31,29,0.05)]"
       style={{ borderColor: `${T.custom}40` }}
     >
       <span
@@ -259,7 +260,7 @@ function InfoGuideModal({
           >
             <div className="flex items-center justify-between border-b border-[#1E2621]/8 px-5 py-4">
               <div>
-                <p className="text-[10px] font-semibold uppercase tracking-[0.1em] text-[#3E6B52]">
+                <p className="text-[10px] font-semibold uppercase tracking-widest text-[#3E6B52]">
                   {label}
                 </p>
                 <h3 className="font-display text-base font-semibold text-[#1E2621]">
@@ -411,8 +412,10 @@ const ActualGBIAssessment = ({
     () => (otherProps?.certifiedScaleRange as Record<string, [number, number]>) || {},
     [otherProps?.certifiedScaleRange],
   );
-  const certificationMultipliers =
-    (otherProps?.certificationMultipliers as Record<string, number>) || {};
+  const certificationMultipliers = useMemo(
+    () => (otherProps?.certificationMultipliers as Record<string, number>) || {},
+    [otherProps?.certificationMultipliers],
+  );
   const isRefreshingProject =
     (otherProps?.isRefreshingProject as boolean) || false;
   const activeActualCostBreakdown =
@@ -427,7 +430,7 @@ const ActualGBIAssessment = ({
     () => (Array.isArray(greenElements) ? greenElements : []),
     [greenElements],
   );
-  const auditSubmitRef = onAuditSubmitRef;
+  const auditSubmitRef = useRef(onAuditSubmitRef);
 
   const [criteria, setCriteria] = useState<CriterionType[]>([]);
   const [selectedDropdowns, setSelectedDropdowns] = useState<
@@ -492,8 +495,6 @@ const ActualGBIAssessment = ({
   }, []);
 
   useEffect(() => {
-    setLoading(true);
-
     if (safeGreenElements.length > 0) {
       const newSections = safeGreenElements
         .map((item: any) => {
@@ -765,7 +766,6 @@ const ActualGBIAssessment = ({
   }, [
     actualAnswerIdsPayload,
     actualCheckedItemsPayload,
-    hasNestedValues,
     selectedProject,
   ]);
 
@@ -1499,8 +1499,8 @@ const ActualGBIAssessment = ({
 
   // Register submit handler with parent
   useEffect(() => {
-    if (auditSubmitRef) {
-      auditSubmitRef.current = handleSubmitAuditChanges;
+    if (auditSubmitRef.current) {
+      auditSubmitRef.current.current = handleSubmitAuditChanges;
     }
   }, [handleSubmitAuditChanges, auditSubmitRef]);
 
@@ -1837,6 +1837,8 @@ const ActualGBIAssessment = ({
     calculateActualBaseTotal,
     certificationMultipliers,
     certifiedScaleRange,
+    overallScoreSummary,
+    otherProps,
     otherProps?.actualCostBreakdown,
     otherProps?.displayOnly,
     otherProps?.onApplyMultiplier,
@@ -1897,7 +1899,7 @@ const ActualGBIAssessment = ({
         <span className="flex-1 truncate text-sm font-semibold text-[#1C1F1D]">
           {selectedItem.description}
         </span>
-        <span className="shrink-0 rounded-full bg-[#3E6B52]/[0.08] px-2.5 py-1 font-mono text-xs font-bold tracking-wide text-[#3E6B52]">
+        <span className="shrink-0 rounded-full bg-[#3E6B52]/8 px-2.5 py-1 font-mono text-xs font-bold tracking-wide text-[#3E6B52]">
           {selectedItem.marks} pts
         </span>
       </div>
@@ -1994,7 +1996,7 @@ const ActualGBIAssessment = ({
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0 flex-1">
                   <span
-                    className={`block text-[13.5px] leading-[20px] tracking-[-0.01em] ${
+                    className={`block text-[13.5px] leading-5 tracking-[-0.01em] ${
                       hasSubitems
                         ? "font-semibold text-[#1C1F1D]/90"
                         : "font-medium text-[#1C1F1D]/80"
@@ -2003,8 +2005,7 @@ const ActualGBIAssessment = ({
                     {item.description}
                   </span>
 
-                  {(hasCheckbox && !itemMatches) ||
-                  (hasSubitems && !allSubitemsMatch) ? (
+                  {(hasSubitems && !allSubitemsMatch) ? (
                     <div className="mt-1 flex items-center gap-1.5">
                       <AlertTriangle
                         className="h-3 w-3 shrink-0"
@@ -2015,9 +2016,7 @@ const ActualGBIAssessment = ({
                         className="text-[10.5px] font-medium"
                         style={{ color: T.mismatch }}
                       >
-                        {hasSubitems
-                          ? `${subitemMismatchCount} of ${totalSubitems} sub-items differ from predicted`
-                          : "Differs from predicted"}
+                        {hasSubitems ? `${subitemMismatchCount} of ${totalSubitems} sub-items differ from predicted` : null}
                       </span>
                     </div>
                   ) : hasSubitems ? (
@@ -2090,7 +2089,7 @@ const ActualGBIAssessment = ({
                 />
               ) : null}
 
-              {hasOptions &&
+              {hasOptions ?
                 optionGroups.map((group, gi) => (
                   <div key={`${group.id}-${gi}`}>
                     <GroupHeading label={group.label} />
@@ -2105,7 +2104,7 @@ const ActualGBIAssessment = ({
                         return (
                           <div
                             key={oi}
-                            className="rounded-[16px] px-3.5 py-3 transition-all duration-150"
+                            className="rounded-2xl px-3.5 py-3 transition-all duration-150"
                             style={{
                               background: actualOptionChecked
                                 ? `${T.actual}0D`
@@ -2164,7 +2163,7 @@ const ActualGBIAssessment = ({
                       })}
                     </div>
                   </div>
-                ))}
+                )) : null}
 
               {(() => {
                 const exclusiveGroups = selectionGroups.filter(
@@ -2245,7 +2244,7 @@ const ActualGBIAssessment = ({
                           <span className="text-[10.5px] font-semibold uppercase tracking-[0.08em] text-[#1C1F1D]/35">
                             Choose one group
                           </span>
-                          <div className="h-px flex-1 bg-[#1C1F1D]/[0.06]" />
+                          <div className="h-px flex-1 bg-[#1C1F1D]/6" />
                         </div>
 
                         <div className="space-y-2">
@@ -2319,10 +2318,10 @@ const ActualGBIAssessment = ({
                                       return updated;
                                     });
                                   }}
-                                  className="mb-2.5 flex w-full items-center text-left focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#5B5BD6]/40 rounded-lg"
+                                  className="mb-2.5 flex w-full items-center text-left focus-visible:outline focus-visible:outline-offset-2 focus-visible:outline-[#5B5BD6]/40 rounded-lg"
                                 >
                                   <span
-                                    className="mr-2.5 flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-full border-[2px] transition-all duration-150"
+                                    className="mr-2.5 flex h-4.5 w-4.5 shrink-0 items-center justify-center rounded-full border-2 transition-all duration-150"
                                     style={{
                                       borderColor: isActive
                                         ? T.predicted
@@ -2426,8 +2425,8 @@ const ActualGBIAssessment = ({
             </div>
           </div>
 
-          {hasSubitems && (
-            <div className="m-2 bg-white rounded-xl border-t border-[#1C1F1D]/[0.06] px-5 py-3.5">
+          {hasSubitems ? (
+            <div className="m-2 bg-white rounded-xl border-t border-[#1C1F1D]/6 px-5 py-3.5">
               {(() => {
                 const priorCustomInputs = Array.from(
                   new Set([
@@ -2495,7 +2494,7 @@ const ActualGBIAssessment = ({
                             return (
                               <div
                                 key={`custom-${item.id}-${index}`}
-                                className="rounded-[14px] border border-[#1C1F1D]/[0.06] bg-white px-3.5 py-2.5"
+                                className="rounded-[14px] border border-[#1C1F1D]/6 bg-white px-3.5 py-2.5"
                               >
                                 <span className="block text-[13px] leading-5 text-[#1E2621]/80">
                                   {customInput}
@@ -2524,14 +2523,14 @@ const ActualGBIAssessment = ({
                           {customItems[item.id]?.map((customItem) => (
                             <div
                               key={customItem.id}
-                              className="rounded-[14px] border border-[#1C1F1D]/[0.06] bg-white px-3.5 py-2.5"
+                              className="rounded-[14px] border border-[#1C1F1D]/6 bg-white px-3.5 py-2.5"
                             >
                               <div className="flex items-center gap-3">
                                 <span className="flex-1 text-[13px] leading-5 text-[#1E2621]/80">
                                   {customItem.description}
                                 </span>
                                 <span
-                                  className="mr-1 rounded-md px-2 py-0.5 text-[10px] font-medium leading-[14px] tracking-wide"
+                                  className="mr-1 rounded-md px-2 py-0.5 text-[10px] font-medium leading-3.5 tracking-wide"
                                   style={{ color: T.customNew, background: `${T.customNew}14` }}
                                 >
                                   New
@@ -2571,7 +2570,7 @@ const ActualGBIAssessment = ({
                 );
               })()}
             </div>
-          )}
+          ) : null}
         </div>
       );
     },
@@ -2596,7 +2595,7 @@ const ActualGBIAssessment = ({
       selectedDropdowns,
       selectedProject,
       toggleActualAnswer,
-      calculateActualCumulativeMarks,
+      renderSelectionItem
     ],
   );
 
@@ -2610,7 +2609,7 @@ const ActualGBIAssessment = ({
       selectedCriterionData.items && selectedCriterionData.items.length > 0;
 
     return (
-      <div className="px-4 sm:px-6">
+      <div className="px-2 sm:px-4 py-3">
         {!hasSubcriteria && hasCriterionItems ? (
           <div className="mb-6">
             {selectedCriterionData.items!.map((item) => renderItem(item))}
@@ -2627,7 +2626,7 @@ const ActualGBIAssessment = ({
             return (
               <div key={index} className="mb-6">
                 <div className="mb-3 flex items-center gap-2 px-1">
-                  <span className="flex h-7 w-7 items-center justify-center rounded-full bg-[#3E6B52]/[0.09]">
+                  <span className="flex h-7 w-7 items-center justify-center rounded-full bg-[#3E6B52]/9">
                     <Leaf
                       size={14}
                       className="text-[#3E6B52]"
@@ -2651,7 +2650,7 @@ const ActualGBIAssessment = ({
   }
 
   return (
-    <div className="flex h-full min-h-[600px] flex-1 flex-col ">
+    <div className="flex h-full min-h-150 flex-1 flex-col ">
       {criteria.length === 0 && !loading ? (
         <div className="flex flex-1 flex-col items-center justify-center px-6 py-16">
           <div className="relative mb-7 flex h-24 w-24 items-center justify-center">
@@ -2682,7 +2681,12 @@ const ActualGBIAssessment = ({
         </div>
       ) : criteria.length !== 0 && selectedProject ? (
         <>
-          <div className="px-6 py-2">
+          <CertificationGauge
+            totalMarks={overallScoreSummary.actual}
+            certifiedScaleRange={certifiedScaleRange}
+            predictedMarks={selectedProject?.rating}
+          />
+          <div className="p-2">
             <div className="mb-1">
               <p className="mb-2 text-base font-bold text-slate-800">
                 Assessment Criteria
@@ -2757,10 +2761,10 @@ const ActualGBIAssessment = ({
                     </div>
                     <div className="flex items-center gap-2.5 mb-2">
                       <span
-                        className="h-[7px] w-[7px] shrink-0 rounded-full"
+                        className="h-1.75 w-1.75 shrink-0 rounded-full"
                         style={{ backgroundColor: "#B4B2A9" }}
                       />
-                      <span className="w-[60px] text-xs text-slate-500">
+                      <span className="w-15 text-xs text-slate-500">
                         Predicted
                       </span>
                       <div className="h-1 flex-1 overflow-hidden rounded-full bg-slate-100">
@@ -2781,10 +2785,10 @@ const ActualGBIAssessment = ({
                     </div>
                     <div className="flex items-center gap-2.5">
                       <span
-                        className="h-[7px] w-[7px] shrink-0 rounded-full"
+                        className="h-1.75 w-1.75 shrink-0 rounded-full"
                         style={{ backgroundColor: "#1D9E75" }}
                       />
-                      <span className="w-[60px] text-xs text-slate-500">
+                      <span className="w-15 text-xs text-slate-500">
                         Actual
                       </span>
                       <div className="h-1 flex-1 overflow-hidden rounded-full bg-emerald-50">
@@ -2911,7 +2915,7 @@ function PremiumCheckbox({
       }}
     >
       <span
-        className="relative flex h-[19px] w-[19px] shrink-0 items-center justify-center rounded-[6px] border-[1.5px] transition-all duration-200 ease-out"
+        className="relative flex h-4.75 w-4.75 shrink-0 items-center justify-center rounded-md border-[1.5px] transition-all duration-200 ease-out"
         style={{
           borderColor: checked ? color : "#1C1F1D2E",
           background: checked ? color : "#FFFFFF",
@@ -2975,9 +2979,9 @@ function CompareCheckboxes({
       </div>
 
       {locked && lockedMessage ? (
-        <div className="flex items-start gap-2 rounded-[12px] bg-[#1C1F1D]/[0.035] px-3 py-2">
-          <Lock size={12} className="mt-[1px] shrink-0 text-[#1C1F1D]/40" />
-          <span className="text-[11px] leading-[16px] text-[#1C1F1D]/60">
+        <div className="flex items-start gap-2 rounded-xl bg-[#1C1F1D]/[0.035] px-3 py-2">
+          <Lock size={12} className="mt-px shrink-0 text-[#1C1F1D]/40" />
+          <span className="text-[11px] leading-4 text-[#1C1F1D]/60">
             {lockedMessage}
           </span>
         </div>
@@ -3021,7 +3025,7 @@ function GroupHeading({
       >
         {label}
       </span>
-      <div className="h-px flex-1 bg-[#1C1F1D]/[0.06]" />
+      <div className="h-px flex-1 bg-[#1C1F1D]/6" />
     </div>
   );
 }
@@ -3039,7 +3043,7 @@ function IconGhostButton({
     <button
       type="button"
       onClick={onPress}
-      className="flex h-7 w-7 items-center justify-center rounded-full transition-colors duration-150 hover:bg-[#1C1F1D]/[0.06]"
+      className="flex h-7 w-7 items-center justify-center rounded-full transition-colors duration-150 hover:bg-[#1C1F1D]/6"
     >
       <IconCmp size={14} style={{ color }} />
     </button>
@@ -3058,7 +3062,7 @@ function SelectionCompareBlock({
   actualScored: boolean;
 }) {
   return (
-    <div className="mb-2.5 flex items-center gap-2 rounded-[14px] bg-[#1C1F1D]/[0.03] px-3 py-2">
+    <div className="mb-2.5 flex items-center gap-2 rounded-[14px] bg-[#1C1F1D]/3 px-3 py-2">
       <span className="flex-1 truncate text-[12px] font-medium text-[#1C1F1D]/70">
         {predictedLabel || "None / not applicable"}
       </span>
@@ -3067,6 +3071,168 @@ function SelectionCompareBlock({
         active={!!predictedMarks && predictedMarks !== 0}
       />
     </div>
+  );
+}
+
+/* ── Certification Gauge ── */
+
+const GAUGE_BANDS = [
+  { key: "Not Certified", color: "#B4483C" },
+  { key: "Certified", color: "#B8935B" },
+  { key: "Silver", color: "#9AA0A6" },
+  { key: "Gold", color: "#C9962E" },
+  { key: "Platinum", color: "#3E6B52" },
+] as const;
+
+function CertificationGauge({
+  totalMarks,
+  certifiedScaleRange,
+  predictedMarks,
+}: {
+  totalMarks: number;
+  certifiedScaleRange: Record<string, [number, number]>;
+  predictedMarks?: number | null;
+}) {
+  const MAX = 100;
+
+  const bands = GAUGE_BANDS.map(({ key, color }) => {
+    const range = certifiedScaleRange[key];
+    const min = range?.[0] ?? 0;
+    const max = range?.[1] ?? 0;
+    const left = (min / MAX) * 100;
+    const right = (max / MAX) * 100;
+    return { key, min, max, color, left, right };
+  });
+
+  const markerPct = Math.min(100, Math.max(0, (totalMarks / MAX) * 100));
+  const activeBand = bands.find(
+    (b) => totalMarks >= b.min && totalMarks <= b.max,
+  );
+
+  const predictedPct =
+    predictedMarks != null
+      ? Math.min(100, Math.max(0, (predictedMarks / MAX) * 100))
+      : undefined;
+  const predictedBand =
+    predictedMarks != null
+      ? bands.find((b) => predictedMarks >= b.min && predictedMarks <= b.max)
+      : undefined;
+
+  return (
+    <section className="relative mb-6 mt-3 overflow-hidden rounded-3xl border border-[#E4E1D8] bg-[#FDFDFC] p-5 shadow-[0_1px_2px_rgba(30,38,33,0.04)] sm:p-8">
+      <div
+        className="pointer-events-none absolute -right-10 -top-10 h-40 w-40 rounded-full opacity-[0.4]"
+        style={{
+          background: `radial-gradient(circle, ${activeBand?.color ?? "#B7BEB8"}55 0%, transparent 70%)`,
+        }}
+      />
+      <div className="relative flex flex-wrap items-start justify-between gap-5">
+        <div>
+          <div
+            className="text-[11px] uppercase tracking-[0.14em] text-[#8A938C]"
+            style={{ fontFamily: "var(--font-mono)" }}
+          >
+            GBI certification score
+          </div>
+          <div className="mt-1.5 flex flex-wrap items-baseline gap-x-3 gap-y-1">
+            <span className="font-serif text-[28px] font-semibold leading-none tabular-nums text-[#2C4A3A] sm:text-[34px] md:text-[42px]">
+              {totalMarks}
+            </span>
+            <span className="font-mono text-[16px] font-medium text-[#8A938C]">
+              / 100 pts
+            </span>
+          </div>
+          <div className="mt-1 text-[12.5px] text-[#8A938C]">
+            Enter assessment marks against each criterion below.
+          </div>
+        </div>
+
+        <div
+          className="flex shrink-0 -rotate-2 items-center gap-2 rounded-lg border-2 border-dashed px-3.5 py-2"
+          style={{
+            borderColor: activeBand?.color ?? "#B7BEB8",
+            color: activeBand?.color ?? "#8A938C",
+          }}
+        >
+          <Award size={15} />
+          <span
+            className="text-[11.5px] font-bold uppercase tracking-[0.06em]"
+            style={{ fontFamily: "var(--font-mono)" }}
+          >
+            {activeBand?.key ?? "N/A"}
+          </span>
+        </div>
+      </div>
+
+      <div className="relative mt-6">
+        <div className="relative h-2.5 rounded-full bg-[#EFEDE6]">
+          <div
+            className="absolute inset-y-0 left-0 rounded-full transition-[width] duration-300"
+            style={{
+              width: `${markerPct}%`,
+              background: activeBand?.color ?? "#B7BEB8",
+            }}
+          />
+          {bands.map((band) => (
+            <div
+              key={band.key}
+              className="absolute top-1/2 h-4 w-0.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-[#1E2621]"
+              style={{ left: `${band.left}%` }}
+            />
+          ))}
+          <div
+            className="absolute top-1/2 h-4 w-0.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-[#1E2621]"
+            style={{ left: `100%` }}
+          />
+
+          {predictedBand && predictedPct != null && (
+            <div
+              className="absolute -top-7 -translate-x-1/2"
+              style={{ left: `${predictedPct}%` }}
+            >
+              <div className="flex flex-col items-center gap-1.5">
+                <span
+                  className="whitespace-nowrap text-[9px] font-bold uppercase tracking-[0.06em] text-[#6B7FD8]"
+                  style={{ fontFamily: "var(--font-mono)" }}
+                >
+                  Predicted ({predictedMarks})
+                </span>
+                <svg width="8" height="6" viewBox="0 0 8 6" fill="none">
+                  <path d="M4 6L0 0h8z" fill="#6B7FD8" />
+                </svg>
+              </div>
+            </div>
+          )}
+        </div>
+
+        <div className="relative mt-3 h-9">
+          {bands.map((band) => {
+            const mid = (band.left + band.right) / 2;
+            return (
+              <div
+                key={band.key}
+                className="absolute top-0 flex -translate-x-1/2 flex-col items-center gap-0.5"
+                style={{ left: `${Math.min(96, Math.max(4, mid))}%` }}
+              >
+                <span
+                  className="h-2 w-2 rounded-full"
+                  style={{ backgroundColor: band.color }}
+                />
+                <span
+                  className="whitespace-nowrap text-[10.5px] text-[#8A938C]"
+                  style={{ fontFamily: "var(--font-mono)" }}
+                >
+                  {band.key}
+                </span>
+                <span className="whitespace-nowrap text-[9px] text-[#B7BEB8] tabular-nums">
+                  {band.min}–{band.max}
+                </span>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </section>
   );
 }
 

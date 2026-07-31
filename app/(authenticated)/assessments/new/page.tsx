@@ -37,8 +37,8 @@
  * ---------------------------------------------------------------
  */
 
-import { useEffect, useRef, useState, useMemo, useId } from "react";
-import { useRouter } from "next/navigation";
+import { useEffect, useRef, useState, useMemo, useId, useCallback } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import {
   ChevronDown,
   AlertCircle,
@@ -179,6 +179,21 @@ export default function NewAssessmentPage() {
   const [showNotCertModal, setShowNotCertModal] = useState(false);
   const pendingSubmitRef = useRef<(() => Promise<void>) | null>(null);
   const successRef = useRef<HTMLDivElement>(null);
+
+  const searchParams = useSearchParams();
+  const [toast, setToast] = useState<string | null>(null);
+
+  useEffect(() => {
+    const msg = searchParams.get("toast");
+    if (msg) {
+      setToast(msg);
+      const timer = setTimeout(() => setToast(null), 4000);
+      const url = new URL(window.location.href);
+      url.searchParams.delete("toast");
+      window.history.replaceState(null, "", url.toString());
+      return () => clearTimeout(timer);
+    }
+  }, [searchParams]);
 
   // ── Live cost prediction state ──
   const [predictedCost, setPredictedCost] = useState<number | null>(null);
@@ -547,7 +562,7 @@ export default function NewAssessmentPage() {
   return (
     <>
       {submitting && (
-        <div className="fixed inset-0 z-[100] flex flex-col items-center justify-center gap-3 bg-[#1E2621]/60 backdrop-blur-sm">
+        <div className="fixed inset-0 z-100 flex flex-col items-center justify-center gap-3 bg-[#1E2621]/60 backdrop-blur-sm">
           <Loader2 size={32} className="animate-spin text-[#F6F6F2]" />
           <p className="text-[15px] font-medium text-[#F6F6F2]">
             Assessment is running…
@@ -1033,7 +1048,7 @@ export default function NewAssessmentPage() {
                 >
                   Not Certified option selected
                 </h3>
-                <p className="mx-auto mt-2 max-w-[280px] text-[13.5px] leading-relaxed text-[#5B655F]">
+                <p className="mx-auto mt-2 max-w-70 text-[13.5px] leading-relaxed text-[#5B655F]">
                   Your project will skip Green Building Index assessment and
                   won&apos;t carry a verified green credential.
                 </p>
@@ -1103,12 +1118,21 @@ export default function NewAssessmentPage() {
                 <button
                   type="button"
                   onClick={handleNotCertConfirm}
-                  className="flex-1 rounded-full bg-gradient-to-b from-[#CC9752] to-[#B8823A] px-4 py-3 text-[13px] font-semibold text-white shadow-[0_10px_24px_rgba(192,138,62,0.32)] transition-all hover:-translate-y-0.5 hover:shadow-[0_16px_32px_rgba(192,138,62,0.40)] active:translate-y-0 active:scale-[0.98]"
+                  className="flex-1 rounded-full bg-linear-to-b from-[#CC9752] to-[#B8823A] px-4 py-3 text-[13px] font-semibold text-white shadow-[0_10px_24px_rgba(192,138,62,0.32)] transition-all hover:-translate-y-0.5 hover:shadow-[0_16px_32px_rgba(192,138,62,0.40)] active:translate-y-0 active:scale-[0.98]"
                 >
                   Yes, proceed
                 </button>
               </div>
             </div>
+          </div>
+        </div>
+      )}
+
+      {toast && (
+        <div className="pointer-events-none fixed inset-x-0 bottom-6 z-50 flex justify-center px-4">
+          <div className="flex items-center gap-2 rounded-full bg-[#1E2621] px-4 py-2.5 text-[13px] font-medium text-white shadow-lg">
+            <AlertCircle size={14} className="shrink-0 text-[#C08A3E]" />
+            {toast}
           </div>
         </div>
       )}
@@ -1152,13 +1176,13 @@ function SectionRail({
       <nav aria-label="Form sections" className="hidden lg:block">
         <div className="sticky top-14 flex max-h-[calc(100vh-7.5rem)] flex-col overflow-y-auto rounded-2xl border border-[#EFEDE6] bg-white p-4">
           <div
-            className="mb-4 text-[11px] uppercase tracking-[0.1em] text-[#B7BEB8]"
+            className="mb-4 text-[11px] uppercase tracking-widest text-[#B7BEB8]"
             style={{ fontFamily: "var(--font-mono)" }}
           >
             Your progress
           </div>
           <div className="relative flex-1 pl-1">
-            <div className="absolute left-[15px] top-2 bottom-2 w-[2px] rounded-full bg-[#E4E1D8]" />
+            <div className="absolute left-3.75 top-2 bottom-2 w-0.5 rounded-full bg-[#E4E1D8]" />
             <ol className="relative space-y-6">
               {[1, 2, 3, 4].map((i) => (
                 <li key={i}>
@@ -1198,16 +1222,16 @@ function SectionRail({
         className="sticky top-14 flex max-h-[calc(100vh-7.5rem)] flex-col overflow-y-auto rounded-2xl transition-all duration-300 border border-[#EFEDE6] bg-white p-4"
       >
         <div
-          className="mb-4 text-[11px] uppercase tracking-[0.1em] text-[#B7BEB8]"
+          className="mb-4 text-[11px] uppercase tracking-widest text-[#B7BEB8]"
           style={{ fontFamily: "var(--font-mono)" }}
         >
           Your progress
         </div>
         <div className="relative flex-1 pl-1">
           {/* the vine's trellis */}
-          <div className="absolute left-[15px] top-2 bottom-2 w-[2px] rounded-full bg-[#E4E1D8]">
+          <div className="absolute left-3.75 top-2 bottom-2 w-0.5 rounded-full bg-[#E4E1D8]">
             <div
-              className="w-full rounded-full bg-gradient-to-b from-[#3E6B52] to-[#6FA383] transition-[height] duration-500 ease-out"
+              className="w-full rounded-full bg-linear-to-b from-[#3E6B52] to-[#6FA383] transition-[height] duration-500 ease-out"
               style={{ height: `${vinePct}%` }}
             />
           </div>
@@ -1269,7 +1293,7 @@ function SectionRail({
             aria-label="Form completion"
           >
             <div
-              className="h-full rounded-full bg-gradient-to-r from-[#3E6B52] to-[#6FA383] transition-all duration-500 ease-out"
+              className="h-full rounded-full bg-linear-to-r from-[#3E6B52] to-[#6FA383] transition-all duration-500 ease-out"
               style={{ width: `${progressPct}%` }}
             />
           </div>
@@ -1811,7 +1835,7 @@ function MiniBudgetGauge({
       />
       {budget > 0 && (
         <div
-          className="absolute top-1/2 h-3 w-[2px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-[#1E2621]"
+          className="absolute top-1/2 h-3 w-0.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-[#1E2621]"
           style={{ left: `${pct(budget)}%` }}
         />
       )}
@@ -1836,7 +1860,7 @@ function LegendDot({
       <span
         className={
           line
-            ? "inline-block h-3 w-[2px] rounded-full"
+            ? "inline-block h-3 w-0.5 rounded-full"
             : "inline-block h-2 w-2 rounded-full"
         }
         style={{ backgroundColor: color }}

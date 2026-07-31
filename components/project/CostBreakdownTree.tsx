@@ -64,12 +64,13 @@ function parseEdit(raw: string | undefined): number {
     return Number.isFinite(n) ? n : 0;
 }
 
-/** Comma-formatted read view of a raw edit string, e.g. "1234.5" -> "1,234.5". Shown only while not focused. */
+/** Comma-separated read view of a raw edit string, preserving the decimal places as typed
+ *  ("2030.5" → "2,030.5") so backspacing/typing at the end works naturally. */
 export function formatWithCommas(raw: string | undefined): string {
     if (!raw) return "";
-    const [wholePart, decimalPart] = raw.split(".");
-    const wholeFormatted = wholePart.replace(/\B(?=(\d{3})+(?!\d))/g, ",");
-    return decimalPart !== undefined ? `${wholeFormatted}.${decimalPart}` : wholeFormatted;
+    const [intPart, decPart] = raw.split(".");
+    const intFormatted = intPart.replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+    return decPart !== undefined ? `${intFormatted}.${decPart}` : intFormatted;
 }
 
 /* ---------------- Helpers ---------------- */
@@ -83,7 +84,7 @@ function collectInitialEdits(data: CostBreakdown, field: EditableField): Record<
             Object.values(node.children).forEach(visit);
         } else {
             const raw = field === "cost" ? node.cost : node.actual_cost;
-            edits[node.id] = raw !== undefined && raw !== null ? String(raw) : "";
+            edits[node.id] = raw !== undefined && raw !== null ? Number(raw).toFixed(2) : "";
         }
     };
     Object.values(data).forEach(visit);
@@ -125,7 +126,7 @@ function sumTop(
 
 /* Fixed column widths shared by the header and every row so figures never drift out of line.
    Predicted/Budgeted collapses away entirely below sm — see the row's mobile caption instead. */
-export const COL_BUDGET = "w-24 sm:w-28 md:w-32";
+export const COL_BUDGET = "w-28 sm:w-36 md:w-40";
 export const COL_ACTUAL = "w-28 sm:w-36 md:w-40";
 
 /* Width of one connector-rail cell — also doubles as the per-depth indent step. */
@@ -177,23 +178,23 @@ const RAIL_LINE = "#DCD8CB";
 
 export default function CostBreakdownTree({
     data,
-    onActualCostChange,
+    onActualCostChangeAction,
     hideTotals = false,
     mode = "comparison",
     editable = false,
-    onAddChild,
-    onDeleteNode,
-    onDescriptionChange,
+    onAddChildAction,
+    onDeleteNodeAction,
+    onDescriptionChangeAction,
     addMode = false,
-    onSplitLeaf,
+    onSplitLeafAction,
     deleteMode = false,
-    onDeleteLeaf,
-    onAddRootCategory,
+    onDeleteLeafAction,
+    onAddRootCategoryAction,
 }: {
     data: CostBreakdown;
     /** Optional: fires on every leaf edit (with a clean, parsed number), e.g. to persist to the server.
      *  Fires for whichever field is active in the current mode (`cost` in assessment, `actual_cost` in comparison). */
-    onActualCostChange?: (nodeId: number, value: number) => void;
+    onActualCostChangeAction?: (nodeId: number, value: number) => void;
     /** Set true when a parent screen renders its own summary cards (e.g. CostBreakdownHierarchy). */
     hideTotals?: boolean;
     /** "assessment" = single editable cost column. "comparison" (default) = Budgeted + editable Actual. */
@@ -204,21 +205,21 @@ export default function CostBreakdownTree({
      *  `mode === "assessment"`. */
     editable?: boolean;
     /** Requests a new child be added under `parentId` (or as a new top-level item when `parentId` is null). */
-    onAddChild?: (parentId: number | null) => void;
+    onAddChildAction?: (parentId: number | null) => void;
     /** Requests the node with this id (and everything under it) be removed. Confirmation happens in this component. */
-    onDeleteNode?: (nodeId: number) => void;
+    onDeleteNodeAction?: (nodeId: number) => void;
     /** Fires as the user types a node's name. */
-    onDescriptionChange?: (nodeId: number, value: string) => void;
+    onDescriptionChangeAction?: (nodeId: number, value: string) => void;
     /** When true, eligible leaf nodes show a "+" icon for splitting, and an
      *  "Add Other Category" button appears below the tree. */
     addMode?: boolean;
     deleteMode?: boolean;
     /** Called when the user clicks "+" on a leaf node that can be split. */
-    onSplitLeaf?: (nodeId: number) => void;
+    onSplitLeafAction?: (nodeId: number) => void;
     /** Called when the user clicks the trash icon on a row while in delete mode. */
-    onDeleteLeaf?: (nodeId: number) => void;
+    onDeleteLeafAction?: (nodeId: number) => void;
     /** Called when the user clicks "Add Other Category" at the bottom of the tree. */
-    onAddRootCategory?: () => void;
+    onAddRootCategoryAction?: () => void;
 }) {
     const field: EditableField = mode === "assessment" ? "cost" : "actual_cost";
 
@@ -280,7 +281,7 @@ export default function CostBreakdownTree({
         // Reject anything beyond 2 decimal places instead of silently rounding later.
         if (!DECIMAL_INPUT_RE.test(stripped)) return;
         setEdits((prev) => ({ ...prev, [id]: stripped }));
-        onActualCostChange?.(id, parseEdit(stripped));
+        onActualCostChangeAction?.(id, parseEdit(stripped));
     };
 
     const handleLeafFocus = (id: number) => setFocusedId(id);
@@ -299,7 +300,7 @@ export default function CostBreakdownTree({
     const handleAddChild = (parentId: number | null) => {
         if (parentId !== null) setExpanded((prev) => new Set(prev).add(parentId));
         setConfirmingDeleteId(null);
-        onAddChild?.(parentId);
+        onAddChildAction?.(parentId);
     };
 
     const isAssessment = mode === "assessment";
@@ -370,7 +371,7 @@ export default function CostBreakdownTree({
                         {/* Table header — sits inside the same bordered box as the rows, sharing its corners */}
                         <div className="flex items-center border-b border-[#EFEDE6] bg-[#FBFAF7]">
                             <span
-                                className="flex flex-1 items-center justify-center py-2.5 text-center text-[10.5px] font-semibold uppercase tracking-[0.1em] text-[#8A938C]"
+                                className="flex flex-1 items-center justify-center py-2.5 text-center text-[10.5px] font-semibold uppercase tracking-widest text-[#8A938C]"
                                 style={{ fontFamily: "var(--font-mono)" }}
                             >
                                 Element
@@ -378,7 +379,7 @@ export default function CostBreakdownTree({
 
                             {!isAssessment && (
                                 <span
-                                    className={`${COL_BUDGET} hidden shrink-0 items-center justify-center border-l border-[#EFEDE6] py-2.5 text-center text-[10.5px] font-semibold uppercase tracking-[0.1em] text-[#8A938C] sm:flex`}
+                                    className={`${COL_BUDGET} hidden shrink-0 items-center justify-center border-l border-[#EFEDE6] py-2.5 text-center text-[10.5px] font-semibold uppercase tracking-widest text-[#8A938C] sm:flex`}
                                     style={{ fontFamily: "var(--font-mono)" }}
                                 >
                                     Predicted
@@ -386,7 +387,7 @@ export default function CostBreakdownTree({
                             )}
 
                             <span
-                                className={`${COL_ACTUAL} flex shrink-0 items-center justify-center border-l border-[#EFEDE6] py-2.5 text-center text-[10.5px] font-semibold uppercase tracking-[0.1em] text-[#8A938C]`}
+                                className={`${COL_ACTUAL} flex shrink-0 items-center justify-center border-l border-[#EFEDE6] py-2.5 text-center text-[10.5px] font-semibold uppercase tracking-widest text-[#8A938C]`}
                                 style={{ fontFamily: "var(--font-mono)" }}
                             >
                                 {isAssessment ? "Cost" : "Actual"}
@@ -394,7 +395,7 @@ export default function CostBreakdownTree({
 
                             {(editable || addMode || deleteMode) && (
                                 <span
-                                    className="flex w-[70px] shrink-0 items-center justify-center border-l border-[#EFEDE6] py-2.5 text-center text-[10.5px] font-semibold uppercase tracking-[0.1em] text-[#8A938C]"
+                                    className="flex w-17.5 shrink-0 items-center justify-center border-l border-[#EFEDE6] py-2.5 text-center text-[10.5px] font-semibold uppercase tracking-widest text-[#8A938C]"
                                     style={{ fontFamily: "var(--font-mono)" }}
                                 >
                                     Action
@@ -423,12 +424,12 @@ export default function CostBreakdownTree({
                                 onLeafChange={handleLeafChange}
                                 onLeafFocus={handleLeafFocus}
                                 onLeafBlur={handleLeafBlur}
-                                onAddChild={handleAddChild}
+                                onAddChildAction={handleAddChild}
                                 onRequestDelete={setConfirmingDeleteId}
-                                onDeleteNode={onDeleteNode}
-                                onDescriptionChange={onDescriptionChange}
-                                onSplitLeaf={onSplitLeaf}
-                                onDeleteLeaf={onDeleteLeaf}
+                                onDeleteNodeAction={onDeleteNodeAction}
+                                onDescriptionChangeAction={onDescriptionChangeAction}
+                                onSplitLeafAction={onSplitLeafAction}
+                                onDeleteLeafAction={onDeleteLeafAction}
                                 isLast={i === topEntries.length - 1}
                             />
                         ))}
@@ -436,8 +437,8 @@ export default function CostBreakdownTree({
                         {addMode ? (
                             <button
                                 type="button"
-                                onClick={onAddRootCategory}
-                                className="flex w-full items-center justify-center gap-1.5 border-t border-dashed border-[#E4E1D8] bg-[#FBFAF7] py-3 text-[12.5px] font-medium text-[#5B655F] transition-colors hover:bg-[#EEF2EC] hover:text-[#2C4A3A] focus-visible:outline focus-visible:outline-offset-[-2px] focus-visible:outline-[#2C4A3A]"
+                                onClick={onAddRootCategoryAction}
+                                className="flex w-full items-center justify-center gap-1.5 border-t border-dashed border-[#E4E1D8] bg-[#FBFAF7] py-3 text-[12.5px] font-medium text-[#5B655F] transition-colors hover:bg-[#EEF2EC] hover:text-[#2C4A3A] focus-visible:outline focus-visible:-outline-offset-2 focus-visible:outline-[#2C4A3A]"
                             >
                                 <Plus size={13} />
                                 Add Other Category
@@ -446,7 +447,7 @@ export default function CostBreakdownTree({
                             <button
                                 type="button"
                                 onClick={() => handleAddChild(null)}
-                                className="flex w-full items-center justify-center gap-1.5 border-t border-dashed border-[#E4E1D8] bg-[#FBFAF7] py-3 text-[12.5px] font-medium text-[#5B655F] transition-colors hover:bg-[#EEF2EC] hover:text-[#2C4A3A] focus-visible:outline focus-visible:outline-offset-[-2px] focus-visible:outline-[#2C4A3A]"
+                                className="flex w-full items-center justify-center gap-1.5 border-t border-dashed border-[#E4E1D8] bg-[#FBFAF7] py-3 text-[12.5px] font-medium text-[#5B655F] transition-colors hover:bg-[#EEF2EC] hover:text-[#2C4A3A] focus-visible:outline focus-visible:-outline-offset-2 focus-visible:outline-[#2C4A3A]"
                             >
                                 <Plus size={13} />
                                 Add top-level cost code
@@ -456,6 +457,17 @@ export default function CostBreakdownTree({
                 </div>
             </div>
         </div>
+    );
+}
+
+/* ---------------- Certification badge ---------------- */
+
+function CertificationBadge({ label }: { label?: string }) {
+    return (
+        <span className="flex shrink-0 items-center gap-1 rounded-full border border-[#D9B968] bg-white/70 px-2 py-0.5 text-[10px] font-medium text-[#8A6420] shadow-[0_1px_1px_rgba(138,100,32,0.08)]">
+            <Award size={10.5} />
+            {label ?? "Certification"}
+        </span>
     );
 }
 
@@ -480,12 +492,12 @@ function CostRow({
     onLeafChange,
     onLeafFocus,
     onLeafBlur,
-    onAddChild,
+    onAddChildAction,
     onRequestDelete,
-    onDeleteNode,
-    onDescriptionChange,
-    onSplitLeaf,
-    onDeleteLeaf,
+    onDeleteNodeAction,
+    onDescriptionChangeAction,
+    onSplitLeafAction,
+    onDeleteLeafAction,
     isLast,
 }: {
     rowKey: string;
@@ -509,12 +521,12 @@ function CostRow({
     onLeafChange: (id: number, raw: string) => void;
     onLeafFocus: (id: number) => void;
     onLeafBlur: (id: number) => void;
-    onAddChild: (parentId: number | null) => void;
+    onAddChildAction: (parentId: number | null) => void;
     onRequestDelete: (id: number | null) => void;
-    onDeleteNode?: (nodeId: number) => void;
-    onDescriptionChange?: (nodeId: number, value: string) => void;
-    onSplitLeaf?: (nodeId: number) => void;
-    onDeleteLeaf?: (nodeId: number) => void;
+    onDeleteNodeAction?: (nodeId: number) => void;
+    onDescriptionChangeAction?: (nodeId: number, value: string) => void;
+    onSplitLeafAction?: (nodeId: number) => void;
+    onDeleteLeafAction?: (nodeId: number) => void;
     isLast: boolean;
 }) {
     const hasChildren = !!node.children;
@@ -540,7 +552,7 @@ function CostRow({
                     if (hasChildren && (e.key === "Enter" || e.key === " ")) onToggle(node.id);
                 }}
                 className={`group flex items-stretch border-l-[3px] transition-colors ${
-                    hasChildren ? "cursor-pointer focus-visible:outline focus-visible:outline-offset-[-2px] focus-visible:outline-[#2C4A3A]" : ""
+                    hasChildren ? "cursor-pointer focus-visible:outline focus-visible:-outline-offset-2 focus-visible:outline-[#2C4A3A]" : ""
                 } ${style ? `${style.border} ${style.bg} ${style.hoverBg}` : "border-transparent bg-white hover:bg-[#FBFAF7]"}`}
             >
                 {/* ---- Connector rail ---- */}
@@ -604,8 +616,8 @@ function CostRow({
                                     value={node.description}
                                     placeholder="Untitled cost item"
                                     onClick={(e) => e.stopPropagation()}
-                                    onChange={(e) => onDescriptionChange?.(node.id, e.target.value)}
-                                    className={`min-w-[110px] flex-1 truncate rounded-lg border border-transparent bg-transparent px-1.5 py-1 text-[13.5px] tracking-[0.005em] text-[#1E2621] transition-colors hover:border-[#E4E1D8] focus:border-[#2C4A3A] focus:bg-white focus:outline-none ${
+                                    onChange={(e) => onDescriptionChangeAction?.(node.id, e.target.value)}
+                                    className={`min-w-27.5 flex-1 truncate rounded-lg border border-transparent bg-transparent px-1.5 py-1 text-[13.5px] tracking-[0.005em] text-[#1E2621] transition-colors hover:border-[#E4E1D8] focus:border-[#2C4A3A] focus:bg-white focus:outline-none ${
                                         hasChildren ? "font-semibold" : "font-medium"
                                     }`}
                                 />
@@ -618,13 +630,12 @@ function CostRow({
                                     {node.description}
                                 </span>
                             )}
-
-                            {isCert && (
-                                <span className="flex shrink-0 items-center gap-1 rounded-full border border-[#D9B968] bg-white/70 px-2 py-0.5 text-[10px] font-medium text-[#8A6420] shadow-[0_1px_1px_rgba(138,100,32,0.08)]">
-                                    <Award size={10.5} />
-                                    {node.certificationLabel ?? "Certification"}
-                                </span>
-                            )}
+                          {isCert && mode == "assessment" && (
+                              <span className="flex shrink-0 items-center gap-1 rounded-full border border-[#D9B968] bg-white/70 px-2 py-0.5 text-[10px] font-medium text-[#8A6420] shadow-[0_1px_1px_rgba(138,100,32,0.08)]">
+                                  <Award size={10.5} />
+                                  {node.certificationLabel ?? "Certification"}
+                              </span>
+                          )}
                         </div>
 
                         {/* Mobile-only: Predicted collapses out of its own column below sm, so it
@@ -654,7 +665,7 @@ function CostRow({
                             type="button"
                             title="Confirm delete"
                             onClick={() => {
-                                onDeleteNode?.(node.id);
+                                onDeleteNodeAction?.(node.id);
                                 onRequestDelete(null);
                             }}
                             className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[#B0453A] text-white shadow-sm transition-colors hover:bg-[#963B31]"
@@ -675,12 +686,15 @@ function CostRow({
                         {/* ---- Predicted / Budgeted column ---- */}
                         {!isAssessment && (
                             <span
-                                className={`${COL_BUDGET} ${divider} hidden shrink-0 items-center justify-end py-3 pr-3 text-[13px] tabular-nums sm:flex ${
-                                    style ? `font-semibold ${style.amount}` : "text-[#7C8880]"
-                                }`}
-                                style={{ fontFamily: "var(--font-mono)", letterSpacing: "0.01em" }}
+                                className={`${COL_BUDGET} ${divider} hidden shrink-0 flex-col items-end justify-center gap-1 py-3 pr-3 sm:flex`}
                             >
-                                {formatMoney(node.cost)}
+                                <span
+                                    className={`text-[13px] tabular-nums ${style ? `font-semibold ${style.amount}` : "text-[#7C8880]"}`}
+                                    style={{ fontFamily: "var(--font-mono)", letterSpacing: "0.01em" }}
+                                >
+                                    {formatMoney(node.cost)}
+                                </span>
+                                {isCert && <CertificationBadge label={node.certificationLabel} />}
                             </span>
                         )}
 
@@ -690,12 +704,15 @@ function CostRow({
                             onClick={(e) => e.stopPropagation()}
                         >
                           {(hasChildren || isCert) ? (
-                                <span
-                                    className="w-full text-right text-[13px] font-semibold tabular-nums text-[#2C4A3A]"
-                                    style={{ fontFamily: "var(--font-mono)", letterSpacing: "0.01em" }}
-                                    title="Sum of child items — not directly editable"
-                                >
-                                    {formatMoney(liveValue)}
+                                <span className="flex w-full flex-col items-end gap-1">
+                                    <span
+                                        className="w-full text-right text-[13px] font-semibold tabular-nums text-[#2C4A3A]"
+                                        style={{ fontFamily: "var(--font-mono)", letterSpacing: "0.01em" }}
+                                        title="Sum of child items — not directly editable"
+                                    >
+                                        {formatMoney(liveValue)}
+                                    </span>
+                                    {isCert && !isAssessment && <CertificationBadge label={node.certificationLabel} />}
                                 </span>
                             ) : (
                                 <div className="relative w-full">
@@ -710,8 +727,18 @@ function CostRow({
                                         inputMode="decimal"
                                         placeholder="0.00"
                                         value={formatWithCommas(edits[node.id])}
-                                        onChange={(e) => onLeafChange(node.id, e.target.value)}
-                                        onFocus={() => onLeafFocus(node.id)}
+                                        onChange={(e) => {
+                                            onLeafChange(node.id, e.target.value);
+                                            requestAnimationFrame(() => {
+                                                e.target.setSelectionRange(e.target.value.length, e.target.value.length);
+                                            });
+                                        }}
+                                        onFocus={(e) => {
+                                            onLeafFocus(node.id);
+                                            requestAnimationFrame(() => {
+                                                e.target.setSelectionRange(e.target.value.length, e.target.value.length);
+                                            });
+                                        }}
                                         onBlur={() => onLeafBlur(node.id)}
                                         className="w-full rounded-lg border border-[#D6D1C3] bg-[#FCFBF8] py-1.5 pl-6 pr-2 text-right text-[13px] tabular-nums text-[#1E2621] shadow-[inset_0_1px_2px_rgba(30,38,33,0.05)] transition-colors hover:border-[#C4CBC4] focus:border-[#2C4A3A] focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#2C4A3A]/15"
                                         style={{ fontFamily: "var(--font-mono)", letterSpacing: "0.01em" }}
@@ -724,14 +751,26 @@ function CostRow({
 
                 {/* ---- Row actions ---- */}
                 {(addMode || editable || deleteMode) && !isConfirmingDelete && (
-                    <span className={`flex w-[70px] shrink-0 items-center justify-center gap-1 ${divider}`}>
-                        {addMode && !isCert && !hasChildren && depth < 2 ? (
+                    <span className={`flex w-17.5 shrink-0 items-center justify-center gap-1 ${divider}`}>
+                        {addMode && mode === "comparison" && !isCert && hasChildren ? (
+                            <button
+                                type="button"
+                                title="Add child actual cost node"
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    onSplitLeafAction?.(node.id);
+                                }}
+                                className="flex h-6 w-6 items-center justify-center rounded-full text-sage transition-colors hover:bg-sage-100 hover:text-sage-dark focus-visible:outline focus-visible:outline-offset-2 focus-visible:outline-sage"
+                            >
+                                <Plus size={13} strokeWidth={2.5} />
+                            </button>
+                        ) : addMode && !isCert && !hasChildren && depth < 2 ? (
                             <button
                                 type="button"
                                 title="Split this item"
                                 onClick={(e) => {
                                     e.stopPropagation();
-                                    onSplitLeaf?.(node.id);
+                                    onSplitLeafAction?.(node.id);
                                 }}
                                 className="flex h-6 w-6 items-center justify-center rounded-full text-sage transition-colors hover:bg-sage-100 hover:text-sage-dark focus-visible:outline focus-visible:outline-offset-2 focus-visible:outline-sage"
                             >
@@ -744,7 +783,7 @@ function CostRow({
                                     title="Add child item"
                                     onClick={(e) => {
                                         e.stopPropagation();
-                                        onAddChild(node.id);
+                                        onAddChildAction(node.id);
                                     }}
                                     className="flex h-6 w-6 items-center justify-center rounded-full text-[#8A938C] opacity-0 transition-opacity hover:bg-[#EEF2EC] hover:text-[#2C4A3A] focus-visible:opacity-100 group-hover:opacity-100"
                                 >
@@ -768,7 +807,7 @@ function CostRow({
                                 title="Delete this item"
                                 onClick={(e) => {
                                     e.stopPropagation();
-                                    onDeleteLeaf?.(node.id);
+                                    onDeleteLeafAction?.(node.id);
                                 }}
                                 className="flex h-7 w-7 items-center justify-center rounded-full bg-[#FBEDEB] text-[#B0453A] transition-colors hover:bg-[#E7C1BA] hover:text-[#8C3D33]"
                             >
@@ -802,12 +841,12 @@ function CostRow({
                             onLeafChange={onLeafChange}
                             onLeafFocus={onLeafFocus}
                             onLeafBlur={onLeafBlur}
-                            onAddChild={onAddChild}
+                            onAddChildAction={onAddChildAction}
                             onRequestDelete={onRequestDelete}
-                            onDeleteNode={onDeleteNode}
-                            onDescriptionChange={onDescriptionChange}
-                            onSplitLeaf={onSplitLeaf}
-                            onDeleteLeaf={onDeleteLeaf}
+                            onDeleteNodeAction={onDeleteNodeAction}
+                            onDescriptionChangeAction={onDescriptionChangeAction}
+                            onSplitLeafAction={onSplitLeafAction}
+                            onDeleteLeafAction={onDeleteLeafAction}
                             isLast={i === entries.length - 1}
                         />
                     ))}
@@ -857,7 +896,7 @@ function TotalCard({
                     <Icon size={13} />
                 </span>
                 <div
-                    className="min-w-0 truncate text-[10.5px] uppercase tracking-[0.1em] opacity-70"
+                    className="min-w-0 truncate text-[10.5px] uppercase tracking-widest opacity-70"
                     style={{ fontFamily: "var(--font-mono)" }}
                 >
                     {label}

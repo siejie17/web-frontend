@@ -133,7 +133,7 @@ export default function LoginPage() {
                 </svg>
 
                 <div className="relative mb-9">
-                    <div className="pfx-stage-1 mb-5 flex h-12 w-12 items-center justify-center rounded-full bg-gradient-to-br from-emerald-500/15 via-sage/15 to-blue-900/10 text-sage ring-1 ring-sage/20">
+                    <div className="pfx-stage-1 mb-5 flex h-12 w-12 items-center justify-center rounded-full bg-linear-to-br from-emerald-500/15 via-sage/15 to-blue-900/10 text-sage ring-1 ring-sage/20">
                         <Lock size={20} strokeWidth={2} />
                     </div>
 
@@ -148,7 +148,7 @@ export default function LoginPage() {
                     </p>
 
                     <div
-                        className="pfx-accent-bar mt-5 h-[3px] rounded-full bg-gradient-to-r from-emerald-500 via-teal-600 to-blue-900"
+                        className="pfx-accent-bar mt-5 h-0.75 rounded-full bg-linear-to-r from-emerald-500 via-teal-600 to-blue-900"
                         aria-hidden="true"
                     />
                 </div>

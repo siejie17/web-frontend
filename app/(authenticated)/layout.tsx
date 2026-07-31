@@ -92,6 +92,7 @@ export default function AuthenticatedLayout({
     pathname.includes("/assessments/new") ||
     pathname.includes("/assessments/new/results") ||
     pathname.includes("/assessments/history") ||
+    pathname.includes("/projects") ||
     pathname.includes("/profile") ||
     pathname.includes("/about");
 
