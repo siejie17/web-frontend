@@ -1097,7 +1097,15 @@ const GreenElementsScreen = ({
       > = {};
       const initialCheckedOptions: Record<string, Record<string, boolean>> = {};
 
-      newSections.forEach((criterion) => {
+      const hasPriorSelections =
+        Object.keys(checkedItems).length > 0 ||
+        Object.keys(checkedOptions).length > 0 ||
+        Object.keys(checkedSubitems).length > 0 ||
+        Object.keys(selectedDropdowns).length > 0 ||
+        Object.keys(selectionMarks).length > 0;
+
+      if (!hasPriorSelections) {
+        newSections.forEach((criterion) => {
         const targetCriterion = criterion.name;
 
         setCriteriaMarks((prevMarks) => ({
@@ -1204,6 +1212,7 @@ const GreenElementsScreen = ({
           });
         }
       });
+      }
 
       const firstCriterionName =
         newSections[0]?.name ||
@@ -1211,12 +1220,15 @@ const GreenElementsScreen = ({
 
       setSelectedCriterion(firstCriterionName as any);
       setCriteria(newSections);
-      setCheckedItems(initialCheckedState);
-      setCheckedOptions(initialCheckedOptions);
-      setCheckedSubitems(initialCheckedSubitems);
-      setSelectedDropdowns({});
-      setSelectionMarks({});
-      setActiveExclusiveGroups({});
+
+      if (!hasPriorSelections) {
+        setCheckedItems(initialCheckedState);
+        setCheckedOptions(initialCheckedOptions);
+        setCheckedSubitems(initialCheckedSubitems);
+        setSelectedDropdowns({});
+        setSelectionMarks({});
+        setActiveExclusiveGroups({});
+      }
     } else {
       setCriteria([]);
       setCheckedItems({});

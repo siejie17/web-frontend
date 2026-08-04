@@ -162,7 +162,7 @@ export default function AuthenticatedLayout({
               onClick={() => setMenuOpen((v) => !v)}
               aria-haspopup="menu"
               aria-expanded={menuOpen}
-              className="flex items-center gap-2 rounded-full py-1 pl-1 pr-2.5 transition-colors hover:bg-[#3E6B52]/[0.08] focus-visible:outline focus-visible:outline-offset-2 focus-visible:outline-[#3E6B52]"
+              className="flex items-center gap-2 rounded-full py-1 pl-1 pr-2.5 transition-colors hover:bg-[#3E6B52]/8 focus-visible:outline focus-visible:outline-offset-2 focus-visible:outline-[#3E6B52]"
             >
               {currentUser.profilePicture ? (
                 <img
@@ -194,7 +194,7 @@ export default function AuthenticatedLayout({
                 `}</style>
                 <div
                   role="menu"
-                  className="absolute right-0 top-[calc(100%+8px)] w-56 overflow-hidden rounded-[14px] border border-[#E4E1D8] bg-white shadow-[0_12px_32px_rgba(30,38,33,0.10)] [animation:menuIn_0.15s_ease-out]"
+                  className="absolute right-0 top-[calc(100%+8px)] w-56 overflow-hidden rounded-[14px] border border-[#E4E1D8] bg-white shadow-[0_12px_32px_rgba(30,38,33,0.10)] animated-[menuIn_0.15s_ease-out]"
                 >
                   <div className="border-b border-[#EFEDE6] px-4 py-3.5">
                     <div className="text-[13px] font-semibold text-[#1E2621]">
@@ -231,7 +231,7 @@ export default function AuthenticatedLayout({
       {/* Single <main> landmark for every authenticated page. */}
       <main className="mx-auto max-w-380 px-10">
         {hideNavbar && (
-          <div className="fixed top-6 left-6 z-[100] flex items-center gap-2.5 opacity-80">
+          <div className="fixed top-6 left-6 z-100 flex items-center gap-2.5 opacity-80">
             <img
               src="/logo/proformax-ori.png"
               alt=""

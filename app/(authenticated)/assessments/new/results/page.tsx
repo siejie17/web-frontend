@@ -221,6 +221,9 @@ export default function AssessmentResultsPage() {
   const popStateRef = useRef<((e: PopStateEvent) => void) | null>(null);
 
   const [noResults, setNoResults] = useState(false);
+  const [criteriaMarks, setCriteriaMarks] = useState<Record<string, number>>(
+    {},
+  );
 
   useEffect(() => {
     const results = localStorage.getItem("assessment_result") ?? sessionStorage.getItem("assessment_result");
@@ -378,9 +381,6 @@ export default function AssessmentResultsPage() {
   }, [router]);
 
   /* ── GreenElementsScreen state ── */
-  const [criteriaMarks, setCriteriaMarks] = useState<Record<string, number>>(
-    {},
-  );
   const [selectedDropdowns, setSelectedDropdowns] = useState<
     Record<string, SelectionType | null>
   >({});

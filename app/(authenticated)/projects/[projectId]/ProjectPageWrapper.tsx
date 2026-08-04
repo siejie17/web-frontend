@@ -20,6 +20,9 @@ export default function ProjectPageWrapper({ project, selectedProject }: Props) 
   const submitRef = useRef<(() => Promise<void>) | null>(null);
   const pendingNavRef = useRef<(() => void) | null>(null);
   const [confirmLeave, setConfirmLeave] = useState(false);
+  const [activeTab, setActiveTab] = useState<"details" | "cost" | "gbi">(
+    "details",
+  );
 
   const handleActualRatingChange = (rating: number) => {
     setActualRating(rating);
@@ -59,9 +62,12 @@ export default function ProjectPageWrapper({ project, selectedProject }: Props) 
         project={project}
         selectedProject={selectedProject}
         liveActualRating={actualRating}
+        activeTab={activeTab}
       />
       <ProjectDetailTabs
         selectedProject={selectedProject}
+        activeTab={activeTab}
+        onTabChange={setActiveTab}
         onActualRatingChange={handleActualRatingChange}
         onUnsavedChange={setDirty}
         submitRef={submitRef}

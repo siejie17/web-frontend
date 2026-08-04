@@ -1,6 +1,6 @@
-"use client";
+﻿"use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
     ChevronRight,
     Award,
@@ -32,9 +32,9 @@ export type CostNode = {
 export type CostBreakdown = Record<string, CostNode>;
 
 /**
- * "assessment" — a single editable cost column. Used when the tree itself IS the thing being
+ * "assessment" â€” a single editable cost column. Used when the tree itself IS the thing being
  *   authored (e.g. the initial assessment predicted-cost breakdown). Edits write to `cost`.
- * "comparison" — the original behavior: a static "Budgeted" column (`cost`) next to an editable
+ * "comparison" â€” the original behavior: a static "Budgeted" column (`cost`) next to an editable
  *   "Actual" column (`actual_cost`). Used once a predicted breakdown already exists and the user
  *   is logging real spend against it.
  */
@@ -45,10 +45,7 @@ type EditableField = "cost" | "actual_cost";
 
 /* ---------------- Money helpers ---------------- */
 
-/** Only allow digits with at most 2 decimal places while typing (blocks the keystroke otherwise). */
-export const DECIMAL_INPUT_RE = /^\d*\.?\d{0,2}$/;
-
-/** Always render currency to exactly 2 decimals — RM18.66 must never collapse to RM19. */
+/** Always render currency to exactly 2 decimals â€” RM18.66 must never collapse to RM19. */
 export function formatMoney(value: number): string {
     const safe = Number.isFinite(value) ? value : 0;
     return `RM ${safe.toLocaleString("en-MY", {
@@ -57,20 +54,26 @@ export function formatMoney(value: number): string {
     })}`;
 }
 
-/** Turn a raw stored edit string ("", "18.", "18.6") into a real number for math. */
-function parseEdit(raw: string | undefined): number {
-    if (!raw) return 0;
-    const n = parseFloat(raw);
-    return Number.isFinite(n) ? n : 0;
+/** Keep only digits, collapse leading zeroes, and ensure we always have at least one digit. */
+function normalizeCents(raw: string | undefined): string {
+    const digits = (raw ?? "").replace(/\D/g, "");
+    if (!digits) return "0";
+    return digits.replace(/^0+(?=\d)/, "") || "0";
 }
 
-/** Comma-separated read view of a raw edit string, preserving the decimal places as typed
- *  ("2030.5" → "2,030.5") so backspacing/typing at the end works naturally. */
+/** Banking-style read view of a raw edit string: every digit typed shifts the amount one cent. */
 export function formatWithCommas(raw: string | undefined): string {
-    if (!raw) return "";
-    const [intPart, decPart] = raw.split(".");
-    const intFormatted = intPart.replace(/\B(?=(\d{3})+(?!\d))/g, ",");
-    return decPart !== undefined ? `${intFormatted}.${decPart}` : intFormatted;
+    const normalized = normalizeCents(raw);
+    const padded = normalized.padStart(3, "0");
+    const whole = padded.slice(0, -2);
+    const cents = padded.slice(-2);
+    const wholeFormatted = whole.replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+    return `${wholeFormatted}.${cents}`;
+}
+
+/** Turn the banked cents string into a real number for math. */
+function parseEdit(raw: string | undefined): number {
+    return Number(normalizeCents(raw)) / 100;
 }
 
 /* ---------------- Helpers ---------------- */
@@ -84,14 +87,14 @@ function collectInitialEdits(data: CostBreakdown, field: EditableField): Record<
             Object.values(node.children).forEach(visit);
         } else {
             const raw = field === "cost" ? node.cost : node.actual_cost;
-            edits[node.id] = raw !== undefined && raw !== null ? Number(raw).toFixed(2) : "";
+            edits[node.id] = raw !== undefined && raw !== null ? String(Math.round(Number(raw) * 100)) : "0";
         }
     };
     Object.values(data).forEach(visit);
     return edits;
 }
 
-/** A parent's live value is always the sum of its children's edited leaf values — never stored directly. */
+/** A parent's live value is always the sum of its children's edited leaf values â€” never stored directly. */
 function computeFieldSum(node: CostNode, edits: Record<number, string>, field: EditableField): number {
     if (node.children) {
         return Object.values(node.children).reduce(
@@ -105,7 +108,7 @@ function computeFieldSum(node: CostNode, edits: Record<number, string>, field: E
     return parseEdit(edits[node.id]);
 }
 
-/** Total number of leaf line items under (and including, if it's a leaf itself) this node —
+/** Total number of leaf line items under (and including, if it's a leaf itself) this node â€”
  *  used to word the delete-confirm prompt ("delete this and 3 items?"). */
 function countLeaves(node: CostNode): number {
     if (!node.children) return 1;
@@ -125,11 +128,11 @@ function sumTop(
 }
 
 /* Fixed column widths shared by the header and every row so figures never drift out of line.
-   Predicted/Budgeted collapses away entirely below sm — see the row's mobile caption instead. */
+   Predicted/Budgeted collapses away entirely below sm â€” see the row's mobile caption instead. */
 export const COL_BUDGET = "w-28 sm:w-36 md:w-40";
 export const COL_ACTUAL = "w-28 sm:w-36 md:w-40";
 
-/* Width of one connector-rail cell — also doubles as the per-depth indent step. */
+/* Width of one connector-rail cell â€” also doubles as the per-depth indent step. */
 const RAIL_W = 18;
 
 /* Each nesting level gets its own badge hue so depth reads at a glance without heavy row tinting;
@@ -142,7 +145,7 @@ export const LEVEL_STYLES = [
         badgeBg: "bg-[#2C4A3A]",
         badgeText: "text-white",
         amount: "text-[#2C4A3A]",
-    }, // level 0 — deep forest
+    }, // level 0 â€” deep forest
     {
         border: "border-transparent",
         bg: "bg-white",
@@ -150,7 +153,7 @@ export const LEVEL_STYLES = [
         badgeBg: "bg-[#4E7290]",
         badgeText: "text-white",
         amount: "text-[#3B5A73]",
-    }, // level 1 — slate blue
+    }, // level 1 â€” slate blue
     {
         border: "border-transparent",
         bg: "bg-white",
@@ -158,10 +161,10 @@ export const LEVEL_STYLES = [
         badgeBg: "bg-[#8F7757]",
         badgeText: "text-white",
         amount: "text-[#71603F]",
-    }, // level 2+ — warm taupe
+    }, // level 2+ â€” warm taupe
 ];
 
-/* Certification rows are the one row type that earns a full accent treatment — the tree's
+/* Certification rows are the one row type that earns a full accent treatment â€” the tree's
    single spent "signature" moment, everything else stays disciplined. */
 export const CERT_STYLE = {
     border: "border-[#B8862E]",
@@ -276,23 +279,17 @@ export default function CostBreakdownTree({
     };
 
     const handleLeafChange = (id: number, raw: string) => {
-        // Strip any commas the user typed/pasted before validating the underlying number.
-        const stripped = raw.replace(/,/g, "");
-        // Reject anything beyond 2 decimal places instead of silently rounding later.
-        if (!DECIMAL_INPUT_RE.test(stripped)) return;
-        setEdits((prev) => ({ ...prev, [id]: stripped }));
-        onActualCostChangeAction?.(id, parseEdit(stripped));
+        const normalized = normalizeCents(raw);
+        setEdits((prev) => ({ ...prev, [id]: normalized }));
+        onActualCostChangeAction?.(id, parseEdit(normalized));
     };
 
     const handleLeafFocus = (id: number) => setFocusedId(id);
 
-    /** Snap "18", "18.", "" etc. to a clean 2-decimal string once the user leaves the field. */
+    /** Snap the field back to a clean bank-input string once the user leaves it. */
     const handleLeafBlur = (id: number) => {
         setFocusedId(null);
-        setEdits((prev) => {
-            const n = parseEdit(prev[id]);
-            return { ...prev, [id]: n === 0 && prev[id] === "" ? "" : n.toFixed(2) };
-        });
+        setEdits((prev) => ({ ...prev, [id]: normalizeCents(prev[id]) }));
     };
 
     // Adding a node instantly expands its new (would-be) parent so the freshly created row is visible,
@@ -355,7 +352,7 @@ export default function CostBreakdownTree({
             {/* ---------------- Tree ---------------- */}
             <div className="overflow-hidden rounded-2xl border border-[#E4E1D8] bg-white shadow-[0_1px_2px_rgba(30,38,33,0.03)]">
                 <div className="flex items-stretch">
-                    {/* Ledger-binder margin — a quiet signature touch, hidden on the smallest screens
+                    {/* Ledger-binder margin â€” a quiet signature touch, hidden on the smallest screens
                         where every pixel of width matters more than the flourish. */}
                     <div
                         className="hidden w-3 shrink-0 border-r border-[#EFEDE6] sm:block"
@@ -368,7 +365,7 @@ export default function CostBreakdownTree({
                     />
 
                     <div className="min-w-0 flex-1">
-                        {/* Table header — sits inside the same bordered box as the rows, sharing its corners */}
+                        {/* Table header â€” sits inside the same bordered box as the rows, sharing its corners */}
                         <div className="flex items-center border-b border-[#EFEDE6] bg-[#FBFAF7]">
                             <span
                                 className="flex flex-1 items-center justify-center py-2.5 text-center text-[10.5px] font-semibold uppercase tracking-widest text-[#8A938C]"
@@ -506,7 +503,7 @@ function CostRow({
     /** For each ancestor level above this row, whether that ancestor had further siblings after it
      *  (i.e. whether the rail's vertical guide should keep running through this row). */
     ancestorContinues: boolean[];
-    /** Whether this row is the last child among its own siblings — shapes its own elbow. */
+    /** Whether this row is the last child among its own siblings â€” shapes its own elbow. */
     isLastChild: boolean;
     edits: Record<number, string>;
     expanded: Set<number>;
@@ -652,7 +649,7 @@ function CostRow({
                 </div>
 
                 {isConfirmingDelete ? (
-                    /* Inline delete confirm — spans the remaining columns, replacing amounts + actions. */
+                    /* Inline delete confirm â€” spans the remaining columns, replacing amounts + actions. */
                     <span
                         className={`flex shrink-0 items-center gap-2 ${divider} bg-[#FDFBF9] px-3 sm:px-4`}
                         onClick={(e) => e.stopPropagation()}
@@ -708,7 +705,7 @@ function CostRow({
                                     <span
                                         className="w-full text-right text-[13px] font-semibold tabular-nums text-[#2C4A3A]"
                                         style={{ fontFamily: "var(--font-mono)", letterSpacing: "0.01em" }}
-                                        title="Sum of child items — not directly editable"
+                                        title="Sum of child items â€” not directly editable"
                                     >
                                         {formatMoney(liveValue)}
                                     </span>
@@ -728,15 +725,37 @@ function CostRow({
                                         placeholder="0.00"
                                         value={formatWithCommas(edits[node.id])}
                                         onChange={(e) => {
+                                            const input = e.currentTarget;
                                             onLeafChange(node.id, e.target.value);
+                                            const end = formatWithCommas(e.target.value).length;
                                             requestAnimationFrame(() => {
-                                                e.target.setSelectionRange(e.target.value.length, e.target.value.length);
+                                                input?.setSelectionRange(end, end);
                                             });
                                         }}
                                         onFocus={(e) => {
+                                            const input = e.currentTarget;
                                             onLeafFocus(node.id);
+                                            const end = formatWithCommas(e.target.value).length;
                                             requestAnimationFrame(() => {
-                                                e.target.setSelectionRange(e.target.value.length, e.target.value.length);
+                                                input?.setSelectionRange(end, end);
+                                            });
+                                        }}
+                                        onKeyDown={(e) => {
+                                            if (e.metaKey || e.ctrlKey || e.altKey) return;
+                                            if (e.key === "ArrowLeft" || e.key === "ArrowRight" || e.key === "Home" || e.key === "End") {
+                                                e.preventDefault();
+                                                const input = e.currentTarget;
+                                                const end = formatWithCommas(input.value).length;
+                                                requestAnimationFrame(() => {
+                                                    input?.setSelectionRange(end, end);
+                                                });
+                                            }
+                                        }}
+                                        onClick={(e) => {
+                                            const input = e.currentTarget;
+                                            const end = formatWithCommas(input.value).length;
+                                            requestAnimationFrame(() => {
+                                                input?.setSelectionRange(end, end);
                                             });
                                         }}
                                         onBlur={() => onLeafBlur(node.id)}
@@ -912,3 +931,4 @@ function TotalCard({
         </div>
     );
 }
+

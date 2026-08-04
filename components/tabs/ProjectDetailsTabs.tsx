@@ -57,16 +57,19 @@ type TabKey = (typeof ALL_TABS)[number]["key"];
 
 export default function ProjectDetailTabs({
   selectedProject,
+  activeTab,
+  onTabChange,
   onActualRatingChange,
   onUnsavedChange,
   submitRef,
 }: {
   selectedProject: any | null;
+  activeTab: TabKey;
+  onTabChange: (tab: TabKey) => void;
   onActualRatingChange?: (rating: number) => void;
   onUnsavedChange?: (dirty: boolean) => void;
   submitRef?: React.MutableRefObject<(() => Promise<void>) | null>;
 }) {
-  const [activeTab, setActiveTab] = useState<TabKey>("details");
   const [projectData, setProjectData] = useState<Project | null>(null);
   const [costBreakdownData, setCostBreakdownData] =
     useState<CostBreakdown | null>(null);
@@ -210,9 +213,9 @@ export default function ProjectDetailTabs({
 
   useEffect(() => {
     if (hideGbi && activeTab === "gbi") {
-      setActiveTab("details");
+      onTabChange("details");
     }
-  }, [hideGbi, activeTab]);
+  }, [hideGbi, activeTab, onTabChange]);
 
   const dirty = hasCostChanges || hasStructuralChanges || hasAuditChanges || pendingAdditions.length > 0 || pendingDeletions.length > 0;
 
@@ -376,7 +379,7 @@ export default function ProjectDetailTabs({
             <button
               key={tab.key}
               type="button"
-              onClick={() => setActiveTab(tab.key)}
+              onClick={() => onTabChange(tab.key)}
               aria-current={isActive ? "page" : undefined}
               className={`flex items-center gap-1.5 rounded-full px-4 py-2 text-[13px] font-medium transition-all focus-visible:outline focus-visible:outline-offset-2 focus-visible:outline-[#3E6B52] ${
                 isActive

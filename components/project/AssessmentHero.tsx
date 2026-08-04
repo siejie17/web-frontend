@@ -55,7 +55,7 @@ export default function AssessmentHero({
               {meta.status}
             </span>
 
-            <h1 className="mt-4 font-[var(--font-display,inherit)] text-[28px] font-semibold leading-tight tracking-tight text-white sm:text-[34px]">
+            <h1 className="mt-4 text-[28px] font-semibold leading-tight tracking-tight text-white sm:text-[34px]">
               {meta.assessmentTitle}
             </h1>
 
@@ -106,7 +106,7 @@ function ScoreDial({ summary }: { summary: ScoreSummary }) {
   const actualOffset = c - (summary.actualPct / 100) * c;
 
   return (
-    <div className="relative shrink-0 rounded-2xl border border-white/10 bg-white/[0.04] p-5 backdrop-blur-md">
+    <div className="relative shrink-0 rounded-2xl border border-white/10 bg-white/4 p-5 backdrop-blur-md">
       <svg width={size} height={size} className="-rotate-90">
         {/* Predicted — dashed "blueprint" outline (the plan) */}
         <circle

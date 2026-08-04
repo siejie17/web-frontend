@@ -14,7 +14,7 @@ function PointsBadge({ points, active }: { points: number; active?: boolean }) {
   return (
     <span
       className={cn(
-        "inline-flex min-w-[34px] items-center justify-center rounded-md px-1.5 py-0.5 text-[11px] font-bold",
+        "inline-flex min-w-8.5 items-center justify-center rounded-md px-1.5 py-0.5 text-[11px] font-bold",
         active ? "bg-emerald-100 text-emerald-700" : "bg-slate-100 text-slate-500"
       )}
     >
@@ -146,7 +146,7 @@ function SelectionDropdown({
               <Select.Item
                 key={sel.id}
                 value={String(sel.id)}
-                className="flex cursor-pointer items-center justify-between px-3 py-2.5 text-sm outline-none data-[highlighted]:bg-slate-100"
+                className="flex cursor-pointer items-center justify-between px-3 py-2.5 text-sm outline-none data-highlighted:bg-slate-100"
               >
                 <Select.ItemText>
                   <span className="text-gray-700 font-medium">{sel.description}</span>
@@ -430,7 +430,7 @@ export default function AssessmentItemCard({
                     >
                       <span
                         className={cn(
-                          "flex h-[18px] w-[18px] items-center justify-center rounded-full border-2",
+                          "flex h-4.5 w-4.5 items-center justify-center rounded-full border-2",
                           isActive ? "border-indigo-400" : "border-slate-300"
                         )}
                       >

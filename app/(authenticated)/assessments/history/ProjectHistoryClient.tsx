@@ -446,7 +446,7 @@ function CostVarianceStrip({
           Estimate vs. predicted
         </span>
         <span
-          className="flex items-center gap-1 rounded-full px-2 py-[3px] text-[10.5px] font-bold"
+          className="flex items-center gap-1 rounded-full px-2 py-0,75 text-[10.5px] font-bold"
           style={{ background: statusMeta.bg, color: statusMeta.color }}
         >
           <Icon size={11} strokeWidth={2.75} />
@@ -457,17 +457,17 @@ function CostVarianceStrip({
       <div className="relative h-6">
         {/* base track */}
         <div
-          className="absolute left-0 right-0 top-1/2 h-[3px] -translate-y-1/2 rounded-full"
+          className="absolute left-0 right-0 top-1/2 h-0.75 -translate-y-1/2 rounded-full"
           style={{ background: T.hairlineSoft }}
         />
         {/* budgeted range fill */}
         <div
-          className="absolute left-0 top-1/2 h-[3px] -translate-y-1/2 rounded-full"
+          className="absolute left-0 top-1/2 h-0.75 -translate-y-1/2 rounded-full"
           style={{ width: `${budgetPos}%`, background: "rgba(30,38,33,0.10)" }}
         />
         {/* connecting bracket between the two markers */}
         <div
-          className="absolute top-1/2 h-[3px] -translate-y-1/2 rounded-full transition-all duration-500"
+          className="absolute top-1/2 h-0.75 -translate-y-1/2 rounded-full transition-all duration-500"
           style={{
             left: `${Math.min(budgetPos, predPos)}%`,
             width: `${Math.abs(predPos - budgetPos)}%`,
@@ -642,7 +642,7 @@ function ProjectCard({ project }: { project: Project }) {
   return (
     <a
       href={`/projects/${project.id}`}
-      className="group/card relative block overflow-hidden rounded-3xl border bg-white transition-all hover:-translate-y-0.5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
+      className="group/card relative block overflow-hidden rounded-3xl border bg-white transition-all hover:-translate-y-0.5 focus-visible:outline focus-visible:outline-offset-2"
       style={{
         borderColor: T.hairline,
         boxShadow: "0 8px 24px rgba(30,38,33,0.04)",
