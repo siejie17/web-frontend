@@ -2,9 +2,10 @@ import { NextResponse } from 'next/server';
 
 export async function POST(request) {
     const { email, password } = await request.json();
+    const apiBaseUrl = (process.env.NEXT_PUBLIC_API_URL || process.env.API_URL || 'http://localhost:8000/api').replace(/\/$/, '');
 
     // 1. Talk to Laravel
-    const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/login`, {
+    const res = await fetch(`${apiBaseUrl}/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
         body: JSON.stringify({ email, password }),

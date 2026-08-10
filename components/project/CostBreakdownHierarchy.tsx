@@ -8,6 +8,7 @@ import {
   CheckCircle2,
   CircleDollarSign,
   Trash2,
+  FileDown,
 } from "lucide-react";
 
 import CostBreakdownTree, {
@@ -16,6 +17,7 @@ import CostBreakdownTree, {
   type CostBreakdownMode,
   formatMoney,
 } from "./CostBreakdownTree";
+import type { PdfProjectDetails } from "@/lib/pdf/costBreakdownPdf";
 
 /* ---------------- Shared tone tokens ---------------- */
 /** Single source of truth for good/bad/neutral colors, reused throughout the statement,
@@ -318,6 +320,8 @@ export default function CostBreakdownHierarchy({
   hideSubmitBar,
   resetKey = 0,
   mode = "comparison",
+  projectDetails,
+  readOnly = false,
 }: {
   /** The "as loaded" tree — source of truth for diffing. Only its leaf values for the active
    *  mode's field are compared. */
@@ -358,6 +362,11 @@ export default function CostBreakdownHierarchy({
    *   and the user is entering real implementation spend against it.
    */
   mode?: CostBreakdownMode;
+  /** Optional project summary used to build the cover (page 1) of the exported PDF.
+   *  Only meaningful in "comparison" mode. */
+  projectDetails?: PdfProjectDetails;
+  /** When true, all cost inputs are rendered as read-only display values. */
+  readOnly?: boolean;
 }) {
   const isAssessment = mode === "assessment";
   const editField = isAssessment ? "cost" : "actual_cost";
@@ -389,6 +398,7 @@ export default function CostBreakdownHierarchy({
   } | null>(null);
   // Bumped to force CostBreakdownTree to remount and re-derive its inputs (used by "Reset changes").
   const [treeKey, setTreeKey] = useState(0);
+  const [exporting, setExporting] = useState(false);
 
   const [pendingAdditions, setPendingAdditions] = useState<NodeAddition[]>([]);
   const [pendingDeletions, setPendingDeletions] = useState<number[]>([]);
@@ -446,6 +456,10 @@ export default function CostBreakdownHierarchy({
     );
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [localTree, effectiveBaseline, changedNodes, mode]);
+
+  useEffect(() => {
+    console.log(projectDetails)
+  }, [projectDetails])
 
   const totalBudgeted = useMemo(
     () => sumBudgeted(localTree ?? value),
@@ -820,7 +834,7 @@ export default function CostBreakdownHierarchy({
     nodes: Record<number, number>,
   ): Promise<SubmitResult> => {
     const endpoint = isAssessment ? "predicted-cost" : "actual-cost";
-    const res = await fetch(`/api/projects/${projectId}/${endpoint}`, {
+    const res = await fetch(`/be-api/projects/${projectId}/${endpoint}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ changedNodes: nodes }),
@@ -857,6 +871,25 @@ export default function CostBreakdownHierarchy({
       showToast("Something went wrong. Please try again.", "error");
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  const handleExportPdf = async () => {
+    if (exporting) return;
+    setExporting(true);
+    try {
+      const { generateCostBreakdownPdf } = await import(
+        "@/lib/pdf/costBreakdownPdf"
+      );
+      await generateCostBreakdownPdf({
+        breakdown: localTree ?? treeData,
+        project: projectDetails ?? {},
+        projectBudget,
+      });
+    } catch {
+      showToast("Failed to generate the PDF. Please try again.", "error");
+    } finally {
+      setExporting(false);
     }
   };
 
@@ -1032,7 +1065,7 @@ export default function CostBreakdownHierarchy({
         )}
 
         {/* ---------------- Editable tree ---------------- */}
-        {!isAssessment && (
+        {!isAssessment && !readOnly && (
           <div className="mb-4 flex flex-col gap-2.5">
             <div className="flex w-full flex-col gap-2.5 sm:flex-row sm:gap-3">
               {!deleteMode && (
@@ -1069,7 +1102,7 @@ export default function CostBreakdownHierarchy({
           </div>
         )}
 
-        {isAssessment && (
+        {isAssessment && !readOnly && (
           <div className="mb-4 flex w-full flex-col items-stretch gap-2.5 px-1 sm:flex-row sm:gap-3 sm:px-4">
             {!deleteMode && (
               <button
@@ -1135,6 +1168,20 @@ export default function CostBreakdownHierarchy({
           </div>
         )}
 
+        {mode === "comparison" && (
+          <div className="mb-3 flex items-center justify-end px-1">
+            <button
+              type="button"
+              onClick={handleExportPdf}
+              disabled={exporting}
+              className="flex items-center gap-1.5 rounded-full border border-[#E4E1D8] bg-white px-4 py-2 text-[12.5px] font-semibold text-[#5B655F] shadow-[0_1px_2px_rgba(30,38,33,0.04)] transition-colors hover:border-[#BFD6C8] hover:text-[#2C4A3A] disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              <FileDown size={14} />
+              {exporting ? "Preparing PDF…" : "Export as PDF"}
+            </button>
+          </div>
+        )}
+
         <div className=" bg-[#FDFDFC] p-2 sm:p-3">
           <CostBreakdownTree
             key={treeKey}
@@ -1147,6 +1194,7 @@ export default function CostBreakdownHierarchy({
             onSplitLeafAction={handleSplitRequest}
             onDeleteLeafAction={handleDeleteRequest}
             onAddRootCategoryAction={() => setShowAddCategoryModal(true)}
+            readOnly={readOnly}
           />
         </div>
       </div>

@@ -13,6 +13,7 @@ function CustomDropdown<T extends Record<string, any>>({
   renderItem,
   renderSelectedLabel,
   disable = false,
+  readOnly = false,
   maxHeight = 280,
   className = '',
   containerClassName = '',
@@ -26,6 +27,8 @@ function CustomDropdown<T extends Record<string, any>>({
   renderItem: (item: T) => ReactNode;
   renderSelectedLabel: (item: T) => ReactNode;
   disable?: boolean;
+  /** When true, the dropdown can be opened to view options but selections cannot be changed. */
+  readOnly?: boolean;
   maxHeight?: number;
   className?: string;
   containerClassName?: string;
@@ -158,10 +161,15 @@ function CustomDropdown<T extends Record<string, any>>({
                     role="option"
                     aria-selected={value ? value[valueField] === d[valueField] : false}
                     onClick={() => {
+                      if (readOnly) return;
                       onChange(d);
                       setOpen(false);
                     }}
-                    className="cursor-pointer border-b border-[#1C1F1D]/[0.04] transition-colors duration-100 last:border-b-0 hover:bg-[#3E6B52]/[0.05]"
+                    className={`border-b border-[#1C1F1D]/[0.04] transition-colors duration-100 last:border-b-0 ${
+                      readOnly
+                        ? 'cursor-default hover:bg-transparent'
+                        : 'cursor-pointer hover:bg-[#3E6B52]/[0.05]'
+                    }`}
                   >
                     {renderItem(d)}
                   </div>

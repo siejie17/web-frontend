@@ -166,18 +166,28 @@ function groupByYear(items: Project[]) {
 
 const PER_PAGE = 5;
 
+type Tab = "owned" | "shared";
+
 interface ClientProps {
   initialProjects: Project[];
+  initialSharedProjects?: Project[];
 }
 
-export default function ProjectHistoryClient({ initialProjects }: ClientProps) {
+export default function ProjectHistoryClient({
+  initialProjects,
+  initialSharedProjects = [],
+}: ClientProps) {
   const [page, setPage] = useState(1);
   const [query, setQuery] = useState("");
+  const [tab, setTab] = useState<Tab>("owned");
   const [projects] = useState<Project[]>(initialProjects);
+  const [sharedProjects] = useState<Project[]>(initialSharedProjects);
+
+  const activeProjects = tab === "owned" ? projects : sharedProjects;
 
   const searchFiltered = useMemo(
-    () => projects.filter((project) => matchesQuery(project, query)),
-    [query, projects],
+    () => activeProjects.filter((project) => matchesQuery(project, query)),
+    [query, activeProjects],
   );
 
   const filteredProjects = useMemo(
@@ -205,6 +215,12 @@ export default function ProjectHistoryClient({ initialProjects }: ClientProps) {
   };
 
   const clearFilters = () => {
+    setQuery("");
+    setPage(1);
+  };
+
+  const switchTab = (next: Tab) => {
+    setTab(next);
     setQuery("");
     setPage(1);
   };
@@ -248,7 +264,7 @@ export default function ProjectHistoryClient({ initialProjects }: ClientProps) {
               Your assessments
             </h1>
             <p className="mt-2.5 max-w-lg text-[13.5px] leading-relaxed text-[#5B655F] sm:text-[14px]">
-              Every project you&apos;ve assessed, in order, in one place.
+              Every project you have assessed, in order, in one place.
             </p>
           </div>
 
@@ -264,6 +280,50 @@ export default function ProjectHistoryClient({ initialProjects }: ClientProps) {
           </div>
         </div>
       </section>
+
+      {/* ---------------- Tab switcher ---------------- */}
+      <div
+        role="tablist"
+        aria-label="Project history views"
+        className="mx-2 mb-1 flex w-fit items-center gap-1 rounded-full border border-[#E4E1D8] bg-[#F6F6F2] p-1"
+      >
+        <button
+          type="button"
+          role="tab"
+          aria-selected={tab === "owned"}
+          aria-controls="owned-projects"
+          id="tab-owned"
+          onClick={() => switchTab("owned")}
+          className={`rounded-full px-4 py-1.5 text-[13px] font-medium transition-all focus-visible:outline focus-visible:outline-offset-2 focus-visible:outline-[#3E6B52] sm:px-5 ${
+            tab === "owned"
+              ? "bg-[#3E6B52] text-[#F6F6F2] shadow-[0_8px_20px_rgba(62,107,82,0.25)]"
+              : "text-[#5B655F] hover:text-[#1E2621]"
+          }`}
+        >
+          My Projects
+          <span className="ml-1.5 text-[11px] opacity-70">
+            ({projects.length})
+          </span>
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={tab === "shared"}
+          aria-controls="shared-projects"
+          id="tab-shared"
+          onClick={() => switchTab("shared")}
+          className={`rounded-full px-4 py-1.5 text-[13px] font-medium transition-all focus-visible:outline focus-visible:outline-offset-2 focus-visible:outline-[#3E6B52] sm:px-5 ${
+            tab === "shared"
+              ? "bg-[#3E6B52] text-[#F6F6F2] shadow-[0_8px_20px_rgba(62,107,82,0.25)]"
+              : "text-[#5B655F] hover:text-[#1E2621]"
+          }`}
+        >
+          Shared
+          <span className="ml-1.5 text-[11px] opacity-70">
+            ({sharedProjects.length})
+          </span>
+        </button>
+      </div>
 
       {/* ---------------- Search ---------------- */}
       <div className="my-5 mx-2 relative">
@@ -301,7 +361,11 @@ export default function ProjectHistoryClient({ initialProjects }: ClientProps) {
             exit={{ opacity: 0 }}
             transition={{ duration: 0.2 }}
           >
-            <EmptyState hasFilters={hasFilters} onClear={clearFilters} />
+            <EmptyState
+              tab={tab}
+              hasFilters={hasFilters}
+              onClear={clearFilters}
+            />
           </motion.div>
         ) : (
           <motion.div
@@ -360,9 +424,11 @@ export default function ProjectHistoryClient({ initialProjects }: ClientProps) {
 
 /* ---------------- Empty state ---------------- */
 function EmptyState({
+  tab,
   hasFilters,
   onClear,
 }: {
+  tab: Tab;
   hasFilters: boolean;
   onClear: () => void;
 }) {
@@ -375,12 +441,14 @@ function EmptyState({
         className="text-[15px] font-semibold text-[#1E2621] sm:text-[16px]"
         style={{ fontFamily: "var(--font-display)" }}
       >
-        No projects found
+        {tab === "shared" ? "No shared projects" : "No projects found"}
       </h3>
       <p className="mt-1.5 max-w-sm text-[13px] text-[#5B655F] sm:text-[13.5px]">
         {hasFilters
           ? "Nothing matches that search or filter. Try a different name, location, year, or rating tier."
-          : "Assessed projects will show up here once you run your first assessment."}
+          : tab === "shared"
+            ? "Projects shared with you through the project chat will appear here once another user adds you to their project."
+            : "Assessed projects will show up here once you run your first assessment."}
       </p>
       {hasFilters && (
         <button
@@ -388,7 +456,7 @@ function EmptyState({
           onClick={onClear}
           className="mt-4 rounded-full border border-[#E4E1D8] bg-white px-4 py-2 text-[13px] font-medium text-[#3E6B52] transition-all hover:-translate-y-0.5 hover:border-[#C9D3CC] hover:shadow-[0_10px_24px_rgba(30,38,33,0.08)]"
         >
-          Clear search &amp; filters
+          Clear search & filters
         </button>
       )}
     </div>

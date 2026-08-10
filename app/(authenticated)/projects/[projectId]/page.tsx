@@ -10,11 +10,11 @@ export default async function ProjectDetailsPage({
     params: Promise<{ projectId: string }>;
 }) {
     const { projectId } = await params;
-    const { user, project, selectedProject } = await getOwnedProject(projectId);
+    const { user, project, selectedProject, isShared } = await getOwnedProject(projectId);
 
     if (!user) redirect("/login");
     if (!project) return <AccessDenied />;
     if (!selectedProject) return notFound();
 
-    return <ProjectPageWrapper project={project} selectedProject={selectedProject} />;
+    return <ProjectPageWrapper project={project} selectedProject={selectedProject} isShared={isShared} />;
 }

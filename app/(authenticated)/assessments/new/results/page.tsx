@@ -635,7 +635,7 @@ export default function AssessmentResultsPage() {
         compulsory_items: compulsoryItems,
       };
 
-      const res = await fetch("/api/assessment/submit-assessment", {
+      const res = await fetch("/be-api/assessment/submit-assessment", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),

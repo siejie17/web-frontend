@@ -24,8 +24,10 @@ import {
   Lock,
   History,
   Award,
+  Lightbulb,
 } from "lucide-react";
 import CustomDropdown from "../form/CustomDropdown";
+import ReactMarkdown from "react-markdown";
 
 type ID = string | number;
 
@@ -225,6 +227,66 @@ function AddCustomItemRow({
   );
 }
 
+function renderMdxHeading(
+  children: React.ReactNode,
+  level: "h1" | "h2" | "h3",
+): React.ReactNode {
+  const text = Array.isArray(children) ? children.join("") : String(children ?? "");
+  const match = headingIcon(text);
+
+  const base =
+    "flex items-center gap-2 font-display font-semibold text-[#1E2621]";
+  const cls = level === "h3" ? "text-[13px] mb-1.5" : "text-sm mb-3";
+
+  const Comp = level;
+  return (
+    <Comp className={`${base} ${cls}`}>
+      {match ? <span style={{ color: match.color }}>{match.icon}</span> : null}
+      <span>{children}</span>
+    </Comp>
+  );
+}
+
+/** Split info into sections by top-level `## ` headings so each can be boxed. */
+function splitMdxSections(info: string): { heading?: string; body: string }[] {
+  const lines = info.split("\n");
+  const sections: { heading?: string; body: string[] }[] = [];
+  let current: { heading?: string; body: string[] } | null = null;
+
+  for (const line of lines) {
+    const m = line.match(/^##\s+(.+)$/);
+    if (m) {
+      current = { heading: m[1], body: [] };
+      sections.push(current);
+    } else if (current) {
+      current.body.push(line);
+    } else {
+      // text before the first heading (e.g. option sub_description / item.info)
+      if (!sections[0]) {
+        current = { body: [] };
+        sections.push(current);
+      }
+      sections[0].body.push(line);
+    }
+  }
+
+  return sections.map((s) => ({ heading: s.heading, body: s.body.join("\n") }));
+}
+
+function headingIcon(text: string): { icon: React.ReactNode; color: string } | null {
+  const lower = text.toLowerCase();
+  if (lower.includes("esg")) {
+    return { icon: <Leaf size={14} className="shrink-0" />, color: "#3E6B52" };
+  }
+  if (lower.includes("suggestion") || lower.includes("material")) {
+    return {
+      icon: <Lightbulb size={14} className="shrink-0" />,
+      color: "#A6741C",
+    };
+  }
+  return null;
+}
+
 function InfoGuideModal({
   isVisible,
   info,
@@ -238,6 +300,8 @@ function InfoGuideModal({
   label: string;
   onClose: () => void;
 }) {
+  const sections = splitMdxSections(info ?? "");
+  const isBoxed = sections.length > 1;
   return (
     <AnimatePresence>
       {isVisible && (
@@ -275,8 +339,57 @@ function InfoGuideModal({
                 <X size={16} />
               </button>
             </div>
-            <div className="max-h-[60vh] overflow-y-auto px-5 py-4 text-[13.5px] leading-6 text-[#1E2621]/75 whitespace-pre-line">
-              {info}
+            <div className="max-h-[60vh] overflow-y-auto px-5 py-4 text-[13.5px] leading-6 text-[#1E2621]/75">
+              {sections.map((section, i) => (
+                <div
+                  key={i}
+                  className={isBoxed ? "rounded-xl border border-[#1E2621]/[0.08] bg-[#1E2621]/[0.02] px-4 py-3.5 mb-3 last:mb-0" : "last:mb-0"}
+                >
+                  <ReactMarkdown
+                    components={{
+                      h1: (props) => renderMdxHeading(props.children as any, "h1"),
+                      h2: (props) => renderMdxHeading(props.children as any, "h2"),
+                      h3: (props) => renderMdxHeading(props.children as any, "h3"),
+                      p: (props) => <p className="mb-0 last:mb-0">{props.children}</p>,
+                      ul: (props) => (
+                        <ul className="mb-0 list-disc space-y-1 pl-5 last:mb-0">
+                          {props.children}
+                        </ul>
+                      ),
+                      ol: (props) => (
+                        <ol className="mb-0 list-decimal space-y-1 pl-5 last:mb-0">
+                          {props.children}
+                        </ol>
+                      ),
+                      li: (props) => <li>{props.children}</li>,
+                      strong: (props) => (
+                        <strong className="font-semibold text-[#1E2621]">
+                          {props.children}
+                        </strong>
+                      ),
+                      a: (props) => (
+                        <a
+                          href={props.href}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="text-[#3E6B52] underline"
+                        >
+                          {props.children}
+                        </a>
+                      ),
+                      code: (props) => (
+                        <code className="rounded bg-[#1E2621]/5 px-1 py-0.5 font-mono text-[12.5px]">
+                          {props.children}
+                        </code>
+                      ),
+                    }}
+                  >
+                    {section.heading
+                      ? `## ${section.heading}\n\n${section.body}`
+                      : section.body}
+                  </ReactMarkdown>
+                </div>
+              ))}
             </div>
           </motion.div>
         </motion.div>
@@ -418,6 +531,7 @@ const ActualGBIAssessment = ({
   );
   const isRefreshingProject =
     (otherProps?.isRefreshingProject as boolean) || false;
+  const displayOnly = (otherProps?.displayOnly as boolean) || false;
   const activeActualCostBreakdown =
     (otherProps?.actualCostBreakdown as any) ||
     selectedProject?.cost_breakdown ||
@@ -1457,7 +1571,7 @@ const ActualGBIAssessment = ({
 
     try {
       const response = await fetch(
-        `/api/projects/${selectedProject.id}/save-actual-changes`,
+        `/be-api/projects/${selectedProject.id}/save-actual-changes`,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -2036,8 +2150,10 @@ const ActualGBIAssessment = ({
                     <ScoreChip
                       value={item.marks!}
                       active={actualItemChecked}
-                      onToggle={() =>
-                        toggleActualAnswer("items", String(item.id))
+                      onToggle={
+                        displayOnly
+                          ? undefined
+                          : () => toggleActualAnswer("items", String(item.id))
                       }
                     />
                   ) : null}
@@ -2084,8 +2200,12 @@ const ActualGBIAssessment = ({
                   predicted={isItemChecked}
                   actual={actualItemChecked}
                   onToggle={() => toggleActualAnswer("items", String(item.id))}
-                  locked={isUnchanged}
-                  lockedMessage="Compulsory item — always counted toward the score and can't be unchecked."
+                  locked={isUnchanged || displayOnly}
+                  lockedMessage={
+                    displayOnly
+                      ? "This project is shared in read-only mode — changes are not allowed."
+                      : "Compulsory item — always counted toward the score and can't be unchecked."
+                  }
                 />
               ) : null}
 
@@ -2157,6 +2277,7 @@ const ActualGBIAssessment = ({
                               onToggle={() =>
                                 toggleActualAnswer("options", optionAuditKey)
                               }
+                              locked={displayOnly}
                             />
                           </div>
                         );
@@ -2222,6 +2343,7 @@ const ActualGBIAssessment = ({
                             placeholder="Select an option…"
                             renderItem={(i) => renderSelectionItem(i)}
                             renderSelectedLabel={(i) => renderSelectedLabel(i)}
+                            readOnly={displayOnly}
                             onChange={(selected) => {
                               setSelectedDropdowns((prev) => ({
                                 ...prev,
@@ -2293,6 +2415,7 @@ const ActualGBIAssessment = ({
                               >
                                 <button
                                   type="button"
+                                  disabled={displayOnly}
                                   onClick={() => {
                                     if (isActive) {
                                       setActiveExclusiveGroup(null);
@@ -2318,7 +2441,7 @@ const ActualGBIAssessment = ({
                                       return updated;
                                     });
                                   }}
-                                  className="mb-2.5 flex w-full items-center text-left focus-visible:outline focus-visible:outline-offset-2 focus-visible:outline-[#5B5BD6]/40 rounded-lg"
+                                  className="mb-2.5 flex w-full items-center text-left focus-visible:outline focus-visible:outline-offset-2 focus-visible:outline-[#5B5BD6]/40 rounded-lg disabled:cursor-default"
                                 >
                                   <span
                                     className="mr-2.5 flex h-4.5 w-4.5 shrink-0 items-center justify-center rounded-full border-2 transition-all duration-150"
@@ -2380,6 +2503,7 @@ const ActualGBIAssessment = ({
                                 </label>
                                 <CustomDropdown
                                   disable={!isActive}
+                                  readOnly={displayOnly}
                                   data={group.selections}
                                   value={
                                     selectedDropdowns[group.id] ||
@@ -2471,6 +2595,7 @@ const ActualGBIAssessment = ({
                               onToggle={() =>
                                 toggleActualAnswer("subitems", subitemAuditKey)
                               }
+                              locked={displayOnly}
                             />
                           </div>
                         );
@@ -2503,6 +2628,7 @@ const ActualGBIAssessment = ({
                                   predicted
                                   actual={actualCustomChecked}
                                   onToggle={() => toggleActualAnswer("customEntries", customAuditKey)}
+                                  locked={displayOnly}
                                 />
                               </div>
                             );
@@ -2535,13 +2661,15 @@ const ActualGBIAssessment = ({
                                 >
                                   New
                                 </span>
-                                <button
-                                  type="button"
-                                  onClick={() => deleteCustomItem(item.id, customItem.id)}
-                                  className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[#1E2621]/30 transition-colors hover:bg-red-50 hover:text-red-500"
-                                >
-                                  <Trash2 size={13} />
-                                </button>
+                                {!displayOnly && (
+                                  <button
+                                    type="button"
+                                    onClick={() => deleteCustomItem(item.id, customItem.id)}
+                                    className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[#1E2621]/30 transition-colors hover:bg-red-50 hover:text-red-500"
+                                  >
+                                    <Trash2 size={13} />
+                                  </button>
+                                )}
                               </div>
                               <CompareCheckboxes
                                 predicted={false}
@@ -2554,18 +2682,20 @@ const ActualGBIAssessment = ({
                       </div>
                     )}
 
-                    <div className="mt-1.5">
-                      <AddCustomItemRow
-                        itemId={item.id}
-                        value={customInputs[item.id]}
-                        onChange={(text) =>
-                          handleCustomInputChange(item.id, text)
-                        }
-                        onSubmit={() =>
-                          addCustomItem(item.id, customInputs[item.id])
-                        }
-                      />
-                    </div>
+                    {!displayOnly && (
+                      <div className="mt-1.5">
+                        <AddCustomItemRow
+                          itemId={item.id}
+                          value={customInputs[item.id]}
+                          onChange={(text) =>
+                            handleCustomInputChange(item.id, text)
+                          }
+                          onSubmit={() =>
+                            addCustomItem(item.id, customInputs[item.id])
+                          }
+                        />
+                      </div>
+                    )}
                   </>
                 );
               })()}
@@ -2583,6 +2713,7 @@ const ActualGBIAssessment = ({
       customItems,
       customInputs,
       deleteCustomItem,
+      displayOnly,
       getActualCustomInputsList,
       getCheckedItemIds,
       getCheckedOptionIds,
@@ -2697,6 +2828,7 @@ const ActualGBIAssessment = ({
                 labelField="name"
                 valueField="name"
                 placeholder="Choose a criterion"
+                // readOnly={displayOnly}
                 onChange={(item) => {
                   handleSectionPress(item);
                   verticalScrollRef.current?.scrollTo({

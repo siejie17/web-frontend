@@ -108,7 +108,7 @@ export default function AuthenticatedLayout({
 
   const handleLogout = async () => {
     try {
-      await fetch("/api/auth/logout", {
+      await fetch("/be-api/auth/logout", {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },

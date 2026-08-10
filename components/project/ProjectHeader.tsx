@@ -187,7 +187,7 @@ interface ProjectHeaderProps {
   };
   selectedProject: any;
   liveActualRating?: number | null;
-  activeTab?: "details" | "cost" | "gbi";
+  activeTab?: "details" | "cost" | "gbi" | "chat";
 }
 
 /* ── Component ── */
@@ -247,14 +247,6 @@ export default function ProjectHeader({
   /* ── Right-panel content, branched by active tab ── */
 
   let panel: React.ReactNode;
-
-  if (isNotCert && activeTab !== "cost") {
-    // Only the GBI-marks view is genuinely locked when uncertified.
-    // Cost tab can still show the marks comparison as a small locked notice
-    // and cost tab itself should still work normally, so this only applies
-    // when the tab actually wants to *feature* GBI marks (i.e. "cost" tab
-    // showing marks comparison, or "gbi" tab itself).
-  }
 
   if (activeTab === "cost") {
     // Cost breakdown tab → feature the GBI marks comparison
@@ -523,48 +515,9 @@ function DetailsComparisonPanel({
         </span>
       </div>
 
-      <div className="grid grid-cols-1 gap-5 divide-y divide-[#EFEDE6] sm:grid-cols-2 sm:gap-6 sm:divide-x sm:divide-y-0">
-        {/* GBI marks column */}
-        <div className="pt-1 sm:pr-6 sm:pt-0">
-          <div className="flex items-center gap-1.5 text-[10.5px] font-semibold uppercase tracking-widest text-[#8A938C]">
-            <Target size={12} />
-            GBI Marks
-          </div>
-
-          {isNotCert ? (
-            <p className="mt-2 text-[13px] font-medium text-[#8A6420]">
-              Locked · Not Certified
-            </p>
-          ) : (
-            <>
-              <div className="mt-1.5 flex items-baseline justify-between gap-2">
-                <p
-                  className="text-[24px] font-semibold leading-none text-[#1E2621]"
-                  style={{ fontFamily: "var(--font-display)" }}
-                >
-                  {rating}
-                  <span className="text-[13px] font-medium text-[#8A938C]">
-                    /100
-                  </span>
-                </p>
-                <DeltaChip
-                  value={marksDiff}
-                  favorable={marksFavorable}
-                  label={marksDeltaLabel}
-                />
-              </div>
-              <p className="mt-0.5 text-[11.5px] text-[#5B655F]">
-                Predicted {predicted ?? "—"} pts
-              </p>
-              <div className="mt-2.5">
-                <GbiTrack predicted={predicted} actual={rating} />
-              </div>
-            </>
-          )}
-        </div>
-
-        {/* Cost column */}
-        <div className="pt-4 sm:pl-6 sm:pt-0">
+      {isNotCert ? (
+        /* Not Certified → no GBI Assessment tab, so only show the cost gauge */
+        <div className="pt-1">
           <div className="flex items-center gap-1.5 text-[10.5px] font-semibold uppercase tracking-widest text-[#8A938C]">
             <Wallet size={12} />
             Cost
@@ -590,7 +543,68 @@ function DetailsComparisonPanel({
             <CostBars predicted={predictedCost} actual={actualCost} />
           </div>
         </div>
-      </div>
+      ) : (
+        <div className="grid grid-cols-1 gap-5 divide-y divide-[#EFEDE6] sm:grid-cols-2 sm:gap-6 sm:divide-x sm:divide-y-0">
+          {/* GBI marks column */}
+          <div className="pt-1 sm:pr-6 sm:pt-0">
+            <div className="flex items-center gap-1.5 text-[10.5px] font-semibold uppercase tracking-widest text-[#8A938C]">
+              <Target size={12} />
+              GBI Marks
+            </div>
+
+            <div className="mt-1.5 flex items-baseline justify-between gap-2">
+              <p
+                className="text-[24px] font-semibold leading-none text-[#1E2621]"
+                style={{ fontFamily: "var(--font-display)" }}
+              >
+                {rating}
+                <span className="text-[13px] font-medium text-[#8A938C]">
+                  /100
+                </span>
+              </p>
+              <DeltaChip
+                value={marksDiff}
+                favorable={marksFavorable}
+                label={marksDeltaLabel}
+              />
+            </div>
+            <p className="mt-0.5 text-[11.5px] text-[#5B655F]">
+              Predicted {predicted ?? "—"} pts
+            </p>
+            <div className="mt-2.5">
+              <GbiTrack predicted={predicted} actual={rating} />
+            </div>
+          </div>
+
+          {/* Cost column */}
+          <div className="pt-4 sm:pl-6 sm:pt-0">
+            <div className="flex items-center gap-1.5 text-[10.5px] font-semibold uppercase tracking-widest text-[#8A938C]">
+              <Wallet size={12} />
+              Cost
+            </div>
+            <div className="mt-1.5 flex items-baseline justify-between gap-2">
+              <p
+                className="text-[24px] font-semibold leading-none text-[#1E2621]"
+                style={{ fontFamily: "var(--font-display)" }}
+              >
+                {actualCost != null ? formatCurrency(actualCost) : "—"}
+              </p>
+              <DeltaChip
+                value={costDiff}
+                favorable={costFavorable}
+                label={costDeltaLabel}
+              />
+            </div>
+            <p className="mt-0.5 text-[11.5px] text-[#5B655F]">
+              Predicted{" "}
+              {predictedCost != null ? formatCurrency(predictedCost) : "—"}
+            </p>
+            <div className="mt-2.5">
+              <CostBars predicted={predictedCost} actual={actualCost} />
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

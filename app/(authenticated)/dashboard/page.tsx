@@ -90,7 +90,7 @@ export default function DashboardPage() {
       try {
         setLoadingProjects(true);
 
-        const res = await fetch(`/api/users/${userId}/projects`, {
+        const res = await fetch(`/be-api/users/${userId}/projects`, {
           credentials: "include",
           headers: { "Content-Type": "application/json" },
         });

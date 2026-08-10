@@ -193,6 +193,7 @@ export default function CostBreakdownTree({
     deleteMode = false,
     onDeleteLeafAction,
     onAddRootCategoryAction,
+    readOnly = false,
 }: {
     data: CostBreakdown;
     /** Optional: fires on every leaf edit (with a clean, parsed number), e.g. to persist to the server.
@@ -223,6 +224,8 @@ export default function CostBreakdownTree({
     onDeleteLeafAction?: (nodeId: number) => void;
     /** Called when the user clicks "Add Other Category" at the bottom of the tree. */
     onAddRootCategoryAction?: () => void;
+    /** When true, all cost inputs are rendered as read-only display values. */
+    readOnly?: boolean;
 }) {
     const field: EditableField = mode === "assessment" ? "cost" : "actual_cost";
 
@@ -428,6 +431,7 @@ export default function CostBreakdownTree({
                                 onSplitLeafAction={onSplitLeafAction}
                                 onDeleteLeafAction={onDeleteLeafAction}
                                 isLast={i === topEntries.length - 1}
+                                readOnly={readOnly}
                             />
                         ))}
 
@@ -496,6 +500,7 @@ function CostRow({
     onSplitLeafAction,
     onDeleteLeafAction,
     isLast,
+    readOnly = false,
 }: {
     rowKey: string;
     node: CostNode;
@@ -525,6 +530,7 @@ function CostRow({
     onSplitLeafAction?: (nodeId: number) => void;
     onDeleteLeafAction?: (nodeId: number) => void;
     isLast: boolean;
+    readOnly?: boolean;
 }) {
     const hasChildren = !!node.children;
     const isOpen = expanded.has(node.id);
@@ -711,6 +717,13 @@ function CostRow({
                                     </span>
                                     {isCert && !isAssessment && <CertificationBadge label={node.certificationLabel} />}
                                 </span>
+                            ) : readOnly ? (
+                                <span
+                                    className="w-full text-right text-[13px] font-semibold tabular-nums text-[#1E2621]"
+                                    style={{ fontFamily: "var(--font-mono)", letterSpacing: "0.01em" }}
+                                >
+                                    {formatMoney(parseEdit(edits[node.id]))}
+                                </span>
                             ) : (
                                 <div className="relative w-full">
                                     <span
@@ -867,6 +880,7 @@ function CostRow({
                             onSplitLeafAction={onSplitLeafAction}
                             onDeleteLeafAction={onDeleteLeafAction}
                             isLast={i === entries.length - 1}
+                            readOnly={readOnly}
                         />
                     ))}
                 </div>

@@ -15,6 +15,8 @@ import {
   ClipboardCheck,
   Inbox,
   Check,
+  FileDown,
+  MessageSquare,
 } from "lucide-react";
 
 import { formatCurrency, formatSize } from "@/lib/utils";
@@ -24,9 +26,12 @@ import {
 } from "@/components/project/CostBreakdownTree";
 import CostBreakdownHierarchy from "@/components/project/CostBreakdownHierarchy";
 import ActualGBIAssessment from "@/components/assessment/ActualGBIAssessment";
+import { ProjectChatTab } from "@/components/chat/ProjectChatTab";
+import type { PdfProjectDetails } from "@/lib/pdf/costBreakdownPdf";
 
 type Project = {
   id?: number;
+  name?: string;
   building_type?: string | null;
   category?: string | null;
   classification?: string | null;
@@ -51,6 +56,7 @@ const ALL_TABS = [
   { key: "details", label: "Project Details", icon: FileText },
   { key: "cost", label: "Cost Breakdown", icon: Wallet },
   { key: "gbi", label: "GBI Assessment", icon: ClipboardCheck },
+  { key: "chat", label: "Project Discussion", icon: MessageSquare },
 ] as const;
 
 type TabKey = (typeof ALL_TABS)[number]["key"];
@@ -62,6 +68,7 @@ export default function ProjectDetailTabs({
   onActualRatingChange,
   onUnsavedChange,
   submitRef,
+  readOnly = false,
 }: {
   selectedProject: any | null;
   activeTab: TabKey;
@@ -69,11 +76,32 @@ export default function ProjectDetailTabs({
   onActualRatingChange?: (rating: number) => void;
   onUnsavedChange?: (dirty: boolean) => void;
   submitRef?: React.MutableRefObject<(() => Promise<void>) | null>;
+  readOnly?: boolean;
 }) {
   const [projectData, setProjectData] = useState<Project | null>(null);
   const [costBreakdownData, setCostBreakdownData] =
     useState<CostBreakdown | null>(null);
   const [marksData, setMarksData] = useState<any>(null);
+
+  const pdfProjectDetails = useMemo<PdfProjectDetails | undefined>(() => {
+    if (!projectData) return undefined;
+    console.log(projectData);
+    return {
+      id: projectData.id,
+      name: projectData.name,
+      buildingType: projectData.building_type,
+      category: projectData.category,
+      classification: projectData.classification,
+      size: projectData.size,
+      budget: projectData.budget,
+      adjustedCost: projectData.adjusted_cost,
+      year: projectData.year,
+      location: projectData.location,
+      structure: projectData.structure,
+      rating: projectData.rating,
+      targetCertification: projectData.target_certification,
+    };
+  }, [projectData]);
 
   const [changedNodes, setChangedNodes] = useState<Record<number, number>>({});
   const [hasCostChanges, setHasCostChanges] = useState(false);
@@ -88,11 +116,15 @@ export default function ProjectDetailTabs({
     type: "success" | "error";
   } | null>(null);
   const auditSubmitRef = useRef<(() => Promise<boolean>) | null>(null);
+  const [gbiExporting, setGbiExporting] = useState(false);
+  const [chatUnread, setChatUnread] = useState(0);
+  const [chatMemberCount, setChatMemberCount] = useState(0);
 
   useEffect(() => {
     if (selectedProject) {
       const projectDetails = {
         id: selectedProject.projectData.id,
+        name: selectedProject.projectData.name,
         building_type: selectedProject.projectData.building_type_name,
         category: selectedProject.projectData.category,
         classification: selectedProject.projectData.classification,
@@ -144,7 +176,7 @@ export default function ProjectDetailTabs({
       }));
 
       promises.push(
-        fetch(`/api/projects/${projectId}/actual-cost`, {
+        fetch(`/be-api/projects/${projectId}/actual-cost`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -182,13 +214,14 @@ export default function ProjectDetailTabs({
       setPendingAdditions([]);
       setPendingDeletions([]);
       setHasAuditChanges(false);
-      fetch(`/api/projects/${projectId}`)
+      fetch(`/be-api/projects/${projectId}`)
         .then((r) => r.json())
         .then((fresh) => {
           if (fresh?.projectData) {
             setCostBreakdownData(fresh.projectData.cost_breakdown);
             setProjectData({
               id: fresh.projectData.id,
+              name: fresh.projectData.project_name,
               building_type: fresh.projectData.building_type_name,
               category: fresh.projectData.category,
               classification: fresh.projectData.classification,
@@ -210,6 +243,29 @@ export default function ProjectDetailTabs({
     setTimeout(() => setSubmitToast(null), 3000);
     setSubmitting(false);
   }, [projectData?.id, hasCostChanges, changedNodes, pendingAdditions, pendingDeletions, hasAuditChanges]);
+
+  const handleExportGbiPdf = useCallback(async () => {
+    if (gbiExporting || !selectedProject) return;
+    setGbiExporting(true);
+    try {
+      const { generateGbiAssessmentPdf } = await import(
+        "@/lib/pdf/gbiAssessmentPdf"
+      );
+      await generateGbiAssessmentPdf({
+        project: pdfProjectDetails ?? {},
+        criteria: selectedProject.green_elements ?? [],
+        answers: selectedProject.projectData ?? {},
+      });
+    } catch {
+      setSubmitToast({
+        message: "Failed to generate the PDF. Please try again.",
+        type: "error",
+      });
+      setTimeout(() => setSubmitToast(null), 3000);
+    } finally {
+      setGbiExporting(false);
+    }
+  }, [gbiExporting, selectedProject, pdfProjectDetails]);
 
   useEffect(() => {
     if (hideGbi && activeTab === "gbi") {
@@ -389,6 +445,11 @@ export default function ProjectDetailTabs({
             >
               <Icon size={14} />
               {tab.label}
+              {tab.key === "chat" && chatUnread > 0 && !isActive && (
+                <span className="flex h-4 min-w-4 items-center justify-center rounded-full bg-[#C08A3E] px-1 text-[10px] font-bold text-white">
+                  {chatUnread > 9 ? "9+" : chatUnread}
+                </span>
+              )}
             </button>
           );
         })}
@@ -397,15 +458,41 @@ export default function ProjectDetailTabs({
       {/* ---------------- Card ---------------- */}
       <div className="overflow-hidden mb-6 rounded-3xl border border-[#E4E1D8] bg-white shadow-[0_8px_24px_rgba(30,38,33,0.05)]">
         <div className="border-b border-[#EFEDE6] bg-[#FBFAF7] px-7 py-4 sm:px-9">
-          <span
-            className="text-[12px] uppercase tracking-[0.08em] text-[#7C8880]"
-            style={{ fontFamily: "var(--font-mono)" }}
-          >
-            {ALL_TABS.find((t) => t.key === activeTab)?.label}
-          </span>
+          {activeTab === "chat" ? (
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <p
+                  className="text-[15px] font-semibold text-[#1E2621]"
+                  style={{ fontFamily: "var(--font-display)" }}
+                >
+                  Team discussion
+                </p>
+                <p className="mt-0.5 text-[12px] text-[#7C8880]">
+                  {chatMemberCount} member{chatMemberCount === 1 ? "" : "s"} in
+                  this project
+                </p>
+              </div>
+              <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#3E6B52]/10 text-[#3E6B52]">
+                <MessageSquare size={17} />
+              </span>
+            </div>
+          ) : (
+            <span
+              className="text-[12px] uppercase tracking-[0.08em] text-[#7C8880]"
+              style={{ fontFamily: "var(--font-mono)" }}
+            >
+              {ALL_TABS.find((t) => t.key === activeTab)?.label}
+            </span>
+          )}
         </div>
 
-        <div className="px-7 py-8 sm:px-9 sm:py-9">
+        <div
+          className={
+            activeTab === "chat"
+              ? "px-6 pb-6 pt-2 sm:px-8"
+              : "px-7 py-8 sm:px-9 sm:py-9"
+          }
+        >
           {activeTab === "details" && (
             <>
               <DetailSection
@@ -498,6 +585,8 @@ export default function ProjectDetailTabs({
                 mode="comparison"
                 hideSubmitBar
                 resetKey={saveCount}
+                projectDetails={pdfProjectDetails}
+                readOnly={readOnly}
               />
             ) : (
               <EmptyTabState label="Cost breakdown" />
@@ -505,6 +594,17 @@ export default function ProjectDetailTabs({
           </div>
 
           <div className={activeTab === "gbi" ? "" : "hidden"}>
+            <div className="mb-3 flex items-center justify-end px-1">
+              <button
+                type="button"
+                onClick={handleExportGbiPdf}
+                disabled={gbiExporting}
+                className="flex items-center gap-1.5 rounded-full border border-[#E4E1D8] bg-white px-4 py-2 text-[12.5px] font-semibold text-[#5B655F] shadow-[0_1px_2px_rgba(30,38,33,0.04)] transition-colors hover:border-[#BFD6C8] hover:text-[#2C4A3A] disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                <FileDown size={14} />
+                {gbiExporting ? "Preparing PDF…" : "Export as PDF"}
+              </button>
+            </div>
             {selectedProject ? (
               <ActualGBIAssessment
                 selectedProject={selectedProject.projectData}
@@ -516,7 +616,7 @@ export default function ProjectDetailTabs({
                   selectedProject.certifications?.certificationMultipliers
                 }
                 hideSubmitButton
-                displayOnly
+                displayOnly={readOnly}
                 onAuditSubmitRef={auditSubmitRef}
                 onAuditUnsavedChange={setHasAuditChanges}
                 setMarksData={setMarksData}
@@ -524,6 +624,15 @@ export default function ProjectDetailTabs({
                 actualCostBreakdown={costBreakdownData}
               />
             ) : null}
+          </div>
+
+          <div className={activeTab === "chat" ? "" : "hidden"}>
+            <ProjectChatTab
+              realProjectId={selectedProject?.projectData?.id}
+              active={activeTab === "chat"}
+              onUnreadChange={setChatUnread}
+              onMembersChange={setChatMemberCount}
+            />
           </div>
         </div>
       </div>

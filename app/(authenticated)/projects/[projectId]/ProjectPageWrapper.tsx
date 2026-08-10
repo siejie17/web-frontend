@@ -10,9 +10,14 @@ import { BackButton } from "@/components/ui/BackButton";
 interface Props {
   project: any;
   selectedProject: any;
+  isShared?: boolean;
 }
 
-export default function ProjectPageWrapper({ project, selectedProject }: Props) {
+export default function ProjectPageWrapper({
+  project,
+  selectedProject,
+  isShared = false,
+}: Props) {
   const router = useRouter();
   const [actualRating, setActualRating] = useState<number | null>(null);
   const [dirty, setDirty] = useState(false);
@@ -20,7 +25,7 @@ export default function ProjectPageWrapper({ project, selectedProject }: Props) 
   const submitRef = useRef<(() => Promise<void>) | null>(null);
   const pendingNavRef = useRef<(() => void) | null>(null);
   const [confirmLeave, setConfirmLeave] = useState(false);
-  const [activeTab, setActiveTab] = useState<"details" | "cost" | "gbi">(
+  const [activeTab, setActiveTab] = useState<"details" | "cost" | "gbi" | "chat">(
     "details",
   );
 
@@ -37,23 +42,23 @@ export default function ProjectPageWrapper({ project, selectedProject }: Props) 
 
   // Warn on refresh/close/browser-back
   useEffect(() => {
-    if (!dirty) return;
+    if (!dirty || isShared) return;
     const handler = (e: BeforeUnloadEvent) => {
       e.preventDefault();
       e.returnValue = "";
     };
     window.addEventListener("beforeunload", handler);
     return () => window.removeEventListener("beforeunload", handler);
-  }, [dirty]);
+  }, [dirty, isShared]);
 
   const confirmThenBack = useCallback(() => {
-    if (dirty) {
+    if (dirty && !isShared) {
       pendingNavRef.current = () => router.back();
       setConfirmLeave(true);
     } else {
       router.back();
     }
-  }, [dirty, router]);
+  }, [dirty, isShared, router]);
 
   return (
     <div className="mx-auto max-w-275 pb-10 pt-6">
@@ -71,6 +76,7 @@ export default function ProjectPageWrapper({ project, selectedProject }: Props) 
         onActualRatingChange={handleActualRatingChange}
         onUnsavedChange={setDirty}
         submitRef={submitRef}
+        readOnly={isShared}
       />
 
       {/* Loading overlay — blocks interaction while submitting */}
@@ -133,8 +139,8 @@ export default function ProjectPageWrapper({ project, selectedProject }: Props) 
         </div>
       )}
 
-      {/* Save button — only when there are unsaved changes */}
-      {dirty && (
+      {/* Save button — only when there are unsaved changes and not shared */}
+      {dirty && !isShared && (
         <div className="flex items-center justify-end gap-3 bg-transparent">
           <button
             type="button"

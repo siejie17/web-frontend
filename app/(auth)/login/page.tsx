@@ -42,7 +42,7 @@ export default function LoginPage() {
         setLoading(true);
 
         try {
-            const res = await fetch("/api/auth/login", {
+            const res = await fetch("/be-api/auth/login", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
@@ -61,7 +61,12 @@ export default function LoginPage() {
 
             if (user && user.email_verified_at) {
                 await login(data.token ?? "", user);
-                router.push("/dashboard");
+                const redirectTo = searchParams.get("redirect");
+                const dest =
+                    redirectTo && redirectTo.startsWith("/")
+                        ? redirectTo
+                        : "/dashboard";
+                router.push(dest);
             } else {
                 setIsNotVerifiedModalOpen(true);
             }

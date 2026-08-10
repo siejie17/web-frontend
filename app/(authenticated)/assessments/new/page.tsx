@@ -88,7 +88,7 @@ const formatMoney = (n: number) =>
  * Stand-in for the real prediction endpoint.
  *
  * Replace the body with something like:
- *   const res = await fetch("/api/assessment/predict-cost", {
+ *   const res = await fetch("/be-api/assessment/predict-cost", {
  *     method: "POST",
  *     headers: { "Content-Type": "application/json" },
  *     body: JSON.stringify(params),
@@ -114,7 +114,7 @@ const formatMoney = (n: number) =>
    },
    signal: AbortSignal
  ): Promise<number> {
-   const response = await fetch("/api/assessment/prediction-cost", {
+   const response = await fetch("/be-api/assessment/prediction-cost", {
      method: "POST",
      signal,
      headers: {
@@ -213,7 +213,7 @@ export default function NewAssessmentPage() {
   useEffect(() => {
     const fetchFormInputs = async () => {
       try {
-        const res = await fetch("/api/assessment/form-inputs");
+        const res = await fetch("/be-api/assessment/form-inputs");
 
         const data = await res.json().catch(() => null);
 
@@ -491,7 +491,7 @@ export default function NewAssessmentPage() {
         costPreviewWay: "Detailed",
       };
 
-      const res = await fetch("/api/assessment/results", {
+      const res = await fetch("/be-api/assessment/results", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

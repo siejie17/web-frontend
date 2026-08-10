@@ -116,16 +116,45 @@ export async function getUserProjects(userId: string) {
   return data.projectsData ?? data.projects ?? [];
 }
 
+export async function getSharedProjects(userId: string) {
+  const token = await getSessionToken();
+
+  if (!token) {
+    return [];
+  }
+
+  const data = await fetchAuthedJson<ProjectsResponse>(
+    `/users/${userId}/projects/added-to-me`,
+    token,
+  );
+
+  if (!data) {
+    return [];
+  }
+
+  return data.projectsData ?? data.projects ?? [];
+}
+
 export async function getOwnedProject(projectId: string) {
   const user = await getCurrentUser();
 
   if (!user) {
-    return { user: null, project: null, selectedProject: null };
+    return { user: null, project: null, selectedProject: null, isShared: false };
   }
 
-  const projects = await getUserProjects(user.id);
+  const [ownedProjects, sharedProjects] = await Promise.all([
+    getUserProjects(user.id),
+    getSharedProjects(user.id),
+  ]);
+
   const project =
-    projects.find((item) => String(item.id) === projectId) ?? null;
+    ownedProjects.find((item) => String(item.id) === projectId) ??
+    sharedProjects.find((item) => String(item.id) === projectId) ??
+    null;
+
+  const isShared =
+    !ownedProjects.some((item) => String(item.id) === projectId) &&
+    sharedProjects.some((item) => String(item.id) === projectId);
 
   const selectedProject = await fetchAuthedJson<ProjectData>(
     `/projects/${projectId}`,
@@ -134,7 +163,7 @@ export async function getOwnedProject(projectId: string) {
 
   console.log("Selected Project:", selectedProject);
 
-  return { user, project, selectedProject };
+  return { user, project, selectedProject, isShared };
 }
 
 async function fetchProjectActualMarks(
@@ -156,6 +185,28 @@ async function fetchProjectActualMarks(
   return computeActualMarks(greenElements, projectData);
 }
 
+async function enrichWithActualRatings(
+  projectsList: Project[],
+  token: string,
+): Promise<Project[]> {
+  const actualRatings = await Promise.all(
+    projectsList.map(async (p) => {
+      const marks = await fetchProjectActualMarks(p.id, token);
+      return { id: p.id, marks };
+    }),
+  );
+
+  const ratingMap: Record<number, number | null> = {};
+  actualRatings.forEach((r) => {
+    ratingMap[r.id] = r.marks;
+  });
+
+  return projectsList.map((p) => ({
+    ...p,
+    actual_rating: ratingMap[p.id] ?? p.actual_rating,
+  }));
+}
+
 export async function getOwnedProjects() {
   const user = await getCurrentUser();
 
@@ -169,25 +220,29 @@ export async function getOwnedProjects() {
   }
 
   const projectsList = await getUserProjects(user.id);
-
-  const actualRatings = await Promise.all(
-    projectsList.map(async (p) => {
-      const marks = await fetchProjectActualMarks(p.id, token);
-      return { id: p.id, marks };
-    }),
-  );
-
-  const ratingMap: Record<number, number | null> = {};
-  actualRatings.forEach((r) => {
-    ratingMap[r.id] = r.marks;
-  });
-
-  const enriched = projectsList.map((p) => ({
-    ...p,
-    actual_rating: ratingMap[p.id] ?? p.actual_rating,
-  }));
+  const enriched = await enrichWithActualRatings(projectsList, token);
 
   console.log(enriched);
 
   return { user, projectsList: enriched };
+}
+
+export async function getSharedProjectsHistory() {
+  const user = await getCurrentUser();
+
+  if (!user) {
+    return { user: null, projects: null };
+  }
+
+  const token = await getSessionToken();
+  if (!token) {
+    return { user, sharedProjectsList: [] };
+  }
+
+  const sharedProjectsList = await getSharedProjects(user.id);
+  const enriched = await enrichWithActualRatings(sharedProjectsList, token);
+
+  console.log(enriched);
+
+  return { user, sharedProjectsList: enriched };
 }
