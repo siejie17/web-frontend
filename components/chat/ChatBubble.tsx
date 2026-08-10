@@ -231,7 +231,7 @@ export const ChatBubble = memo(function ChatBubble({
         className={`group relative flex flex-col items-end ${isGrouped ? "mt-1" : "mt-4"}`}
       >
         {replyName && (
-          <div className="w-full max-w-[82%] rounded-2xl rounded-br-md border border-[#EFEDE6] bg-white px-3 py-2 shadow-[0_1px_2px_rgba(30,38,33,0.03)]">
+          <div className="w-full mb-1.5 max-w-[82%] rounded-2xl rounded-br-md border border-[#EFEDE6] bg-white px-3 py-2 shadow-[0_1px_2px_rgba(30,38,33,0.03)]">
             <ReplyQuote name={replyName} preview={replyPreview ?? ""} />
           </div>
         )}
@@ -243,7 +243,7 @@ export const ChatBubble = memo(function ChatBubble({
           )}
           <div className="relative">
             <div
-              className={`max-w-full rounded-[20px] rounded-br-[6px] bg-linear-to-br from-[#4B8065] via-[#3E6B52] to-[#2A4C3B] px-4 text-[13.5px] leading-relaxed text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.16),0_1px_2px_rgba(30,38,33,0.08),0_14px_30px_-10px_rgba(46,81,64,0.45)] transition-shadow duration-200 group-hover:shadow-[inset_0_1px_0_rgba(255,255,255,0.18),0_1px_2px_rgba(30,38,33,0.10),0_18px_36px_-8px_rgba(46,81,64,0.5)] ${
+              className={`max-w-full rounded-xl2 rounded-br-md bg-linear-to-br from-[#4B8065] via-[#3E6B52] to-[#2A4C3B] px-4 text-[13.5px] leading-relaxed text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.16),0_1px_2px_rgba(30,38,33,0.08),0_14px_30px_-10px_rgba(46,81,64,0.45)] transition-shadow duration-200 group-hover:shadow-[inset_0_1px_0_rgba(255,255,255,0.18),0_1px_2px_rgba(30,38,33,0.10),0_18px_36px_-8px_rgba(46,81,64,0.5)] ${
                 message.message ? "py-2.5" : "py-2"
               }`}
             >
@@ -290,11 +290,11 @@ export const ChatBubble = memo(function ChatBubble({
           </div>
         )}
         {replyName ? (
-          <div className="max-w-[420px] self-start rounded-2xl rounded-bl-md border border-[#EFEDE6] bg-white px-3 py-2 shadow-[0_1px_2px_rgba(30,38,33,0.03),0_6px_16px_-4px_rgba(30,38,33,0.06)]">
+          <div className="max-w-105 self-start rounded-2xl rounded-bl-md border border-[#EFEDE6] bg-white px-3 py-2 shadow-[0_1px_2px_rgba(30,38,33,0.03),0_6px_16px_-4px_rgba(30,38,33,0.06)]">
             <ReplyQuote name={replyName} preview={replyPreview ?? ""} />
           </div>
         ) : null}
-        <div className="max-w-[420px]">
+        <div className="max-w-105">
           <div className="relative">
             {!isOwn && (
               <ReactionActions
@@ -303,7 +303,7 @@ export const ChatBubble = memo(function ChatBubble({
               />
             )}
             <div
-              className={`rounded-[20px] rounded-bl-[6px] border border-[#EFEDE6] bg-white px-4 text-[13.5px] leading-relaxed tracking-[-0.005em] text-[#1E2621] shadow-[0_1px_2px_rgba(30,38,33,0.03),0_8px_20px_-8px_rgba(30,38,33,0.10)] transition-all duration-200 group-hover:-translate-y-px group-hover:border-[#E4E1D8] group-hover:shadow-[0_2px_4px_rgba(30,38,33,0.04),0_16px_32px_-10px_rgba(30,38,33,0.14)] ${
+              className={`rounded-xl2 rounded-bl-md border border-[#EFEDE6] bg-white px-4 text-[13.5px] leading-relaxed tracking-[-0.005em] text-[#1E2621] shadow-[0_1px_2px_rgba(30,38,33,0.03),0_8px_20px_-8px_rgba(30,38,33,0.10)] transition-all duration-200 group-hover:-translate-y-px group-hover:border-[#E4E1D8] group-hover:shadow-[0_2px_4px_rgba(30,38,33,0.04),0_16px_32px_-10px_rgba(30,38,33,0.14)] ${
                 message.attachment ? "pt-5 pb-2.5" : "py-2.5"
               }`}
             >

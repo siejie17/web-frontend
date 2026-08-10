@@ -41,7 +41,7 @@
  *   never overflow horizontally on mobile.
  */
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { AnimatePresence, motion } from "framer-motion";
 import {
@@ -62,6 +62,7 @@ import {
 } from "lucide-react";
 import { Project } from "@/lib/server/project-access"; // Adjust this import path
 import { BackButton } from "@/components/ui/BackButton";
+import { useChatUnread } from "@/contexts/ChatUnreadContext";
 
 const T = {
   ink: "#1E2621",
@@ -182,6 +183,7 @@ export default function ProjectHistoryClient({
   const [tab, setTab] = useState<Tab>("owned");
   const [projects] = useState<Project[]>(initialProjects);
   const [sharedProjects] = useState<Project[]>(initialSharedProjects);
+  const { unreadByProject, refreshProjects } = useChatUnread();
 
   const activeProjects = tab === "owned" ? projects : sharedProjects;
 
@@ -224,6 +226,12 @@ export default function ProjectHistoryClient({
     setQuery("");
     setPage(1);
   };
+
+  // Compute unread counts for all visible projects when the tab changes.
+  useEffect(() => {
+    const ids = activeProjects.map((p) => p.id).filter(Boolean);
+    if (ids.length > 0) refreshProjects(ids);
+  }, [activeProjects, refreshProjects]);
 
   return (
     <div className="mx-auto max-w-275 px-4 pb-10 pt-6 sm:px-6 md:px-10">
@@ -404,7 +412,10 @@ export default function ProjectHistoryClient({
                       transition={{ duration: 0.3, delay: pi * 0.04 }}
                     >
                       <span className="absolute -left-5.25 top-7 h-2.5 w-2.5 rounded-full border-2 border-[#FCFCF8] bg-[#3E6B52] transition-transform duration-200 group-hover:scale-125 group-hover:shadow-[0_0_0_6px_rgba(62,107,82,0.15)] sm:-left-7.25" />
-                      <ProjectCard project={project} />
+                      <ProjectCard
+                        project={project}
+                        unread={unreadByProject[project.id] ?? 0}
+                      />
                     </motion.div>
                   ))}
                 </div>
@@ -706,10 +717,19 @@ function CornerTick({ className }: any) {
 }
 
 /* ---------------- Project card ---------------- */
-function ProjectCard({ project }: { project: Project }) {
+function ProjectCard({
+  project,
+  unread = 0,
+  onOpen,
+}: {
+  project: Project;
+  unread?: number;
+  onOpen?: () => void;
+}) {
   return (
     <a
       href={`/projects/${project.id}`}
+      onClick={onOpen}
       className="group/card relative block overflow-hidden rounded-3xl border bg-white transition-all hover:-translate-y-0.5 focus-visible:outline focus-visible:outline-offset-2"
       style={{
         borderColor: T.hairline,
@@ -741,6 +761,20 @@ function ProjectCard({ project }: { project: Project }) {
 
       <CornerTick className="absolute left-3 top-3 opacity-0 transition-opacity duration-300 group-hover/card:opacity-70" />
       <CornerTick className="absolute right-3 top-3 rotate-90 opacity-0 transition-opacity duration-300 group-hover/card:opacity-70" />
+
+      {/* New-messages badge */}
+      {unread > 0 && (
+        <span
+          className="absolute right-3 top-3 z-10 flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-[10.5px] font-bold text-white shadow-[0_4px_12px_rgba(177,74,61,0.35)]"
+          style={{
+            background: T.clay,
+            fontFamily: "var(--font-mono)",
+          }}
+          title={`${unread} new message${unread === 1 ? "" : "s"}`}
+        >
+          {unread > 9 ? "9+" : unread}
+        </span>
+      )}
 
       <div className="relative flex flex-col gap-4 p-5 sm:flex-row sm:items-start sm:justify-between sm:gap-6 sm:p-6 md:p-7">
         <div className="min-w-0 flex-1">

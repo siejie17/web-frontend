@@ -3,6 +3,7 @@ import { Sora } from "next/font/google";
 import "./globals.css";
 import { AuthProvider } from "@/contexts/AuthContext";
 import { LoadingProvider } from "@/contexts/LoadingContext";
+import { ChatUnreadProvider } from "@/contexts/ChatUnreadContext";
 
 const sora = Sora({
   variable: "--font-sora",
@@ -28,7 +29,9 @@ export default function RootLayout({
     >
       <body className="min-h-full flex flex-col bg-mist font-sans">
         <LoadingProvider>
-          <AuthProvider>{children}</AuthProvider>
+          <AuthProvider>
+            <ChatUnreadProvider>{children}</ChatUnreadProvider>
+          </AuthProvider>
         </LoadingProvider>
       </body>
     </html>

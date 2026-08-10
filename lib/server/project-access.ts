@@ -161,8 +161,6 @@ export async function getOwnedProject(projectId: string) {
     (await getSessionToken()) ?? "",
   );
 
-  console.log("Selected Project:", selectedProject);
-
   return { user, project, selectedProject, isShared };
 }
 
@@ -222,8 +220,6 @@ export async function getOwnedProjects() {
   const projectsList = await getUserProjects(user.id);
   const enriched = await enrichWithActualRatings(projectsList, token);
 
-  console.log(enriched);
-
   return { user, projectsList: enriched };
 }
 
@@ -241,8 +237,6 @@ export async function getSharedProjectsHistory() {
 
   const sharedProjectsList = await getSharedProjects(user.id);
   const enriched = await enrichWithActualRatings(sharedProjectsList, token);
-
-  console.log(enriched);
 
   return { user, sharedProjectsList: enriched };
 }

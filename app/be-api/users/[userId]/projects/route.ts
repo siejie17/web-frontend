@@ -26,8 +26,6 @@ export async function GET(
 
         const data = await res.json().catch(() => null);
 
-        console.log(data);
-
         if (!res.ok) {
             return NextResponse.json(
                 data ?? { message: "Unable to fetch user projects" },

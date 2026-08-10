@@ -85,7 +85,6 @@ export default function ProjectDetailTabs({
 
   const pdfProjectDetails = useMemo<PdfProjectDetails | undefined>(() => {
     if (!projectData) return undefined;
-    console.log(projectData);
     return {
       id: projectData.id,
       name: projectData.name,

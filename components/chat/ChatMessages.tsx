@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { ArrowUp, MessageSquareText, Sparkles, Loader2 } from "lucide-react";
 import type { Attachment, ProjectMessage, User } from "@/lib/mockChat/types";
@@ -16,7 +16,7 @@ function MessageSkeleton({ wide = false }: { wide?: boolean }) {
       <div className="flex-1">
         <div className="h-2.5 w-24 animate-pulse rounded-full bg-[#EDEAE0]" />
         <div
-          className={`mt-2.5 h-11 animate-pulse rounded-[18px] rounded-bl-[6px] bg-linear-to-br from-[#F1F0EA] to-[#EDEAE0] ${
+          className={`mt-2.5 h-11 animate-pulse rounded-[18px] rounded-bl-md bg-linear-to-br from-[#F1F0EA] to-[#EDEAE0] ${
             wide ? "w-4/5" : "w-3/5"
           }`}
         />
@@ -36,6 +36,8 @@ export function ChatMessages({
   onOpenAttachment,
   onReply,
   onReaction,
+  active = true,
+  onAtBottom,
 }: {
   messages: ProjectMessage[];
   usersById: Map<string, User>;
@@ -47,24 +49,63 @@ export function ChatMessages({
   onOpenAttachment: (a: Attachment) => void;
   onReply: (m: ProjectMessage) => void;
   onReaction: (m: ProjectMessage, emoji: string) => void;
+  /** Whether this pane is the visible tab. Hidden panes have zero size and
+   *  must never be treated as "at the bottom". */
+  active?: boolean;
+  /** Called when the user reaches the bottom of the message list — the point
+   *  at which the chat should be considered read (last-read timestamp). */
+  onAtBottom?: () => void;
 }) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const [showJump, setShowJump] = useState(false);
   const stickToBottomRef = useRef(true);
+  const atBottomReportedRef = useRef(false);
 
   const messagesById = useMemo(
     () => new Map(messages.map((m) => [m.id, m])),
     [messages],
   );
 
-  // Scroll to bottom when a new message arrives or on first load.
+  // Report the read position once per "bottom session" so the parent advances
+  // the persisted last-read timestamp without spamming it on every scroll
+  // pixel inside the bottom zone.
+  const reportAtBottom = useCallback(() => {
+    if (atBottomReportedRef.current) return;
+    atBottomReportedRef.current = true;
+    onAtBottom?.();
+  }, [onAtBottom]);
+
+  const isAtBottom = useCallback(() => {
+    const el = scrollRef.current;
+    if (!el) return false;
+    return el.scrollHeight - el.scrollTop - el.clientHeight <= 120;
+  }, []);
+
+  // Scroll to the latest message when the pane is shown or the list grows
+  // while pinned to the bottom, and re-report "at bottom" so the last-read
+  // timestamp advances with each newly seen message.
   useEffect(() => {
     const el = scrollRef.current;
     if (!el) return;
-    if (stickToBottomRef.current) {
-      el.scrollTop = el.scrollHeight;
+    if (!active || initialLoading || loadingOlder || messages.length === 0) return;
+    if (!stickToBottomRef.current) return;
+    el.scrollTop = el.scrollHeight;
+    requestAnimationFrame(() => {
+      const distance = el.scrollHeight - el.scrollTop - el.clientHeight;
+      if (distance <= 120) {
+        stickToBottomRef.current = true;
+        atBottomReportedRef.current = false;
+        reportAtBottom();
+      }
+    });
+  }, [active, messages.length, initialLoading, loadingOlder, reportAtBottom]);
+
+  useEffect(() => {
+    if (!active || initialLoading || loadingOlder || messages.length === 0) return;
+    if (isAtBottom()) {
+      reportAtBottom();
     }
-  }, [messages.length, initialLoading]);
+  }, [active, initialLoading, loadingOlder, messages.length, isAtBottom, reportAtBottom]);
 
   // When the user loads older messages, preserve scroll position.
   useEffect(() => {
@@ -83,6 +124,8 @@ export function ChatMessages({
     const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
     stickToBottomRef.current = distanceFromBottom < 120;
     setShowJump(distanceFromBottom > 200);
+    if (stickToBottomRef.current) reportAtBottom();
+    else atBottomReportedRef.current = false;
   };
 
   // Derive date separators + grouping.

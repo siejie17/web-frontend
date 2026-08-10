@@ -343,7 +343,7 @@ function InfoGuideModal({
               {sections.map((section, i) => (
                 <div
                   key={i}
-                  className={isBoxed ? "rounded-xl border border-[#1E2621]/[0.08] bg-[#1E2621]/[0.02] px-4 py-3.5 mb-3 last:mb-0" : "last:mb-0"}
+                  className={isBoxed ? "rounded-xl border border-[#1E2621]/8 bg-[#1E2621]/2 px-4 py-3.5 mb-3 last:mb-0" : "last:mb-0"}
                 >
                   <ReactMarkdown
                     components={{

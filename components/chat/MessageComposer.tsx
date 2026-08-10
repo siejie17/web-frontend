@@ -264,7 +264,7 @@ export function MessageComposer({
           {uploading || disabled ? (
             <Loader2 size={17} className="animate-spin" />
           ) : (
-            <Send size={16} className="translate-x-[1px]" />
+            <Send size={16} className="translate-x-px" />
           )}
         </button>
       </div>

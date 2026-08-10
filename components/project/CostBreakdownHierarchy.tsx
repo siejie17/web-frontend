@@ -457,10 +457,6 @@ export default function CostBreakdownHierarchy({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [localTree, effectiveBaseline, changedNodes, mode]);
 
-  useEffect(() => {
-    console.log(projectDetails)
-  }, [projectDetails])
-
   const totalBudgeted = useMemo(
     () => sumBudgeted(localTree ?? value),
     [localTree, value],

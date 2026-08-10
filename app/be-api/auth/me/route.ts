@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 
 export async function GET(request: NextRequest) {
-  console.log(process.env.NEXT_PUBLIC_API_URL)
     const token = request.cookies.get("session_token")?.value;
 
     if (!token) {

@@ -46,7 +46,7 @@ export function ProjectChatTab({
   useEffect(() => {
     if (active) chatActivate();
     else chatDeactivate();
-  }, [active, chatActivate, chatDeactivate]);
+  }, [active, chatActivate, chatDeactivate, chat.projectId]);
 
   useEffect(() => {
     onUnreadChange?.(chatUnread);
@@ -101,7 +101,7 @@ export function ProjectChatTab({
 
   return (
     <>
-      <div className="flex flex-col h-[1080px]">
+      <div className="flex flex-col h-270">
         {/* Slim toolbar (the Team discussion header lives on the card) */}
         <div className="mb-2.5 flex flex-wrap items-center justify-between gap-3">
           <AvatarStack members={effectiveMembers} max={5} size={30} />
@@ -142,6 +142,8 @@ export function ProjectChatTab({
             onOpenAttachment={setPreviewAttachment}
             onReply={handleReply}
             onReaction={handleReaction}
+            active={active}
+            onAtBottom={chat.markAllRead}
           />
           <MessageComposer
             onSend={handleSend}

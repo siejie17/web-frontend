@@ -59,7 +59,7 @@ export function AttachmentPreviewModal({
   const clampZoom = (z: number) => Math.min(3, Math.max(1, z));
 
   return (
-    <div className="fixed inset-0 z-[80]">
+    <div className="fixed inset-0 z-80">
       <AnimatePresence>
         <motion.div
           className="absolute inset-0 flex items-center justify-center bg-[#080D0A]/80 p-4 backdrop-blur-md"
@@ -178,7 +178,7 @@ function ToolbarButton({
       onClick={onClick}
       aria-label={label}
       title={label}
-      className="flex h-8 w-8 items-center justify-center rounded-full text-white/80 transition-colors hover:bg-white/15 hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-white/50"
+      className="flex h-8 w-8 items-center justify-center rounded-full text-white/80 transition-colors hover:bg-white/15 hover:text-white focus-visible:outline focus-visible:outline-white/50"
     >
       {children}
     </button>

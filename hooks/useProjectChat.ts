@@ -8,6 +8,7 @@ import type {
   ProjectMessage,
 } from "@/lib/mockChat/types";
 import { useAuth } from "@/contexts/AuthContext";
+import { useChatUnread } from "@/contexts/ChatUnreadContext";
 
 /**
  * Central state owner for the project chat. The UI talks only to this hook,
@@ -16,6 +17,7 @@ import { useAuth } from "@/contexts/AuthContext";
  */
 export function useProjectChat(realProjectId?: number | null) {
   const { user } = useAuth();
+  const { markRead, incrementUnread, unreadByProject } = useChatUnread();
   // The /me id arrives as an integer; senders are strings, so normalise to a
   // string to make `isOwn` (bubble placement) and member matching line up.
   const currentUserId = useMemo(
@@ -55,16 +57,35 @@ export function useProjectChat(realProjectId?: number | null) {
   const markAllRead = useCallback(() => {
     unreadRef.current = 0;
     setUnread(0);
-  }, []);
+    if (projectId) markRead(projectId);
+  }, [projectId, markRead]);
 
   const activate = useCallback(() => {
+    // Opening the tab alone does NOT mark messages as read. Reading is driven
+    // by actually reaching the bottom of the message list (see ChatMessages'
+    // onAtBottom), which advances the persisted last-read timestamp. This way
+    // the unread badge stays visible until the user scrolls to the bottom.
     isActiveRef.current = true;
-    markAllRead();
-  }, [markAllRead]);
+  }, []);
 
   const deactivate = useCallback(() => {
     isActiveRef.current = false;
   }, []);
+
+  /**
+   * Seed the tab badge from the global store. Messages may have arrived (or
+   * been computed by refreshProjects) before this page mounted, so mirror the
+   * store's count into the session unread. It stays visible until the user
+   * actually reaches the bottom of the chat.
+   */
+  useEffect(() => {
+    if (!projectId) return;
+    const baseline = unreadByProject[projectId] ?? 0;
+    if (unreadRef.current < baseline) {
+      unreadRef.current = baseline;
+      setUnread(baseline);
+    }
+  }, [projectId, unreadByProject]);
 
   const upsertMessage = useCallback((msg: ProjectMessage) => {
     setMessages((prev) => {
@@ -134,6 +155,7 @@ export function useProjectChat(realProjectId?: number | null) {
         ) {
           unreadRef.current += 1;
           setUnread(unreadRef.current);
+          incrementUnread(projectId);
         }
       } else if (e.type === "update") {
         upsertMessage(e.message as ProjectMessage);
@@ -146,7 +168,7 @@ export function useProjectChat(realProjectId?: number | null) {
       disposed = true;
       unsubscribe();
     };
-  }, [projectId, currentUserId, upsertMessage]);
+  }, [projectId, currentUserId, upsertMessage, incrementUnread]);
 
   /** Load an older page and prepend it (lazy pagination). */
   const loadOlder = useCallback(async () => {

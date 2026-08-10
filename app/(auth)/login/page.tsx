@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Eye, EyeOff, Lock, ArrowRight } from "lucide-react";
@@ -23,9 +23,11 @@ export default function LoginPage() {
     const [showPassword, setShowPassword] = useState(false);
 
     const [isNotVerifiedModalOpen, setIsNotVerifiedModalOpen] = useState(false);
-    const [isResetSentModalOpen, setIsResetSentModalOpen] = useState(
-        searchParams.get("passwordResetEmailSent") === "true"
-    );
+    const [isResetSentModalOpen, setIsResetSentModalOpen] = useState(false);
+
+    useEffect(() => {
+        setIsResetSentModalOpen(searchParams.get("passwordResetEmailSent") === "true");
+    }, [searchParams]);
 
     const onLoginPressed = async (e: React.FormEvent) => {
         e.preventDefault();

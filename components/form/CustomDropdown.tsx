@@ -115,10 +115,10 @@ function CustomDropdown<T extends Record<string, any>>({
         className={[
           'flex w-full items-center justify-between gap-2 rounded-[14px] border px-3.5 text-left transition-all duration-150 ease-out',
           disable
-            ? 'cursor-not-allowed border-[#1C1F1D]/[0.06] bg-[#1C1F1D]/[0.025]'
-            : 'border-[#1C1F1D]/[0.1] bg-white hover:border-[#3E6B52]/35',
-          open ? 'border-[#3E6B52]/50 ring-2 ring-[#3E6B52]/[0.12]' : '',
-          'focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#3E6B52]/40',
+            ? 'cursor-not-allowed border-[#1C1F1D]/6 bg-[#1C1F1D]/2.5'
+            : 'border-[#1C1F1D]/10 bg-white hover:border-[#3E6B52]/35',
+          open ? 'border-[#3E6B52]/50 ring-2 ring-[#3E6B52]/12' : '',
+          'focus-visible:outline focus-visible:outline-offset-2 focus-visible:outline-[#3E6B52]/40',
           className,
         ].join(' ')}
         style={{ height: 48 }}
@@ -143,7 +143,7 @@ function CustomDropdown<T extends Record<string, any>>({
                 transition={{ duration: 0.15, ease: [0.22, 1, 0.36, 1] }}
                 role="listbox"
                 className={[
-                  'fixed overflow-y-auto rounded-[16px] border border-[#1C1F1D]/[0.08] bg-white shadow-[0_4px_12px_rgba(28,31,29,0.06),0_16px_40px_-12px_rgba(28,31,29,0.18)]',
+                  'fixed overflow-y-auto rounded-2xl border border-[#1C1F1D]/8 bg-white shadow-[0_4px_12px_rgba(28,31,29,0.06),0_16px_40px_-12px_rgba(28,31,29,0.18)]',
                   containerClassName,
                 ].join(' ')}
                 style={{
@@ -165,10 +165,10 @@ function CustomDropdown<T extends Record<string, any>>({
                       onChange(d);
                       setOpen(false);
                     }}
-                    className={`border-b border-[#1C1F1D]/[0.04] transition-colors duration-100 last:border-b-0 ${
+                    className={`border-b border-[#1C1F1D]/4 transition-colors duration-100 last:border-b-0 ${
                       readOnly
                         ? 'cursor-default hover:bg-transparent'
-                        : 'cursor-pointer hover:bg-[#3E6B52]/[0.05]'
+                        : 'cursor-pointer hover:bg-[#3E6B52]/5'
                     }`}
                   >
                     {renderItem(d)}

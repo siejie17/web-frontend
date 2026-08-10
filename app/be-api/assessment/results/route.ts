@@ -27,8 +27,6 @@ export async function POST(request: NextRequest) {
       certifiedRatingScale,
     } = body;
 
-    console.log(body);
-
     const res = await fetch(`${apiBaseUrl}/results`, {
       method: "POST",
       headers: {

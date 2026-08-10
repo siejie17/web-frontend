@@ -139,8 +139,6 @@ const formatMoney = (n: number) =>
      throw new Error(data.message ?? "Prediction failed.");
    }
 
-   console.log(data.data.totalCost);
-
    return data.data.totalCost;
  }
 

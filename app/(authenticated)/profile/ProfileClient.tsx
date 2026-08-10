@@ -213,7 +213,7 @@ export default function ProfileClient() {
     setSavingPreference(preferenceKey);
 
     try {
-      const res = await fetch(`/api/user-preferences?userId=${user.id}`, {
+      const res = await fetch(`/be-api/user-preferences?userId=${user.id}`, {
         method: "PATCH",
         credentials: "include",
         headers: {
