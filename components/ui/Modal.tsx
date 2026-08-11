@@ -1,6 +1,7 @@
 "use client";
 
 import { ReactNode, useEffect } from "react";
+import { createPortal } from "react-dom";
 import Image from "next/image";
 import Button from "./Button";
 
@@ -35,9 +36,9 @@ export default function Modal({
     return () => document.removeEventListener("keydown", onKeyDown);
   }, [isOpen, onClose]);
 
-  if (!isOpen) return null;
+  if (!isOpen || typeof document === "undefined") return null;
 
-  return (
+  return createPortal(
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-ink/50 p-4 animate-fade-up"
       role="dialog"
@@ -60,6 +61,7 @@ export default function Modal({
         <p className="mb-6 text-[15px] text-slate">{description}</p>
         <Button onClick={onClose}>{buttonText}</Button>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }

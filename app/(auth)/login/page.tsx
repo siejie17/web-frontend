@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Eye, EyeOff, Lock, ArrowRight } from "lucide-react";
@@ -9,6 +9,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import TextField from "@/components/ui/TextField";
 import Button from "@/components/ui/Button";
 import Modal from "@/components/ui/Modal";
+import BusyModal from "@/components/ui/BusyModal";
 
 type FieldState = { value: string; error: string };
 
@@ -20,12 +21,19 @@ export default function LoginPage() {
     const [email, setEmail] = useState<FieldState>({ value: "", error: "" });
     const [password, setPassword] = useState<FieldState>({ value: "", error: "" });
     const [loading, setLoading] = useState(false);
+    const [isSigningIn, setIsSigningIn] = useState(false);
     const [showPassword, setShowPassword] = useState(false);
 
     const [isNotVerifiedModalOpen, setIsNotVerifiedModalOpen] = useState(false);
-    const [isResetSentModalOpen, setIsResetSentModalOpen] = useState(
-        searchParams.get("passwordResetEmailSent") === "true"
-    );
+    const [isResetSentModalOpen, setIsResetSentModalOpen] = useState(false);
+
+    useEffect(() => {
+        setIsResetSentModalOpen(searchParams.get("passwordResetEmailSent") === "true");
+    }, [searchParams]);
+
+    useEffect(() => {
+        router.prefetch("/dashboard");
+    }, [router]);
 
     const onLoginPressed = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -40,9 +48,10 @@ export default function LoginPage() {
         }
 
         setLoading(true);
+        setIsSigningIn(true);
 
         try {
-            const res = await fetch("/api/auth/login", {
+            const res = await fetch("/be-api/auth/login", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
@@ -60,8 +69,13 @@ export default function LoginPage() {
             const { user } = data;
 
             if (user && user.email_verified_at) {
-                await login(data.token ?? "", user);
-                router.push("/dashboard");
+                login(data.token ?? "", user);
+                const redirectTo = searchParams.get("redirect");
+                const dest =
+                    redirectTo && redirectTo.startsWith("/")
+                        ? redirectTo
+                        : "/dashboard";
+                router.replace(dest);
             } else {
                 setIsNotVerifiedModalOpen(true);
             }
@@ -91,6 +105,11 @@ export default function LoginPage() {
             setLoading(false);
         }
     };
+
+    const handleResetModalClose = () => {
+        setIsResetSentModalOpen(false);
+        router.replace("/login");
+    }
 
     return (
         <>
@@ -133,7 +152,7 @@ export default function LoginPage() {
                 </svg>
 
                 <div className="relative mb-9">
-                    <div className="pfx-stage-1 mb-5 flex h-12 w-12 items-center justify-center rounded-full bg-gradient-to-br from-emerald-500/15 via-sage/15 to-blue-900/10 text-sage ring-1 ring-sage/20">
+                    <div className="pfx-stage-1 mb-5 flex h-12 w-12 items-center justify-center rounded-full bg-linear-to-br from-emerald-500/15 via-sage/15 to-blue-900/10 text-sage ring-1 ring-sage/20">
                         <Lock size={20} strokeWidth={2} />
                     </div>
 
@@ -148,7 +167,7 @@ export default function LoginPage() {
                     </p>
 
                     <div
-                        className="pfx-accent-bar mt-5 h-[3px] rounded-full bg-gradient-to-r from-emerald-500 via-teal-600 to-blue-900"
+                        className="pfx-accent-bar mt-5 h-0.75 rounded-full bg-linear-to-r from-emerald-500 via-teal-600 to-blue-900"
                         aria-hidden="true"
                     />
                 </div>
@@ -235,11 +254,18 @@ export default function LoginPage() {
 
             <Modal
                 isOpen={isResetSentModalOpen}
-                onClose={() => setIsResetSentModalOpen(false)}
+                onClose={handleResetModalClose}
                 title="Check your inbox"
                 description="We've sent password reset instructions to your email."
                 buttonText="Got it"
             />
+
+            {isSigningIn && (
+                <BusyModal
+                    title="Signing you in"
+                    description="A quick security check is bringing up your dashboard."
+                />
+            )}
         </>
     );
 }
