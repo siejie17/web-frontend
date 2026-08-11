@@ -248,29 +248,6 @@ export function ChatMessages({
           </>
         )}
       </div>
-
-      <AnimatePresence>
-        {showJump && !initialLoading && messages.length > 0 && (
-          <motion.button
-            key="jump-to-bottom"
-            initial={{ opacity: 0, scale: 0.85, y: 6 }}
-            animate={{ opacity: 1, scale: 1, y: 0 }}
-            exit={{ opacity: 0, scale: 0.85, y: 6 }}
-            transition={SPRING}
-            type="button"
-            onClick={() => {
-              const el = scrollRef.current;
-              if (el) el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
-            }}
-            whileHover={{ scale: 1.06 }}
-            whileTap={{ scale: 0.94 }}
-            className="absolute bottom-4 right-6 flex h-11 w-11 items-center justify-center rounded-full bg-linear-to-br from-[#4B8065] to-[#2A4C3B] text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.18),0_1px_2px_rgba(30,38,33,0.10),0_14px_30px_-8px_rgba(46,81,64,0.5)] transition-shadow duration-200 hover:shadow-[inset_0_1px_0_rgba(255,255,255,0.22),0_1px_2px_rgba(30,38,33,0.12),0_18px_36px_-6px_rgba(46,81,64,0.55)]"
-            aria-label="Jump to latest message"
-          >
-            <ArrowUp size={18} strokeWidth={2.25} className="rotate-180" />
-          </motion.button>
-        )}
-      </AnimatePresence>
     </div>
   );
 }

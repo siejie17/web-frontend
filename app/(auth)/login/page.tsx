@@ -9,6 +9,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import TextField from "@/components/ui/TextField";
 import Button from "@/components/ui/Button";
 import Modal from "@/components/ui/Modal";
+import BusyModal from "@/components/ui/BusyModal";
 
 type FieldState = { value: string; error: string };
 
@@ -20,6 +21,7 @@ export default function LoginPage() {
     const [email, setEmail] = useState<FieldState>({ value: "", error: "" });
     const [password, setPassword] = useState<FieldState>({ value: "", error: "" });
     const [loading, setLoading] = useState(false);
+    const [isSigningIn, setIsSigningIn] = useState(false);
     const [showPassword, setShowPassword] = useState(false);
 
     const [isNotVerifiedModalOpen, setIsNotVerifiedModalOpen] = useState(false);
@@ -28,6 +30,10 @@ export default function LoginPage() {
     useEffect(() => {
         setIsResetSentModalOpen(searchParams.get("passwordResetEmailSent") === "true");
     }, [searchParams]);
+
+    useEffect(() => {
+        router.prefetch("/dashboard");
+    }, [router]);
 
     const onLoginPressed = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -42,6 +48,7 @@ export default function LoginPage() {
         }
 
         setLoading(true);
+        setIsSigningIn(true);
 
         try {
             const res = await fetch("/be-api/auth/login", {
@@ -62,13 +69,13 @@ export default function LoginPage() {
             const { user } = data;
 
             if (user && user.email_verified_at) {
-                await login(data.token ?? "", user);
+                login(data.token ?? "", user);
                 const redirectTo = searchParams.get("redirect");
                 const dest =
                     redirectTo && redirectTo.startsWith("/")
                         ? redirectTo
                         : "/dashboard";
-                router.push(dest);
+                router.replace(dest);
             } else {
                 setIsNotVerifiedModalOpen(true);
             }
@@ -98,6 +105,11 @@ export default function LoginPage() {
             setLoading(false);
         }
     };
+
+    const handleResetModalClose = () => {
+        setIsResetSentModalOpen(false);
+        router.replace("/login");
+    }
 
     return (
         <>
@@ -242,11 +254,18 @@ export default function LoginPage() {
 
             <Modal
                 isOpen={isResetSentModalOpen}
-                onClose={() => setIsResetSentModalOpen(false)}
+                onClose={handleResetModalClose}
                 title="Check your inbox"
                 description="We've sent password reset instructions to your email."
                 buttonText="Got it"
             />
+
+            {isSigningIn && (
+                <BusyModal
+                    title="Signing you in"
+                    description="A quick security check is bringing up your dashboard."
+                />
+            )}
         </>
     );
 }

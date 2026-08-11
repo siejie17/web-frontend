@@ -226,7 +226,7 @@ export default function AssessmentResultsPage() {
   );
 
   useEffect(() => {
-    const results = localStorage.getItem("assessment_result") ?? sessionStorage.getItem("assessment_result");
+    const results = sessionStorage.getItem("assessment_result") ?? sessionStorage.getItem("assessment_result");
     if (!results) {
       setNoResults(true);
       setLoading(false);
@@ -376,6 +376,7 @@ export default function AssessmentResultsPage() {
   }, [router]);
 
   const handleBack = useCallback(() => {
+    sessionStorage.removeItem("assessment_result");
     pendingAction.current = () => router.push("/assessments/new");
     setShowLeaveModal(true);
   }, [router]);
@@ -644,7 +645,7 @@ export default function AssessmentResultsPage() {
       const result = await res.json().catch(() => null);
 
       if (res.ok && result?.success) {
-        localStorage.removeItem("assessment_result");
+        sessionStorage.removeItem("assessment_result");
         router.push("/assessments/history");
       } else {
         alert(result?.message ?? "Failed to submit assessment.");

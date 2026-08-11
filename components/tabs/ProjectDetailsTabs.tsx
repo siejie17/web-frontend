@@ -15,7 +15,6 @@ import {
   ClipboardCheck,
   Inbox,
   Check,
-  FileDown,
   MessageSquare,
 } from "lucide-react";
 
@@ -58,6 +57,24 @@ const ALL_TABS = [
   { key: "gbi", label: "GBI Assessment", icon: ClipboardCheck },
   { key: "chat", label: "Project Discussion", icon: MessageSquare },
 ] as const;
+
+const TAB_HEADER_COPY: Record<
+  Exclude<TabKey, "chat">,
+  { title: string; subtitle: string }
+> = {
+  details: {
+    title: "Project details",
+    subtitle: "Overview, timing, and project metadata.",
+  },
+  cost: {
+    title: "Cost breakdown",
+    subtitle: "Compare predicted and actual spend.",
+  },
+  gbi: {
+    title: "GBI assessment",
+    subtitle: "Review the assessment results and audit items.",
+  },
+};
 
 type TabKey = (typeof ALL_TABS)[number]["key"];
 
@@ -471,17 +488,19 @@ export default function ProjectDetailTabs({
                   this project
                 </p>
               </div>
-              <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#3E6B52]/10 text-[#3E6B52]">
-                <MessageSquare size={17} />
-              </span>
             </div>
           ) : (
-            <span
-              className="text-[12px] uppercase tracking-[0.08em] text-[#7C8880]"
-              style={{ fontFamily: "var(--font-mono)" }}
-            >
-              {ALL_TABS.find((t) => t.key === activeTab)?.label}
-            </span>
+            <div>
+              <p
+                className="text-[15px] font-semibold text-[#1E2621]"
+                style={{ fontFamily: "var(--font-display)" }}
+              >
+                {TAB_HEADER_COPY[activeTab].title}
+              </p>
+              <p className="mt-0.5 text-[12px] text-[#7C8880]">
+                {TAB_HEADER_COPY[activeTab].subtitle}
+              </p>
+            </div>
           )}
         </div>
 
@@ -593,17 +612,6 @@ export default function ProjectDetailTabs({
           </div>
 
           <div className={activeTab === "gbi" ? "" : "hidden"}>
-            <div className="mb-3 flex items-center justify-end px-1">
-              <button
-                type="button"
-                onClick={handleExportGbiPdf}
-                disabled={gbiExporting}
-                className="flex items-center gap-1.5 rounded-full border border-[#E4E1D8] bg-white px-4 py-2 text-[12.5px] font-semibold text-[#5B655F] shadow-[0_1px_2px_rgba(30,38,33,0.04)] transition-colors hover:border-[#BFD6C8] hover:text-[#2C4A3A] disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                <FileDown size={14} />
-                {gbiExporting ? "Preparing PDF…" : "Export as PDF"}
-              </button>
-            </div>
             {selectedProject ? (
               <ActualGBIAssessment
                 selectedProject={selectedProject.projectData}
@@ -621,6 +629,8 @@ export default function ProjectDetailTabs({
                 setMarksData={setMarksData}
                 onApplyMultiplier={handleApplyMultiplier}
                 actualCostBreakdown={costBreakdownData}
+                handleExportGbiPdf={handleExportGbiPdf}
+                gbiExporting={gbiExporting}
               />
             ) : null}
           </div>

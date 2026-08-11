@@ -1,6 +1,6 @@
 ﻿"use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import {
     ChevronRight,
     Award,
@@ -193,6 +193,7 @@ export default function CostBreakdownTree({
     deleteMode = false,
     onDeleteLeafAction,
     onAddRootCategoryAction,
+    toolbarActions,
     readOnly = false,
 }: {
     data: CostBreakdown;
@@ -224,6 +225,7 @@ export default function CostBreakdownTree({
     onDeleteLeafAction?: (nodeId: number) => void;
     /** Called when the user clicks "Add Other Category" at the bottom of the tree. */
     onAddRootCategoryAction?: () => void;
+    toolbarActions?: ReactNode;
     /** When true, all cost inputs are rendered as read-only display values. */
     readOnly?: boolean;
 }) {
@@ -317,14 +319,17 @@ export default function CostBreakdownTree({
                     Cost Ledger
                 </span>
 
-                <button
-                    type="button"
-                    onClick={toggleAll}
-                    className="flex shrink-0 items-center gap-1.5 rounded-full border border-[#E4E1D8] bg-white px-3 py-1.5 text-[12px] font-medium text-[#5B655F] transition-colors hover:border-[#BFD6C8] hover:text-[#2C4A3A] focus-visible:outline focus-visible:outline-offset-2 focus-visible:outline-[#2C4A3A]"
-                >
-                    {allExpanded ? <ChevronsDownUp size={13} /> : <ChevronsUpDown size={13} />}
-                    {allExpanded ? "Collapse all" : "Expand all"}
-                </button>
+                <div className="flex items-center gap-2">
+                    {toolbarActions}
+                    <button
+                        type="button"
+                        onClick={toggleAll}
+                        className="flex shrink-0 items-center gap-1.5 rounded-full border border-[#E4E1D8] bg-white px-3 py-1.5 text-[12px] font-medium text-[#5B655F] transition-colors hover:border-[#BFD6C8] hover:text-[#2C4A3A] focus-visible:outline focus-visible:outline-offset-2 focus-visible:outline-[#2C4A3A]"
+                    >
+                        {allExpanded ? <ChevronsDownUp size={13} /> : <ChevronsUpDown size={13} />}
+                        {allExpanded ? "Collapse all" : "Expand all"}
+                    </button>
+                </div>
             </div>
 
             {/* ---------------- Totals ---------------- */}

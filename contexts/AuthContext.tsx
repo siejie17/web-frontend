@@ -13,6 +13,15 @@ type User = {
     profile_pic: string;
     profile_picture?: string;
     created_at?: string;
+    role_id?: number | null;
+    role?:
+        | {
+              id: number;
+              name?: string;
+              level?: number;
+          }
+        | string
+        | null;
 };
 
 type AuthContextValue = {

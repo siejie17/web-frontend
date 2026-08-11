@@ -1,6 +1,6 @@
 ﻿"use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Eye,
@@ -108,22 +108,49 @@ function GbiTrack({
   predicted: number | null;
   actual: number;
 }) {
+  const [revealed, setRevealed] = useState(false);
   const clamp = (v: number) => Math.min(100, Math.max(0, v));
   const actualPct = clamp(actual);
   const predictedPct = predicted != null ? clamp(predicted) : null;
+
+  useEffect(() => {
+    setRevealed(false);
+    const timer = window.setTimeout(() => setRevealed(true), 180);
+    return () => window.clearTimeout(timer);
+  }, [predicted, actual]);
+
   return (
-    <div className="relative h-3 w-full rounded-full bg-[#EFEDE6]">
-      <div
-        className="absolute inset-y-0 left-0 rounded-full bg-linear-to-r from-[#3E6B52] to-[#5A9172] transition-all duration-700 ease-out"
-        style={{ width: `${actualPct}%` }}
-      />
-      {predictedPct != null && (
-        <div
-          className="group absolute top-1/2 -translate-y-1/2"
-          style={{ left: `calc(${predictedPct}% - 5px)` }}
+    <div className="relative h-3 w-full overflow-hidden rounded-full bg-[#EFEDE6]">
+      {!revealed ? (
+        <motion.div
+          key="gbi-track-skeleton"
+          className="absolute inset-0 animate-pulse bg-[linear-gradient(90deg,#DFE4DE_0%,#EEF2EC_50%,#DFE4DE_100%)]"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          transition={{ duration: 0.18 }}
+        />
+      ) : (
+        <motion.div
+          key="gbi-track-fill"
+          className="absolute inset-0"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ duration: 0.2, ease: "easeOut" }}
         >
-          <div className="h-4 w-0.75 rounded-full bg-[#1E2621]" />
-        </div>
+          <div
+            className="absolute inset-y-0 left-0 rounded-full bg-linear-to-r from-[#3E6B52] to-[#5A9172]"
+            style={{ width: `${actualPct}%` }}
+          />
+          {predictedPct != null && (
+            <div
+              className="group absolute top-1/2 -translate-y-1/2"
+              style={{ left: `calc(${predictedPct}% - 5px)` }}
+            >
+              <div className="h-4 w-0.75 rounded-full bg-[#1E2621]" />
+            </div>
+          )}
+        </motion.div>
       )}
     </div>
   );
@@ -138,33 +165,64 @@ function CostBars({
   predicted: number | null;
   actual: number | null;
 }) {
+  const [revealed, setRevealed] = useState(false);
   const max = Math.max(predicted ?? 0, actual ?? 0, 1) * 1.12;
   const predPct = predicted != null ? (predicted / max) * 100 : 0;
   const actPct = actual != null ? (actual / max) * 100 : 0;
+
+  useEffect(() => {
+    setRevealed(false);
+    const timer = window.setTimeout(() => setRevealed(true), 180);
+    return () => window.clearTimeout(timer);
+  }, [predicted, actual]);
+
   return (
     <div className="space-y-2.5">
-      <div className="flex items-center gap-2.5">
-        <span className="w-16 shrink-0 text-[10px] font-semibold uppercase tracking-wide text-[#8A938C]">
-          Predicted
-        </span>
-        <div className="h-2.5 flex-1 rounded-full bg-[#EFEDE6]">
-          <div
-            className="h-2.5 rounded-full border-2 border-[#B7C2BA] transition-all duration-700 ease-out"
-            style={{ width: `${predPct}%` }}
-          />
-        </div>
-      </div>
-      <div className="flex items-center gap-2.5">
-        <span className="w-16 shrink-0 text-[10px] font-semibold uppercase tracking-wide text-[#8A938C]">
-          Actual
-        </span>
-        <div className="h-2.5 flex-1 rounded-full bg-[#EFEDE6]">
-          <div
-            className="h-2.5 rounded-full bg-linear-to-r from-[#3E6B52] to-[#5A9172] transition-all duration-700 ease-out"
-            style={{ width: `${actPct}%` }}
-          />
-        </div>
-      </div>
+      {!revealed ? (
+        <>
+          <div className="flex items-center gap-2.5">
+            <span className="w-16 shrink-0 text-[10px] font-semibold uppercase tracking-wide text-[#8A938C]">
+              Predicted
+            </span>
+            <div className="h-2.5 flex-1 overflow-hidden rounded-full bg-[#EFEDE6]">
+              <div className="h-2.5 w-3/4 animate-pulse rounded-full bg-[linear-gradient(90deg,#DFE4DE_0%,#EEF2EC_50%,#DFE4DE_100%)]" />
+            </div>
+          </div>
+          <div className="flex items-center gap-2.5">
+            <span className="w-16 shrink-0 text-[10px] font-semibold uppercase tracking-wide text-[#8A938C]">
+              Actual
+            </span>
+            <div className="h-2.5 flex-1 overflow-hidden rounded-full bg-[#EFEDE6]">
+              <div className="h-2.5 w-5/6 animate-pulse rounded-full bg-[linear-gradient(90deg,#DCE8E0_0%,#F2F6F3_50%,#DCE8E0_100%)]" />
+            </div>
+          </div>
+        </>
+      ) : (
+        <>
+          <div className="flex items-center gap-2.5">
+            <span className="w-16 shrink-0 text-[10px] font-semibold uppercase tracking-wide text-[#8A938C]">
+              Predicted
+            </span>
+            <div className="h-2.5 flex-1 rounded-full bg-[#EFEDE6]">
+              <div
+                className="h-2.5 rounded-full border-2 border-[#B7C2BA]"
+                style={{ width: `${predPct}%` }}
+              />
+            </div>
+          </div>
+          <div className="flex items-center gap-2.5">
+            <span className="w-16 shrink-0 text-[10px] font-semibold uppercase tracking-wide text-[#8A938C]">
+              Actual
+            </span>
+            <div className="h-2.5 flex-1 rounded-full bg-[#EFEDE6]">
+              <div
+                className="h-2.5 rounded-full bg-linear-to-r from-[#3E6B52] to-[#5A9172]"
+                style={{ width: `${actPct}%` }}
+              />
+            </div>
+          </div>
+        </>
+      )}
     </div>
   );
 }

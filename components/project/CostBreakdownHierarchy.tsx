@@ -1164,20 +1164,6 @@ export default function CostBreakdownHierarchy({
           </div>
         )}
 
-        {mode === "comparison" && (
-          <div className="mb-3 flex items-center justify-end px-1">
-            <button
-              type="button"
-              onClick={handleExportPdf}
-              disabled={exporting}
-              className="flex items-center gap-1.5 rounded-full border border-[#E4E1D8] bg-white px-4 py-2 text-[12.5px] font-semibold text-[#5B655F] shadow-[0_1px_2px_rgba(30,38,33,0.04)] transition-colors hover:border-[#BFD6C8] hover:text-[#2C4A3A] disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              <FileDown size={14} />
-              {exporting ? "Preparing PDF…" : "Export as PDF"}
-            </button>
-          </div>
-        )}
-
         <div className=" bg-[#FDFDFC] p-2 sm:p-3">
           <CostBreakdownTree
             key={treeKey}
@@ -1190,6 +1176,19 @@ export default function CostBreakdownHierarchy({
             onSplitLeafAction={handleSplitRequest}
             onDeleteLeafAction={handleDeleteRequest}
             onAddRootCategoryAction={() => setShowAddCategoryModal(true)}
+            toolbarActions={
+              mode === "comparison" ? (
+                <button
+                  type="button"
+                  onClick={handleExportPdf}
+                  disabled={exporting}
+                  className="flex shrink-0 items-center gap-1.5 rounded-full border border-[#E4E1D8] bg-white px-3 py-1.5 text-[12px] font-medium text-[#5B655F] transition-colors hover:border-[#BFD6C8] hover:text-[#2C4A3A] disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  <FileDown size={14} />
+                  {exporting ? "Preparing PDF…" : "Export as PDF"}
+                </button>
+              ) : null
+            }
             readOnly={readOnly}
           />
         </div>

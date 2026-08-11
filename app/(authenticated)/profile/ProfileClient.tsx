@@ -24,6 +24,10 @@ import { useAuth } from "@/contexts/AuthContext";
 import ChangePasswordModal from "@/components/profile/ChangePasswordModal";
 import EditFieldModal from "@/components/profile/EditFieldModal";
 import EditPictureModal from "@/components/profile/EditPictureModal";
+import EditRoleModal, {
+  formatRoleLabel,
+  type RoleOption,
+} from "@/components/profile/EditRoleModal";
 import GlassPanel from "@/components/profile/GlassPanel";
 import InfoTile from "@/components/profile/InfoTile";
 import PreferenceCard from "@/components/profile/PreferenceCard";
@@ -48,6 +52,8 @@ type ProfileOverrides = {
   first_name?: string;
   last_name?: string;
   profile_pic?: string;
+  role_id?: number | null;
+  role_label?: string;
 };
 
 const QUICK_LINKS: {
@@ -124,7 +130,9 @@ export default function ProfileClient() {
 
   const [overrides, setOverrides] = useState<ProfileOverrides>({});
   const [settings, setSettings] = useState<PreferenceState>(initialPreferences);
+  const [roles, setRoles] = useState<RoleOption[]>([]);
   const [loadingPreferences, setLoadingPreferences] = useState(true);
+  const [loadingRoles, setLoadingRoles] = useState(true);
   const [savingPreference, setSavingPreference] =
     useState<keyof PreferenceState | null>(null);
   const [message, setMessage] = useState<string | null>(null);
@@ -132,6 +140,7 @@ export default function ProfileClient() {
   const [editingField, setEditingField] = useState<
     "first_name" | "last_name" | null
   >(null);
+  const [showRoleModal, setShowRoleModal] = useState(false);
   const [showPictureModal, setShowPictureModal] = useState(false);
   const [showPasswordModal, setShowPasswordModal] = useState(false);
 
@@ -145,7 +154,7 @@ export default function ProfileClient() {
     const fetchPreferences = async () => {
       try {
         setLoadingPreferences(true);
-        const res = await fetch(`/api/user-preferences?userId=${user.id}`, {
+        const res = await fetch(`/be-api/user-preferences?userId=${user.id}`, {
           credentials: "include",
           headers: { "Content-Type": "application/json" },
         });
@@ -183,6 +192,53 @@ export default function ProfileClient() {
     };
 
     fetchPreferences();
+
+    return () => {
+      isActive = false;
+    };
+  }, [user]);
+
+  useEffect(() => {
+    if (!user) {
+      return;
+    }
+
+    let isActive = true;
+
+    const fetchRoles = async () => {
+      try {
+        setLoadingRoles(true);
+        const res = await fetch("/be-api/roles", {
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+        });
+
+        const data = await res.json().catch(() => null);
+
+        if (!res.ok) {
+          throw new Error(data?.message ?? "Unable to fetch roles");
+        }
+
+        const fetchedRoles = Array.isArray(data?.roles) ? data.roles : [];
+
+        if (!isActive) {
+          return;
+        }
+
+        setRoles(fetchedRoles);
+      } catch (error) {
+        console.error("Error fetching roles:", error);
+        if (isActive) {
+          setMessage("Could not load roles right now.");
+        }
+      } finally {
+        if (isActive) {
+          setLoadingRoles(false);
+        }
+      }
+    };
+
+    fetchRoles();
 
     return () => {
       isActive = false;
@@ -247,7 +303,7 @@ export default function ProfileClient() {
       throw new Error("Not signed in");
     }
 
-    const res = await fetch(`/api/user-profile?userId=${user.id}`, {
+    const res = await fetch(`/be-api/user-profile?userId=${user.id}`, {
       method: "PATCH",
       credentials: "include",
       headers: { "Content-Type": "application/json" },
@@ -262,6 +318,17 @@ export default function ProfileClient() {
 
     return data;
   };
+
+  const currentRoleId =
+    overrides.role_id ??
+    getUserRoleId(user?.role_id ?? null, user?.role ?? null) ??
+    getRoleIdFromLabel(getUserRoleLabel(user?.role ?? null), roles) ??
+    null;
+  const currentRoleLabel =
+    overrides.role_label ??
+    getRoleLabelFromId(currentRoleId, roles) ??
+    getUserRoleLabel(user?.role ?? null) ??
+    "Member";
 
   const profilePhoto =
     overrides.profile_pic ?? user?.profile_pic ?? user?.profile_picture ?? "";
@@ -343,7 +410,7 @@ export default function ProfileClient() {
 
         <ProfileHero
           fullName={fullName}
-          role={"Member"}
+          role={currentRoleLabel}
           memberSince={memberSince}
           photo={profilePhoto}
           initials={initials}
@@ -407,28 +474,53 @@ export default function ProfileClient() {
             </button>
           </GlassPanel>
 
-          {/* Preferences */}
-          <GlassPanel className="p-5 sm:p-6">
-            <SectionLabel>Notifications</SectionLabel>
-            <div className="mt-3 space-y-2">
-              <PreferenceCard
-                icon={Bell}
-                title="Push"
-                description="In-app and device alerts."
-                checked={settings.pushNotifications}
-                loading={loadingPreferences || savingPreference === "pushNotifications"}
-                onChange={(value) => handlePreferenceChange("pushNotifications", value)}
-              />
-              <PreferenceCard
-                icon={Mail}
-                title="Email"
-                description="Updates sent to your inbox."
-                checked={settings.emailNotifications}
-                loading={loadingPreferences || savingPreference === "emailNotifications"}
-                onChange={(value) => handlePreferenceChange("emailNotifications", value)}
-              />
-            </div>
-          </GlassPanel>
+          <div className="space-y-6">
+            {/* Preferences */}
+            <GlassPanel className="p-5 sm:p-6">
+              <SectionLabel>Notifications</SectionLabel>
+              <div className="mt-3 space-y-2">
+                <PreferenceCard
+                  icon={Bell}
+                  title="Push"
+                  description="In-app and device alerts."
+                  checked={settings.pushNotifications}
+                  loading={
+                    loadingPreferences ||
+                    savingPreference === "pushNotifications"
+                  }
+                  onChange={(value) =>
+                    handlePreferenceChange("pushNotifications", value)
+                  }
+                />
+                <PreferenceCard
+                  icon={Mail}
+                  title="Email"
+                  description="Updates sent to your inbox."
+                  checked={settings.emailNotifications}
+                  loading={
+                    loadingPreferences ||
+                    savingPreference === "emailNotifications"
+                  }
+                  onChange={(value) =>
+                    handlePreferenceChange("emailNotifications", value)
+                  }
+                />
+              </div>
+            </GlassPanel>
+
+            {/* Role */}
+            <GlassPanel className="p-5 sm:p-6">
+              <SectionLabel>Role</SectionLabel>
+              <div className="mt-3">
+                <InfoTile
+                  icon={ShieldCheck}
+                  label="Role"
+                  value={currentRoleLabel}
+                  onEdit={() => setShowRoleModal(true)}
+                />
+              </div>
+            </GlassPanel>
+          </div>
         </div>
 
         {/* ---------------- Quick Links ---------------- */}
@@ -470,6 +562,44 @@ export default function ProfileClient() {
         />
       )}
 
+      {showRoleModal && (
+        <EditRoleModal
+          roles={roles}
+          currentRoleId={currentRoleId}
+          loadingRoles={loadingRoles}
+          onClose={() => setShowRoleModal(false)}
+          onSave={async (roleId) => {
+            if (!user) {
+              throw new Error("Not signed in");
+            }
+
+            const res = await fetch(`/be-api/users/${user.id}/role`, {
+              method: "PATCH",
+              credentials: "include",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                role_id: roleId,
+              }),
+            });
+
+            const data = await res.json().catch(() => null);
+
+            if (!res.ok) {
+              throw new Error(data?.message ?? "Unable to update role.");
+            }
+
+            const selectedRole = roles.find((role) => role.id === roleId);
+            setOverrides((prev) => ({
+              ...prev,
+              role_id: roleId,
+              role_label:
+                selectedRole ? formatRoleLabel(selectedRole) : prev.role_label,
+            }));
+            setMessage("Role updated.");
+          }}
+        />
+      )}
+
       {showPasswordModal && (
         <ChangePasswordModal
           onClose={() => setShowPasswordModal(false)}
@@ -478,7 +608,7 @@ export default function ProfileClient() {
               throw new Error("Not signed in");
             }
 
-            const res = await fetch(`/api/user-password?userId=${user.id}`, {
+            const res = await fetch(`/be-api/user-password?userId=${user.id}`, {
               method: "PUT",
               credentials: "include",
               headers: { "Content-Type": "application/json" },
@@ -527,4 +657,88 @@ function getMemberSince(createdAt?: string) {
   const date = new Date(createdAt);
   if (Number.isNaN(date.getTime())) return undefined;
   return date.getFullYear().toString();
+}
+
+function getUserRoleId(
+  roleId?: number | null,
+  role?: { id?: number } | string | null
+) {
+  if (typeof roleId === "number") {
+    return roleId;
+  }
+
+  if (role && typeof role === "object" && typeof role.id === "number") {
+    return role.id;
+  }
+
+  return null;
+}
+
+function getUserRoleLabel(
+  role?:
+    | {
+        id?: number;
+        name?: string;
+        display_name?: string;
+        title?: string;
+        level?: number;
+      }
+    | string
+    | null
+) {
+  if (!role) {
+    return null;
+  }
+
+  if (typeof role === "string") {
+    return role;
+  }
+
+  return (
+    role.display_name ??
+    role.title ??
+    role.name ??
+    (typeof role.level === "number" ? `Level ${role.level}` : null)
+  );
+}
+
+function getRoleLabelFromId(
+  roleId: number | null,
+  roles: RoleOption[]
+) {
+  if (roleId === null) {
+    return null;
+  }
+
+  const role = roles.find((item) => item.id === roleId);
+  return role ? formatRoleLabel(role) : null;
+}
+
+function getRoleIdFromLabel(
+  roleLabel: string | null,
+  roles: RoleOption[]
+) {
+  if (!roleLabel) {
+    return null;
+  }
+
+  const normalizedLabel = normalizeRoleValue(roleLabel);
+  const role = roles.find((item) => {
+    const candidates = [
+      item.label,
+      item.display_name,
+      item.title,
+      item.name,
+    ].filter(Boolean) as string[];
+
+    return candidates.some(
+      (candidate) => normalizeRoleValue(candidate) === normalizedLabel
+    );
+  });
+
+  return role?.id ?? null;
+}
+
+function normalizeRoleValue(value: string) {
+  return value.trim().toLowerCase().replace(/[_-]+/g, " ");
 }

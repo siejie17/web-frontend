@@ -2,10 +2,10 @@ import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 
 // Public routes that anyone can access
-const PUBLIC_ROUTES = ['/login', '/register', '/forgot-password'];
+const PUBLIC_ROUTES = ['/login', '/sign-up', '/register', '/forgot-password'];
 
 // Auth routes that logged-in users shouldn't see
-const AUTH_ROUTES = ['/login', '/register', '/forgot-password'];
+const AUTH_ROUTES = ['/login', '/sign-up', '/register', '/forgot-password'];
 
 const VALIDATION_TTL_MS = 60_000; // 60 seconds
 

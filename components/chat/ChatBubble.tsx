@@ -127,11 +127,10 @@ function ReactionRow({
             type="button"
             onClick={() => onToggle(emoji)}
             whileTap={{ scale: 0.88 }}
-            className={`flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-medium transition-colors duration-150 ${
-              me
-                ? "border-[#3E6B52]/50 bg-[#EFF6F1] text-[#2E5140] shadow-[inset_0_0_0_1px_rgba(62,107,82,0.06)]"
-                : "border-[#E4E1D8] bg-white text-[#6B746E] hover:border-[#C9D3CC] hover:bg-[#F8F7F2]"
-            }`}
+            className={`flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-medium transition-colors duration-150 ${me
+              ? "border-[#3E6B52]/50 bg-[#EFF6F1] text-[#2E5140] shadow-[inset_0_0_0_1px_rgba(62,107,82,0.06)]"
+              : "border-[#E4E1D8] bg-white text-[#6B746E] hover:border-[#C9D3CC] hover:bg-[#F8F7F2]"
+              }`}
           >
             <span className="text-[12px] leading-none">{emoji}</span>
             <span className="tabular-nums">{ids.length}</span>
@@ -214,7 +213,7 @@ export const ChatBubble = memo(function ChatBubble({
       >
         <span className="inline-flex items-center gap-1.5 rounded-full border border-[#E4E1D8]/60 bg-[#F1F0EA]/80 px-3.5 py-1.5 text-[11.5px] text-[#6B746E] shadow-[0_1px_2px_rgba(30,38,33,0.03)] backdrop-blur-sm">
           <span className="font-semibold text-[#2E5140]">
-            {sender?.fullName ?? "Someone"}
+            {sender?.fullName?.split(" ")[0] || sender?.fullName || "Someone"}
           </span>
           {message.message}
         </span>
@@ -228,30 +227,41 @@ export const ChatBubble = memo(function ChatBubble({
         initial={{ opacity: 0, y: 10, scale: 0.98 }}
         animate={{ opacity: 1, y: 0, scale: 1 }}
         transition={SPRING}
-        className={`group relative flex flex-col items-end ${isGrouped ? "mt-1" : "mt-4"}`}
+        className={`group relative flex flex-col items-end ${isGrouped ? "mt-1" : "mt-4"
+          }`}
       >
         {replyName && (
-          <div className="w-full mb-1.5 max-w-[82%] rounded-2xl rounded-br-md border border-[#EFEDE6] bg-white px-3 py-2 shadow-[0_1px_2px_rgba(30,38,33,0.03)]">
-            <ReplyQuote name={replyName} preview={replyPreview ?? ""} />
+          <div className="mb-1.5 w-fit max-w-[70%] rounded-2xl rounded-br-md border border-[#EFEDE6] bg-white px-3 py-2 shadow-[0_1px_2px_rgba(30,38,33,0.03)]">
+            <ReplyQuote
+              name={replyName.split(" ")[0] || replyName}
+              preview={replyPreview ?? ""}
+            />
           </div>
         )}
+
         <div className="flex max-w-full flex-col items-end">
           {message.attachment && (
             <div className="relative z-10 mb-1.5">
-              <AttachmentInline attachment={message.attachment} onOpen={onOpenAttachment} />
+              <AttachmentInline
+                attachment={message.attachment}
+                onOpen={onOpenAttachment}
+              />
             </div>
           )}
+
           <div className="relative">
             <div
-              className={`max-w-full rounded-xl2 rounded-br-md bg-linear-to-br from-[#4B8065] via-[#3E6B52] to-[#2A4C3B] px-4 text-[13.5px] leading-relaxed text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.16),0_1px_2px_rgba(30,38,33,0.08),0_14px_30px_-10px_rgba(46,81,64,0.45)] transition-shadow duration-200 group-hover:shadow-[inset_0_1px_0_rgba(255,255,255,0.18),0_1px_2px_rgba(30,38,33,0.10),0_18px_36px_-8px_rgba(46,81,64,0.5)] ${
-                message.message ? "py-2.5" : "py-2"
-              }`}
+              className={`max-w-full rounded-xl2 rounded-br-md bg-linear-to-br from-[#4B8065] via-[#3E6B52] to-[#2A4C3B] px-4 text-[13.5px] leading-relaxed text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.16),0_1px_2px_rgba(30,38,33,0.08),0_14px_30px_-10px_rgba(46,81,64,0.45)] transition-shadow duration-200 group-hover:shadow-[inset_0_1px_0_rgba(255,255,255,0.18),0_1px_2px_rgba(30,38,33,0.10),0_18px_36px_-8px_rgba(46,81,64,0.5)] ${message.message ? "py-2.5" : "py-2"
+                }`}
             >
               {message.message && (
-                <p className="whitespace-pre-wrap tracking-[-0.005em]">{message.message}</p>
+                <p className="whitespace-pre-wrap tracking-[-0.005em]">
+                  {message.message}
+                </p>
               )}
             </div>
           </div>
+
           <span className="mt-1 pr-1">
             <Timestamp value={message.createdAt} />
           </span>
@@ -270,31 +280,48 @@ export const ChatBubble = memo(function ChatBubble({
       <div className="w-8 shrink-0 self-end">
         {endOfRun && (
           <span className="block overflow-hidden rounded-full ring-2 ring-white shadow-[0_1px_3px_rgba(30,38,33,0.12)]">
-            <Avatar name={sender?.fullName ?? "?"} size={32} src={sender?.avatar} />
+            <Avatar
+              name={sender?.fullName ?? "?"}
+              size={32}
+              src={sender?.avatar}
+            />
           </span>
         )}
       </div>
-      <div className="group relative flex max-w-[78%] flex-col">
+
+      {/* Message column */}
+      <div className="group relative flex w-fit max-w-[78%] min-w-0 flex-col">
+        {/* Sender info follows message column width */}
         {!isGrouped && sender && (
-          <div className="mb-1 flex items-center gap-2">
+          <div className="mb-1 ml-2.5 flex items-center gap-2">
             <span className="text-[12.5px] font-semibold tracking-[-0.01em] text-[#1E2621]">
-              {sender.fullName}
+              {sender.fullName.split(" ")[0] || sender.fullName}
             </span>
-            <RoleBadge role={sender.role} />
+
             <Timestamp value={message.createdAt} />
           </div>
         )}
+
         {message.attachment && (
           <div className="relative z-10 -mb-2.5 self-start">
-            <AttachmentInline attachment={message.attachment} onOpen={onOpenAttachment} />
+            <AttachmentInline
+              attachment={message.attachment}
+              onOpen={onOpenAttachment}
+            />
           </div>
         )}
-        {replyName ? (
-          <div className="max-w-105 self-start rounded-2xl rounded-bl-md border border-[#EFEDE6] bg-white px-3 py-2 shadow-[0_1px_2px_rgba(30,38,33,0.03),0_6px_16px_-4px_rgba(30,38,33,0.06)]">
-            <ReplyQuote name={replyName} preview={replyPreview ?? ""} />
+
+        {replyName && (
+          <div className="self-start rounded-2xl rounded-bl-md border border-[#EFEDE6] bg-white px-3 py-2 shadow-[0_1px_2px_rgba(30,38,33,0.03),0_6px_16px_-4px_rgba(30,38,33,0.06)]">
+            <ReplyQuote
+              name={replyName.split(" ")[0] || replyName}
+              preview={replyPreview ?? ""}
+            />
           </div>
-        ) : null}
-        <div className="max-w-105">
+        )}
+
+        {/* Actual message */}
+        <div className="w-fit max-w-full">
           <div className="relative">
             {!isOwn && (
               <ReactionActions
@@ -302,14 +329,19 @@ export const ChatBubble = memo(function ChatBubble({
                 onReply={() => onReply(message)}
               />
             )}
+
             <div
-              className={`rounded-xl2 rounded-bl-md border border-[#EFEDE6] bg-white px-4 text-[13.5px] leading-relaxed tracking-[-0.005em] text-[#1E2621] shadow-[0_1px_2px_rgba(30,38,33,0.03),0_8px_20px_-8px_rgba(30,38,33,0.10)] transition-all duration-200 group-hover:-translate-y-px group-hover:border-[#E4E1D8] group-hover:shadow-[0_2px_4px_rgba(30,38,33,0.04),0_16px_32px_-10px_rgba(30,38,33,0.14)] ${
-                message.attachment ? "pt-5 pb-2.5" : "py-2.5"
-              }`}
+              className={`rounded-xl2 rounded-bl-md border border-[#EFEDE6] bg-white px-4 text-[13.5px] leading-relaxed tracking-[-0.005em] text-[#1E2621] shadow-[0_1px_2px_rgba(30,38,33,0.03),0_8px_20px_-8px_rgba(30,38,33,0.10)] transition-all duration-200 group-hover:-translate-y-px group-hover:border-[#E4E1D8] group-hover:shadow-[0_2px_4px_rgba(30,38,33,0.04),0_16px_32px_-10px_rgba(30,38,33,0.14)] ${message.attachment ? "pt-5 pb-2.5" : "py-2.5"
+                }`}
             >
-              {message.message && <p className="whitespace-pre-wrap">{message.message}</p>}
+              {message.message && (
+                <p className="whitespace-pre-wrap">
+                  {message.message}
+                </p>
+              )}
             </div>
           </div>
+
           <div className="pt-1.5 pl-0.5">
             <ReactionRow
               reactions={message.reactions}

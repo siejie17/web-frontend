@@ -469,6 +469,7 @@ export default function NewAssessmentPage() {
   /* ---- submit ---- */
 
   const runAssessment = async () => {
+    setOpenField(null);
     setSubmitting(true);
     try {
       const data = {
@@ -500,7 +501,7 @@ export default function NewAssessmentPage() {
       const result = await res.json().catch(() => null);
 
       if (result) {
-        localStorage.setItem("assessment_result", JSON.stringify(result));
+        sessionStorage.setItem("assessment_result", JSON.stringify(result));
         router.push("/assessments/new/results");
       }
     } finally {
@@ -560,7 +561,7 @@ export default function NewAssessmentPage() {
   return (
     <>
       {submitting && (
-        <div className="fixed inset-0 z-100 flex flex-col items-center justify-center gap-3 bg-[#1E2621]/60 backdrop-blur-sm">
+        <div className="fixed inset-0 z-[10000] flex flex-col items-center justify-center gap-3 bg-[#1E2621]/60 backdrop-blur-sm pointer-events-auto">
           <Loader2 size={32} className="animate-spin text-[#F6F6F2]" />
           <p className="text-[15px] font-medium text-[#F6F6F2]">
             Assessment is running…
@@ -630,7 +631,8 @@ export default function NewAssessmentPage() {
           <form
             onSubmit={handleSubmit}
             noValidate
-            className="relative mb-5 rounded-3xl border border-[#E4E1D8] bg-white shadow-[0_8px_24px_rgba(30,38,33,0.05)]"
+            className={`relative mb-5 rounded-3xl border border-[#E4E1D8] bg-white shadow-[0_8px_24px_rgba(30,38,33,0.05)] ${submitting ? "pointer-events-none select-none" : ""}`}
+            aria-busy={submitting}
           >
             <div className="overflow-hidden rounded-t-3xl">
               {/* Progress header */}

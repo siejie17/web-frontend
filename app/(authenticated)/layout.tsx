@@ -24,6 +24,7 @@ import Link from "next/link";
 import AIAvatar from "@/components/ai/AIAvatar";
 import { useAuth } from "@/contexts/AuthContext";
 import { usePathname, useRouter } from "next/navigation";
+import Image from "next/image";
 
 const display = Plus_Jakarta_Sans({
   subsets: ["latin"],
@@ -124,19 +125,20 @@ export default function AuthenticatedLayout({
       className={`${display.variable} ${body.variable} ${mono.variable} relative min-h-screen text-[#1E2621]`}
     >
       {/* 1. Base Background Image Layer */}
-      <div
-        className="absolute inset-0 -z-10"
-        style={{
-          backgroundImage: "url('/images/main-background.png')",
-          backgroundSize: "cover",
-          backgroundPosition: "center",
-          backgroundAttachment: "fixed",
-        }}
-      />
+      <div className="fixed inset-0 -z-10">
+        <Image
+          src="/images/main-background.webp"
+          alt=""
+          fill
+          priority
+          sizes="100vw"
+          className="object-cover object-center"
+        />
+      </div>
 
       {/* 2. Opacity Tint Overlay Layer (Sits right on top of the image) */}
 
-      <div className="pointer-events-none absolute inset-0 -z-10 bg-[#F6F6F2]/50" />
+      <div className="pointer-events-none fixed inset-0 -z-10 bg-[#F6F6F2]/50" />
 
       {hideNavbar ? null : (
         <header className="sticky top-0 z-40 flex items-center justify-between border-b border-[#E4E1D8]/80 bg-white/78 px-10 py-5 shadow-[0_1px_12px_rgba(30,38,33,0.05)] backdrop-blur-lg">
@@ -230,16 +232,6 @@ export default function AuthenticatedLayout({
 
       {/* Single <main> landmark for every authenticated page. */}
       <main className="mx-auto max-w-380 px-10">
-        {hideNavbar && (
-          <div className="fixed top-6 left-6 z-100 flex items-center gap-2.5 opacity-80">
-            <img
-              src="/logo/proformax-ori.png"
-              alt=""
-              className="h-7 w-7 object-contain"
-            />
-          </div>
-        )}
-
         {children}
       </main>
 
@@ -263,9 +255,8 @@ function MenuItem({
     <button
       role="menuitem"
       onClick={action}
-      className={`flex w-full items-center gap-2.5 px-4 py-2.5 text-left text-[13px] transition-colors hover:bg-[#F6F6F2] ${
-        danger ? "text-[#B4483C]" : "text-[#1E2621]"
-      }`}
+      className={`flex w-full items-center gap-2.5 px-4 py-2.5 text-left text-[13px] transition-colors hover:bg-[#F6F6F2] ${danger ? "text-[#B4483C]" : "text-[#1E2621]"
+        }`}
     >
       {icon}
       {label}

@@ -15,6 +15,7 @@ import {
   Leaf,
   Info,
   FileText,
+  FileDown,
   X,
   Plus,
   Trash2,
@@ -532,6 +533,10 @@ const ActualGBIAssessment = ({
   const isRefreshingProject =
     (otherProps?.isRefreshingProject as boolean) || false;
   const displayOnly = (otherProps?.displayOnly as boolean) || false;
+  const handleExportGbiPdf = otherProps?.handleExportGbiPdf as
+    | (() => void | Promise<void>)
+    | undefined;
+  const gbiExporting = Boolean(otherProps?.gbiExporting);
   const activeActualCostBreakdown =
     (otherProps?.actualCostBreakdown as any) ||
     selectedProject?.cost_breakdown ||
@@ -558,6 +563,7 @@ const ActualGBIAssessment = ({
   const [infoGuideText, setInfoGuideText] = useState("");
   const [infoGuideTitle, setInfoGuideTitle] = useState("Information");
   const [infoGuideLabel, setInfoGuideLabel] = useState("Guide");
+  const [showOverview, setShowOverview] = useState(false);
   const [baselineAnswers, setBaselineAnswers] = useState<AuditAnswers>(
     createEmptyAuditState(),
   );
@@ -607,6 +613,26 @@ const ActualGBIAssessment = ({
     setSelectedCriterion(criterion.name);
     verticalScrollRef.current?.scrollTo({ top: 0, behavior: "smooth" });
   }, []);
+
+  useEffect(() => {
+    const root = verticalScrollRef.current;
+
+    if (!root || criteria.length === 0) {
+      setShowOverview(false);
+      return;
+    }
+
+    const update = () => {
+      setShowOverview(root.scrollTop > 80);
+    };
+
+    update();
+    root.addEventListener("scroll", update, { passive: true });
+
+    return () => {
+      root.removeEventListener("scroll", update);
+    };
+  }, [criteria.length, selectedProject]);
 
   useEffect(() => {
     if (safeGreenElements.length > 0) {
@@ -2782,6 +2808,70 @@ const ActualGBIAssessment = ({
 
   return (
     <div className="flex h-full min-h-150 flex-1 flex-col ">
+      <AnimatePresence>
+        {showOverview && selectedCriterionData && (
+          <motion.div
+            initial={{ y: -60, opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            exit={{ y: -60, opacity: 0 }}
+            transition={{ duration: 0.25, ease: [0.22, 1, 0.36, 1] }}
+            className="fixed inset-x-0 top-3 z-40 flex justify-center px-4"
+          >
+            <div
+              className="flex w-full max-w-xl cursor-pointer items-center gap-3 rounded-full border border-[#E4E1D8] bg-white/95 px-4 py-2.5 shadow-[0_8px_24px_rgba(30,38,33,0.14)] backdrop-blur-md"
+              onClick={() =>
+                verticalScrollRef.current?.scrollTo({
+                  top: 0,
+                  behavior: "smooth",
+                })
+              }
+            >
+              <div className="flex min-w-0 flex-1 items-center gap-2">
+                <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[#3E6B52]/9">
+                  <Leaf size={12} className="text-[#3E6B52]" />
+                </span>
+                <span className="truncate text-[12.5px] font-semibold text-[#1C1F1D]/85">
+                  {selectedCriterionData.name}
+                </span>
+                <span className="shrink-0 rounded-full bg-[#1C1F1D]/5 px-2 py-0.5 font-mono text-[10.5px] font-bold text-[#1C1F1D]/50">
+                  {Math.round(
+                    calculateActualCumulativeMarks(selectedCriterionData) || 0,
+                  )}
+                  /
+                  {selectedCriterionData.total_marks || 0}
+                </span>
+              </div>
+
+              <div className="hidden items-center gap-2 sm:flex">
+                <span className="rounded-full bg-[#1C1F1D]/5 px-2 py-0.5 font-mono text-[10.5px] font-bold text-[#1C1F1D]/50">
+                  Predicted{" "}
+                  {Math.round(
+                    calculateCumulativeMarks(selectedCriterionData) || 0,
+                  )}
+                  /
+                  {selectedCriterionData.total_marks || 0}
+                </span>
+              </div>
+
+              {handleExportGbiPdf && (
+                <button
+                  type="button"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    handleExportGbiPdf();
+                  }}
+                  disabled={gbiExporting}
+                  className="ml-1 flex shrink-0 items-center gap-1.5 rounded-full border border-[#E4E1D8] bg-white px-3 py-1.5 text-[11px] font-semibold text-[#5B655F] shadow-[0_1px_2px_rgba(30,38,33,0.04)] transition-colors hover:border-[#BFD6C8] hover:text-[#2C4A3A] disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  <FileDown size={12} />
+                  {gbiExporting ? "PDF…" : "Export"}
+                </button>
+              )}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {criteria.length === 0 && !loading ? (
         <div className="flex flex-1 flex-col items-center justify-center px-6 py-16">
           <div className="relative mb-7 flex h-24 w-24 items-center justify-center">
@@ -2818,10 +2908,23 @@ const ActualGBIAssessment = ({
             predictedMarks={selectedProject?.rating}
           />
           <div className="p-2">
-            <div className="mb-1">
-              <p className="mb-2 text-base font-bold text-slate-800">
-                Assessment Criteria
-              </p>
+            <div className="mb-4">
+              <div className="mb-4 flex items-center justify-between gap-3">
+                <p className="text-base font-bold text-slate-800">
+                  Assessment Criteria
+                </p>
+                {handleExportGbiPdf && (
+                  <button
+                    type="button"
+                    onClick={handleExportGbiPdf}
+                    disabled={gbiExporting}
+                    className="flex shrink-0 items-center gap-1.5 rounded-full border border-[#E4E1D8] bg-white px-4 py-2 text-[10.5px] font-semibold text-[#5B655F] shadow-[0_1px_2px_rgba(30,38,33,0.04)] transition-colors hover:border-[#BFD6C8] hover:text-[#2C4A3A] disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    <FileDown size={12} />
+                    {gbiExporting ? "Preparing PDF…" : "Export as PDF"}
+                  </button>
+                )}
+              </div>
               <CustomDropdown
                 data={criteria}
                 value={selectedCriterionData || null}
@@ -3251,7 +3354,7 @@ function CertificationGauge({
       : undefined;
 
   return (
-    <section className="relative mb-6 mt-3 overflow-hidden rounded-3xl border border-[#E4E1D8] bg-[#FDFDFC] p-5 shadow-[0_1px_2px_rgba(30,38,33,0.04)] sm:p-8">
+    <section className="relative mb-6 mt-1.5 overflow-hidden rounded-3xl border border-[#E4E1D8] bg-[#FDFDFC] p-5 shadow-[0_1px_2px_rgba(30,38,33,0.04)] sm:p-8">
       <div
         className="pointer-events-none absolute -right-10 -top-10 h-40 w-40 rounded-full opacity-[0.4]"
         style={{
