@@ -120,6 +120,7 @@ export default function ProjectDetailTabs({
   }, [projectData]);
 
   const [changedNodes, setChangedNodes] = useState<Record<number, number>>({});
+  const [changedPct, setChangedPct] = useState<Record<number, { pct: number; direction: "up" | "down" }>>({});
   const [hasCostChanges, setHasCostChanges] = useState(false);
   const [hasStructuralChanges, setHasStructuralChanges] = useState(false);
   const [pendingAdditions, setPendingAdditions] = useState<{ id: number; parentId: number; description: string; actualCost: number }[]>([]);
@@ -191,6 +192,18 @@ export default function ProjectDetailTabs({
         actualCost: a.actualCost,
       }));
 
+      const existingPct: Record<number, { pct: number; direction: "up" | "down" }> = {};
+      for (const [id, val] of Object.entries(changedPct)) {
+        if (!newIds.has(Number(id))) existingPct[Number(id)] = val;
+      }
+
+      console.log("Submit cost changes", {
+        changedNodes: existingChanges,
+        changedPct: existingPct,
+        newNodes: newNodesPayload,
+        deletedNodeIds: pendingDeletions,
+      });
+
       promises.push(
         fetch(`/be-api/projects/${projectId}/actual-cost`, {
           method: "POST",
@@ -199,6 +212,7 @@ export default function ProjectDetailTabs({
             changedNodes: existingChanges,
             newNodes: newNodesPayload,
             deletedNodeIds: pendingDeletions,
+            changedPct: existingPct,
           }),
         }).then((r) => r.ok),
       );
@@ -225,6 +239,7 @@ export default function ProjectDetailTabs({
 
     if (allOk) {
       setChangedNodes({});
+      setChangedPct({});
       setHasCostChanges(false);
       setHasStructuralChanges(false);
       setPendingAdditions([]);
@@ -258,6 +273,7 @@ export default function ProjectDetailTabs({
 
     setTimeout(() => setSubmitToast(null), 3000);
     setSubmitting(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectData?.id, hasCostChanges, changedNodes, pendingAdditions, pendingDeletions, hasAuditChanges]);
 
   const handleExportGbiPdf = useCallback(async () => {
@@ -311,14 +327,14 @@ export default function ProjectDetailTabs({
       ?.certificationMultipliers as Record<string, number> | undefined;
     if (!certifiedScaleRange || !certificationMultipliers) return;
 
-    const actualMarks = marksData.actual;
-    let certLevel = "Not Certified";
-    for (const [level, range] of Object.entries(certifiedScaleRange)) {
-      if (actualMarks >= range[0] && actualMarks <= range[1]) {
-        certLevel = level;
-        break;
+    const lookupLevel = (marks: number): string => {
+      for (const [level, range] of Object.entries(certifiedScaleRange)) {
+        if (marks >= range[0] && marks <= range[1]) {
+          return level;
+        }
       }
-    }
+      return "Not Certified";
+    };
 
     const baseTotal = (() => {
       let total = 0;
@@ -344,30 +360,42 @@ export default function ProjectDetailTabs({
       return total;
     })();
 
-    const multiplierPercent = certificationMultipliers[certLevel] || 0;
-    const multiplierCost =
-      multiplierPercent > 0
-        ? Math.round(((baseTotal * multiplierPercent) / 100) * 100) / 100
-        : 0;
-
     setCostBreakdownData((prev) => {
       if (!prev) return prev;
       const clone = structuredClone(prev);
+      let changed = false;
       for (const node of Object.values(clone)) {
-        if (node.is_certification === 1) {
+        if (node.is_certification !== 1) continue;
+        // Predicted label follows predicted marks (never overwritten by actual).
+        if (marksData.predicted != null) {
+          const predictedLevel = lookupLevel(marksData.predicted);
+          if (node.certificationLabel !== predictedLevel) {
+            node.certificationLabel = predictedLevel;
+            changed = true;
+          }
+        }
+        // Actual label + actual cost follow actual marks.
+        if (marksData.actual != null) {
+          const actualLevel = lookupLevel(marksData.actual);
+          const multiplierPercent = certificationMultipliers[actualLevel] || 0;
+          const multiplierCost =
+            multiplierPercent > 0
+              ? Math.round(((baseTotal * multiplierPercent) / 100) * 100) / 100
+              : 0;
           if (
             node.actual_cost !== multiplierCost ||
-            node.certificationLabel !== certLevel
+            node.actualCertificationLabel !== actualLevel
           ) {
             node.actual_cost = multiplierCost;
-            node.certificationLabel = certLevel;
-            return clone;
+            node.actualCertificationLabel = actualLevel;
+            changed = true;
           }
-          break;
         }
+        break;
       }
-      return prev;
+      return changed ? clone : prev;
     });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [changedNodes, pendingAdditions, marksData, selectedProject]);
 
   const handleApplyMultiplier = useCallback(
@@ -388,7 +416,8 @@ export default function ProjectDetailTabs({
 
         if (certKey) {
           result[certKey].actual_cost = multiplierCost;
-          result[certKey].certificationLabel = certLevel ?? "Not Certified";
+          result[certKey].actualCertificationLabel =
+            certLevel ?? "Not Certified";
         }
 
         return result;
@@ -417,8 +446,10 @@ export default function ProjectDetailTabs({
     nodes: Record<number, number>,
     dirty: boolean,
     structural?: boolean,
+    pct?: Record<number, { pct: number; direction: "up" | "down" }>,
   ) => {
     setChangedNodes(nodes);
+    setChangedPct(pct ?? {});
     setHasCostChanges(dirty);
     if (structural !== undefined) setHasStructuralChanges(structural);
   };

@@ -29,6 +29,8 @@ export default function ProfileHero({
   initials,
   emailVerified,
   onEditPhoto,
+  eyebrow,
+  description,
 }: {
   fullName: string;
   role: string;
@@ -37,6 +39,8 @@ export default function ProfileHero({
   initials: string;
   emailVerified: boolean;
   onEditPhoto: () => void;
+  eyebrow?: string;
+  description?: string;
 }) {
   const badges = [
     { label: "Verified", icon: BadgeCheck, active: emailVerified },
@@ -81,6 +85,14 @@ export default function ProfileHero({
         />
 
         <div className="min-w-0">
+          {eyebrow && (
+            <p
+              className="mb-2 text-[12px] uppercase tracking-[0.08em] text-[#7C8880]"
+              style={{ fontFamily: "var(--font-mono)" }}
+            >
+              {eyebrow}
+            </p>
+          )}
           <p className="text-sm font-medium tracking-wide text-[#6B756E]">
             {getGreeting()}
           </p>
@@ -108,6 +120,12 @@ export default function ProfileHero({
                 </span>
               ))}
             </div>
+          )}
+
+          {description && (
+            <p className="mt-4 max-w-lg text-[15px] leading-relaxed text-[#5B655F]">
+              {description}
+            </p>
           )}
         </div>
       </div>

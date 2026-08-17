@@ -24,8 +24,11 @@ export type CostNode = {
     description: string;
     cost: number;
     actual_cost?: number;
+    actual_pct?: number;
+    actual_direction?: "up" | "down";
     is_certification: number;
     certificationLabel?: string;
+    actualCertificationLabel?: string;
     children?: Record<string, CostNode>;
 };
 
@@ -76,6 +79,71 @@ function parseEdit(raw: string | undefined): number {
     return Number(normalizeCents(raw)) / 100;
 }
 
+/** Percentage parse: allow digits + a single decimal, clamp 0–100, round to 1 decimal place. */
+function normalizePct(raw: string | undefined): number {
+    const cleaned = (raw ?? "").replace(/[^\d.]/g, "");
+    const firstDot = cleaned.indexOf(".");
+    const sanitized =
+        firstDot === -1 ? cleaned : cleaned.slice(0, firstDot + 1) + cleaned.slice(firstDot + 1).replace(/\./g, "");
+    const v = parseFloat(sanitized);
+    if (isNaN(v)) return 0;
+    return Math.max(0, Math.min(100, Math.round(v * 10) / 10));
+}
+
+/** Format a percentage at most 1 decimal place: 5 → "5", 5.5 → "5.5". */
+function formatPct(v: number): string {
+    if (!Number.isFinite(v)) return "0";
+    return Number.isInteger(v) ? String(v) : String(Math.round(v * 10) / 10);
+}
+
+/** Sum of leaf predicted costs under (and including) this node. */
+function sumPredictedCost(node: CostNode): number {
+    if (!node.children) return node.cost ?? 0;
+    return Object.values(node.children).reduce(
+        (sum, child) => sum + sumPredictedCost(child),
+        0
+    );
+}
+
+/** Read-only drift percentage for parent/certification nodes: (actual - predicted) / predicted. */
+function driftPct(predicted: number, actual: number): number {
+    if (!predicted || predicted === 0) return 0;
+    return Math.round(((actual - predicted) / predicted) * 1000) / 10;
+}
+
+/* ---------------- Percentage-drift helper (comparison mode) ---------------- */
+
+export type PctDirection = "up" | "down";
+
+export type PctOverride = { pct: number; direction: PctDirection };
+
+/**
+ * Actual derived from predicted cost via a rising/dropping percentage, e.g. predicted 1000,
+ * pct 5, direction "up" → 1050. Used for existing leaves whose predicted cost is > 0.
+ */
+export function computePctActual(
+    cost: number,
+    pct: number,
+    direction: PctDirection
+): number {
+    const safeCost = Number.isFinite(cost) ? cost : 0;
+    const safePct = Number.isFinite(pct) ? pct : 0;
+    const factor = 1 + (direction === "down" ? -1 : 1) * (safePct / 100);
+    return Math.round(safeCost * factor * 100) / 100;
+}
+
+/** The effective pct/direction for a node: an unsaved override wins, else the node's stored value. */
+export function effectivePct(
+    node: CostNode,
+    overrides?: Record<number, PctOverride>
+): PctOverride {
+    const override = overrides?.[node.id];
+    return {
+        pct: override?.pct ?? node.actual_pct ?? 0,
+        direction: override?.direction ?? node.actual_direction ?? "up",
+    };
+}
+
 /* ---------------- Helpers ---------------- */
 
 /** Walk the tree once to seed edit state (as strings, so partial typing like "18." isn't lost).
@@ -95,15 +163,24 @@ function collectInitialEdits(data: CostBreakdown, field: EditableField): Record<
 }
 
 /** A parent's live value is always the sum of its children's edited leaf values â€” never stored directly. */
-function computeFieldSum(node: CostNode, edits: Record<number, string>, field: EditableField): number {
+function computeFieldSum(
+    node: CostNode,
+    edits: Record<number, string>,
+    field: EditableField,
+    pctOverrides?: Record<number, PctOverride>
+): number {
     if (node.children) {
         return Object.values(node.children).reduce(
-            (sum, child) => sum + computeFieldSum(child, edits, field),
+            (sum, child) => sum + computeFieldSum(child, edits, field, pctOverrides),
             0
         );
     }
     if (node.is_certification === 1) {
         return node[field] ?? 0;
+    }
+    if (field === "actual_cost" && (node.cost ?? 0) > 0) {
+        const { pct, direction } = effectivePct(node, pctOverrides);
+        return computePctActual(node.cost, pct, direction);
     }
     return parseEdit(edits[node.id]);
 }
@@ -119,10 +196,15 @@ function sumTop(
     data: CostBreakdown,
     key: "budgeted" | "live",
     edits: Record<number, string>,
-    field: EditableField
+    field: EditableField,
+    pctOverrides?: Record<number, PctOverride>
 ) {
     return Object.values(data).reduce(
-        (sum, node) => sum + (key === "budgeted" ? node.cost : computeFieldSum(node, edits, field)),
+        (sum, node) =>
+            sum +
+            (key === "budgeted"
+                ? node.cost
+                : computeFieldSum(node, edits, field, pctOverrides)),
         0
     );
 }
@@ -131,6 +213,7 @@ function sumTop(
    Predicted/Budgeted collapses away entirely below sm â€” see the row's mobile caption instead. */
 export const COL_BUDGET = "w-28 sm:w-36 md:w-40";
 export const COL_ACTUAL = "w-28 sm:w-36 md:w-40";
+export const COL_PCT = "w-20 sm:w-24 md:w-28";
 
 /* Width of one connector-rail cell â€” also doubles as the per-depth indent step. */
 const RAIL_W = 18;
@@ -195,6 +278,8 @@ export default function CostBreakdownTree({
     onAddRootCategoryAction,
     toolbarActions,
     readOnly = false,
+    pctOverrides,
+    onPctChangeAction,
 }: {
     data: CostBreakdown;
     /** Optional: fires on every leaf edit (with a clean, parsed number), e.g. to persist to the server.
@@ -228,6 +313,16 @@ export default function CostBreakdownTree({
     toolbarActions?: ReactNode;
     /** When true, all cost inputs are rendered as read-only display values. */
     readOnly?: boolean;
+    /** Unsaved percentage/direction overrides per leaf id (comparison mode). Overrides node.actual_pct/actual_direction. */
+    pctOverrides?: Record<number, PctOverride>;
+    /** Fires when the user changes a percentage-driven leaf's pct or direction (comparison mode).
+     *  Passes the newly computed actual so the parent can track/submit it. */
+    onPctChangeAction?: (
+        nodeId: number,
+        pct: number,
+        direction: PctDirection,
+        computedActual: number,
+    ) => void;
 }) {
     const field: EditableField = mode === "assessment" ? "cost" : "actual_cost";
 
@@ -238,7 +333,10 @@ export default function CostBreakdownTree({
     const [confirmingDeleteId, setConfirmingDeleteId] = useState<number | null>(null);
 
     const totalBudgeted = useMemo(() => sumTop(data, "budgeted", edits, field), [data, edits, field]);
-    const totalLive = useMemo(() => sumTop(data, "live", edits, field), [data, edits, field]);
+    const totalLive = useMemo(
+        () => sumTop(data, "live", edits, field, pctOverrides),
+        [data, edits, field, pctOverrides],
+    );
     const variance = totalLive - totalBudgeted;
     const isOverBudget = variance > 0;
 
@@ -260,7 +358,9 @@ export default function CostBreakdownTree({
                               : node.actual_cost;
 
                       next[node.id] =
-                          raw !== undefined && raw !== null ? String(raw) : "";
+                          raw !== undefined && raw !== null
+                              ? String(Math.round(Number(raw) * 100))
+                              : "0";
                   }
               }
           };
@@ -391,6 +491,15 @@ export default function CostBreakdownTree({
                                 </span>
                             )}
 
+                            {!isAssessment && (
+                                <span
+                                    className={`${COL_PCT} hidden shrink-0 items-center justify-center border-l border-[#EFEDE6] py-2.5 text-center text-[10.5px] font-semibold uppercase tracking-widest text-[#8A938C] sm:flex`}
+                                    style={{ fontFamily: "var(--font-mono)" }}
+                                >
+                                    Δ%
+                                </span>
+                            )}
+
                             <span
                                 className={`${COL_ACTUAL} flex shrink-0 items-center justify-center border-l border-[#EFEDE6] py-2.5 text-center text-[10.5px] font-semibold uppercase tracking-widest text-[#8A938C]`}
                                 style={{ fontFamily: "var(--font-mono)" }}
@@ -437,6 +546,8 @@ export default function CostBreakdownTree({
                                 onDeleteLeafAction={onDeleteLeafAction}
                                 isLast={i === topEntries.length - 1}
                                 readOnly={readOnly}
+                                pctOverrides={pctOverrides}
+                                onPctChangeAction={onPctChangeAction}
                             />
                         ))}
 
@@ -506,6 +617,8 @@ function CostRow({
     onDeleteLeafAction,
     isLast,
     readOnly = false,
+    pctOverrides,
+    onPctChangeAction,
 }: {
     rowKey: string;
     node: CostNode;
@@ -536,10 +649,17 @@ function CostRow({
     onDeleteLeafAction?: (nodeId: number) => void;
     isLast: boolean;
     readOnly?: boolean;
+    pctOverrides?: Record<number, PctOverride>;
+    onPctChangeAction?: (
+        nodeId: number,
+        pct: number,
+        direction: PctDirection,
+        computedActual: number,
+    ) => void;
 }) {
     const hasChildren = !!node.children;
     const isOpen = expanded.has(node.id);
-    const liveValue = computeFieldSum(node, edits, field);
+    const liveValue = computeFieldSum(node, edits, field, pctOverrides);
     const entries = node.children ? Object.entries(node.children) : [];
     const isConfirmingDelete = confirmingDeleteId === node.id;
 
@@ -547,6 +667,26 @@ function CostRow({
     const style = isCert ? CERT_STYLE : hasChildren ? LEVEL_STYLES[depth % LEVEL_STYLES.length] : null;
 
     const isAssessment = mode === "assessment";
+    // In comparison mode an existing leaf with predicted cost > 0 is percentage-driven.
+    const isPctLeaf =
+        mode === "comparison" && !hasChildren && !isCert && (node.cost ?? 0) > 0;
+    const isLeafNode = !hasChildren && !isCert;
+    const pctCfg = isPctLeaf
+        ? effectivePct(node, pctOverrides)
+        : { pct: 0, direction: "up" as PctDirection };
+    const computedActual = isPctLeaf
+        ? computePctActual(node.cost, pctCfg.pct, pctCfg.direction)
+        : null;
+    // Δ% cell display value + direction for every node: leaves show their (editable) pct;
+    // parents & certification rows show the read-only drift of actual vs predicted.
+    const displayPct = isLeafNode
+        ? pctCfg.pct
+        : driftPct(isCert ? node.cost : sumPredictedCost(node), liveValue);
+    const displayDir: PctDirection = isLeafNode
+        ? pctCfg.direction
+        : displayPct < 0
+            ? "down"
+            : "up";
     const divider = "border-l border-[#EFEDE6]";
     const childAncestorContinues = [...ancestorContinues, !isLastChild];
 
@@ -706,6 +846,98 @@ function CostRow({
                             </span>
                         )}
 
+                        {/* ---- Δ% column (rising/dropping control, comparison mode) ---- */}
+                        {!isAssessment && (
+                            <span
+                                className={`${COL_PCT} ${divider} hidden shrink-0 items-center justify-center py-2.5 sm:flex`}
+                                onClick={(e) => e.stopPropagation()}
+                            >
+                                {isLeafNode && !readOnly ? (
+                                    <span className="flex items-center gap-1">
+                                        <button
+                                            type="button"
+                                            title={
+                                                pctCfg.direction === "up"
+                                                    ? "Rising (actual above predicted)"
+                                                    : "Dropping (actual below predicted)"
+                                            }
+                                            onClick={() => {
+                                                const nextDir: PctDirection =
+                                                    pctCfg.direction === "up" ? "down" : "up";
+                                                onPctChangeAction?.(
+                                                    node.id,
+                                                    pctCfg.pct,
+                                                    nextDir,
+                                                    computePctActual(
+                                                        node.cost,
+                                                        pctCfg.pct,
+                                                        nextDir
+                                                    )
+                                                );
+                                            }}
+                                            className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full transition-colors ${
+                                                pctCfg.direction === "up"
+                                                    ? "bg-[#3E6B52] text-white"
+                                                    : "bg-[#B0453A] text-white"
+                                            }`}
+                                        >
+                                            {pctCfg.direction === "up" ? (
+                                                <TrendingUp size={12} strokeWidth={2.5} />
+                                            ) : (
+                                                <TrendingDown size={12} strokeWidth={2.5} />
+                                            )}
+                                        </button>
+<span className="flex items-center rounded-lg border border-[#D6D1C3] bg-[#FCFBF8] px-1.5 py-1">
+                                            <input
+                                                type="text"
+                                                inputMode="decimal"
+                                                placeholder="0"
+                                                value={formatPct(pctCfg.pct)}
+                                                onChange={(e) => {
+                                                    const v = normalizePct(e.target.value);
+                                                    onPctChangeAction?.(
+                                                        node.id,
+                                                        v,
+                                                        pctCfg.direction,
+                                                        computePctActual(
+                                                            node.cost,
+                                                            v,
+                                                            pctCfg.direction
+                                                        )
+                                                    );
+                                                }}
+                                                className="w-10 bg-transparent text-right text-[11.5px] font-medium tabular-nums text-[#1E2621] focus:outline-none pr-1.5"
+                                                style={{ fontFamily: "var(--font-mono)" }}
+                                            />
+                                            <span className="text-[10px] font-semibold text-[#8A938C]">%</span>
+                                        </span>
+                                    </span>
+                                ) : (
+                                    <span className="flex items-center gap-1.5" title={formatPct(displayPct) + "% vs predicted"}>
+                                        <span
+                                            className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full ${
+                                                displayDir === "up"
+                                                    ? "bg-[#3E6B52]/12 text-[#3E6B52]"
+                                                    : "bg-[#B0453A]/12 text-[#B0453A]"
+                                            }`}
+                                        >
+                                            {displayDir === "up" ? (
+                                                <TrendingUp size={11} strokeWidth={2.5} />
+                                            ) : (
+                                                <TrendingDown size={11} strokeWidth={2.5} />
+                                            )}
+                                        </span>
+                                        <span
+                                            className="text-[11.5px] font-semibold tabular-nums"
+                                            style={{ fontFamily: "var(--font-mono)" }}
+                                        >
+                                            {formatPct(displayPct)}%
+                                        </span>
+                                    </span>
+                                )}
+                            </span>
+                        )}
+
                         {/* ---- Cost / Actual column ---- */}
                         <span
                             className={`${COL_ACTUAL} ${divider} flex shrink-0 items-center py-2.5 pl-2 pr-2.5 sm:pl-3 sm:pr-3`}
@@ -720,7 +952,17 @@ function CostRow({
                                     >
                                         {formatMoney(liveValue)}
                                     </span>
-                                    {isCert && !isAssessment && <CertificationBadge label={node.certificationLabel} />}
+                                    {isCert && !isAssessment && (
+                                        <CertificationBadge label={node.actualCertificationLabel ?? node.certificationLabel} />
+                                    )}
+                                </span>
+                            ) : isPctLeaf ? (
+                                <span
+                                    className="w-full text-right text-[13px] font-semibold tabular-nums text-[#1E2621]"
+                                    style={{ fontFamily: "var(--font-mono)", letterSpacing: "0.01em" }}
+                                    title="Derived from predicted cost and the Δ% control"
+                                >
+                                    {formatMoney(computedActual!)}
                                 </span>
                             ) : readOnly ? (
                                 <span
@@ -886,6 +1128,8 @@ function CostRow({
                             onDeleteLeafAction={onDeleteLeafAction}
                             isLast={i === entries.length - 1}
                             readOnly={readOnly}
+                            pctOverrides={pctOverrides}
+                            onPctChangeAction={onPctChangeAction}
                         />
                     ))}
                 </div>
@@ -950,4 +1194,3 @@ function TotalCard({
         </div>
     );
 }
-

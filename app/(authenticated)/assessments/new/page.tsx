@@ -561,7 +561,7 @@ export default function NewAssessmentPage() {
   return (
     <>
       {submitting && (
-        <div className="fixed inset-0 z-[10000] flex flex-col items-center justify-center gap-3 bg-[#1E2621]/60 backdrop-blur-sm pointer-events-auto">
+        <div className="fixed inset-0 z-10000 flex flex-col items-center justify-center gap-3 bg-[#1E2621]/60 backdrop-blur-sm pointer-events-auto">
           <Loader2 size={32} className="animate-spin text-[#F6F6F2]" />
           <p className="text-[15px] font-medium text-[#F6F6F2]">
             Assessment is running…

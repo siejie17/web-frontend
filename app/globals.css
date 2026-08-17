@@ -124,6 +124,15 @@
   background-image: linear-gradient(160deg, var(--color-forest) 0%, var(--color-forest-700) 45%, var(--color-sage-dark) 100%);
 }
 
+/* Chrome, Edge, Safari */
+input[type="number"]::-webkit-inner-spin-button,
+input[type="number"]::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+
+
 @layer base {
   html {
     scroll-behavior: smooth;

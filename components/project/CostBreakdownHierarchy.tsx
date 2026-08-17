@@ -338,12 +338,14 @@ export default function CostBreakdownHierarchy({
   /** Called with only the leaf nodes that changed this session: { [nodeId]: newValue }. */
   onSubmitAction?: (
     changedNodes: Record<number, number>,
+    changedPct?: Record<number, { pct: number; direction: "up" | "down" }>,
   ) => Promise<SubmitResult>;
   /** Fires on every edit so a parent can mirror dirty state (e.g. disable navigation, show an "unsaved" badge). */
   onChangedNodesUpdateAction?: (
     changedNodes: Record<number, number>,
     hasChanges: boolean,
     hasStructuralChanges?: boolean,
+    changedPct?: Record<number, { pct: number; direction: "up" | "down" }>,
   ) => void;
   /** Fires when structural changes (additions/deletions) occur so the parent can track them for submit. */
   onStructuralChangeAction?: (
@@ -391,6 +393,10 @@ export default function CostBreakdownHierarchy({
   );
   // Leaf id -> value the user has typed but not yet submitted.
   const [changedNodes, setChangedNodes] = useState<Record<number, number>>({});
+  // Leaf id -> unsaved percentage/direction override (comparison mode, predicted > 0 leaves).
+  const [changedPct, setChangedPct] = useState<
+    Record<number, { pct: number; direction: "up" | "down" }>
+  >({});
   const [submitting, setSubmitting] = useState(false);
   const [toast, setToast] = useState<{
     message: string;
@@ -417,6 +423,7 @@ export default function CostBreakdownHierarchy({
   useEffect(() => {
     setSavedOverrides({});
     setChangedNodes({});
+    setChangedPct({});
     setLocalTree(null);
     setHasStructuralChanges(false);
     setPendingAdditions([]);
@@ -436,16 +443,19 @@ export default function CostBreakdownHierarchy({
   );
 
   const hasChanges =
-    Object.keys(changedNodes).length > 0 || hasStructuralChanges;
+    Object.keys(changedNodes).length > 0 ||
+    Object.keys(changedPct).length > 0 ||
+    hasStructuralChanges;
 
   useEffect(() => {
     onChangedNodesUpdateAction?.(
       changedNodes,
       hasChanges,
       hasStructuralChanges,
+      changedPct,
     );
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [changedNodes, hasChanges, hasStructuralChanges]);
+  }, [changedNodes, changedPct, hasChanges, hasStructuralChanges]);
 
   // Keep the parent's controlled value in sync with the live tree (baseline + saved + unsaved edits),
   // same contract CostBreakdownEditor uses.
@@ -511,6 +521,18 @@ export default function CostBreakdownHierarchy({
       }
       return next;
     });
+  };
+
+  /** Percentage/direction change on a percentage-driven leaf (comparison mode).
+   *  Tracks the override AND the resulting computed actual so totals/change-detection/submit all work. */
+  const handlePctChange = (
+    nodeId: number,
+    pct: number,
+    direction: "up" | "down",
+    computedActual: number,
+  ) => {
+    setChangedPct((prev) => ({ ...prev, [nodeId]: { pct, direction } }));
+    setChangedNodes((prev) => ({ ...prev, [nodeId]: computedActual }));
   };
 
   const handleEnterAddMode = () => {
@@ -828,12 +850,23 @@ export default function CostBreakdownHierarchy({
 
   const defaultSubmit = async (
     nodes: Record<number, number>,
+    pct?: Record<number, { pct: number; direction: "up" | "down" }>,
   ): Promise<SubmitResult> => {
     const endpoint = isAssessment ? "predicted-cost" : "actual-cost";
     const res = await fetch(`/be-api/projects/${projectId}/${endpoint}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ changedNodes: nodes }),
+      body: JSON.stringify({
+        changedNodes: nodes,
+        changedPct: pct ?? {},
+        newNodes: pendingAdditions.map((a) => ({
+          parentId: a.parentId,
+          description: a.description,
+          cost: 0,
+          actualCost: a.actualCost,
+        })),
+        deletedNodeIds: pendingDeletions,
+      }),
     });
     const data = await res.json().catch(() => ({}));
     return {
@@ -854,14 +887,16 @@ export default function CostBreakdownHierarchy({
     if (!hasChanges || submitting || !canSubmit) return;
     setSubmitting(true);
     const snapshot = { ...changedNodes };
+    const snapshotPct = { ...changedPct };
     try {
       const result = onSubmitAction
-        ? await onSubmitAction(snapshot)
-        : await defaultSubmit(snapshot);
+        ? await onSubmitAction(snapshot, snapshotPct)
+        : await defaultSubmit(snapshot, snapshotPct);
       showToast(result.message, result.success ? "success" : "error");
       if (result.success) {
         setSavedOverrides((prev) => ({ ...prev, ...snapshot }));
         setChangedNodes({});
+        setChangedPct({});
       }
     } catch {
       showToast("Something went wrong. Please try again.", "error");
@@ -1176,6 +1211,8 @@ export default function CostBreakdownHierarchy({
             onSplitLeafAction={handleSplitRequest}
             onDeleteLeafAction={handleDeleteRequest}
             onAddRootCategoryAction={() => setShowAddCategoryModal(true)}
+            pctOverrides={changedPct}
+            onPctChangeAction={handlePctChange}
             toolbarActions={
               mode === "comparison" ? (
                 <button
