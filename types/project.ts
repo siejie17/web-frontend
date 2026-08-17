@@ -56,7 +56,15 @@ export interface CostBreakdownNode {
   description: string;
   cost: number;
   actual_cost?: number;
+  /** Percentage drift applied to `cost` to derive the displayed actual (comparison mode). */
+  actual_pct?: number;
+  /** Direction of the drift: "up" rises above predicted, "down" drops below it. */
+  actual_direction?: "up" | "down";
   is_certification: boolean;
+  /** Predicted certification label (from predicted marks), shown under the Predicted column. */
+  certificationLabel?: string;
+  /** Actual certification label (from actual marks), shown under the Actual column. */
+  actual_certification_label?: string;
   children?: Record<string, CostBreakdownNode>;
 }
 

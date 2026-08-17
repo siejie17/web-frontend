@@ -29,6 +29,9 @@ export async function POST(
             body: JSON.stringify({
                 project_id: projectId,
                 changedNodes: body.changedNodes,
+                newNodes: body.newNodes,
+                deletedNodeIds: body.deletedNodeIds,
+                changedPct: body.changedPct,
             }),
         });
 

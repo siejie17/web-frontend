@@ -25,6 +25,7 @@ import {
   Award,
 } from "lucide-react";
 import CustomDropdown from "../form/CustomDropdown";
+import ReactMarkdown from "react-markdown";
 
 /* ────────────────────────────────────────────────────────────────────────
    Types
@@ -290,6 +291,39 @@ function AddCustomItemRow({
   );
 }
 
+function renderMdxHeading(
+  children: React.ReactNode,
+  level: "h1" | "h2" | "h3",
+): React.ReactNode {
+  const base = "font-display font-semibold text-[#1E2621]";
+  const cls = level === "h3" ? "text-[13px] mb-1.5" : "text-sm mb-3";
+  const Comp = level;
+  return <Comp className={`${base} ${cls}`}>{children}</Comp>;
+}
+
+/** Split info into sections by top-level `## ` headings so each can be boxed. */
+function splitMdxSections(info: string): { heading?: string; body: string[] }[] {
+  const lines = info.split("\n");
+  const sections: { heading?: string; body: string[] }[] = [];
+  let current: { heading?: string; body: string[] } | null = null;
+  for (const line of lines) {
+    const m = line.match(/^##\s+(.+)$/);
+    if (m) {
+      current = { heading: m[1], body: [] };
+      sections.push(current);
+    } else if (current) {
+      current.body.push(line);
+    } else {
+      if (!sections[0]) {
+        current = { body: [] };
+        sections.push(current);
+      }
+      sections[0].body.push(line);
+    }
+  }
+  return sections;
+}
+
 function InfoGuideModal({
   isVisible,
   info,
@@ -303,6 +337,7 @@ function InfoGuideModal({
   label: string;
   onClose: () => void;
 }) {
+  const sections = splitMdxSections(info ?? "");
   return (
     <AnimatePresence>
       {isVisible && (
@@ -340,8 +375,57 @@ function InfoGuideModal({
                 <X size={16} />
               </button>
             </div>
-            <div className="max-h-[60vh] overflow-y-auto px-5 py-4 text-[13.5px] leading-6 text-[#1E2621]/75 whitespace-pre-line">
-              {info}
+            <div className="max-h-[60vh] overflow-y-auto px-5 py-4 text-[13.5px] leading-6 text-[#1E2621]/75">
+              {sections.map((section, i) => (
+                <div
+                  key={i}
+                  className="rounded-xl border border-[#1E2621]/8 bg-[#1E2621]/2 px-4 py-3.5 mb-3 last:mb-0"
+                >
+                  <ReactMarkdown
+                    components={{
+                      h1: (props) => renderMdxHeading(props.children as any, "h1"),
+                      h2: (props) => renderMdxHeading(props.children as any, "h2"),
+                      h3: (props) => renderMdxHeading(props.children as any, "h3"),
+                      p: (props) => <p className="mb-0 last:mb-0">{props.children}</p>,
+                      ul: (props) => (
+                        <ul className="mb-0 list-disc space-y-1 pl-5 last:mb-0">
+                          {props.children}
+                        </ul>
+                      ),
+                      ol: (props) => (
+                        <ol className="mb-0 list-decimal space-y-1 pl-5 last:mb-0">
+                          {props.children}
+                        </ol>
+                      ),
+                      li: (props) => <li>{props.children}</li>,
+                      strong: (props) => (
+                        <strong className="font-semibold text-[#1E2621]">
+                          {props.children}
+                        </strong>
+                      ),
+                      a: (props) => (
+                        <a
+                          href={props.href}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="text-[#3E6B52] underline"
+                        >
+                          {props.children}
+                        </a>
+                      ),
+                      code: (props) => (
+                        <code className="rounded bg-[#1E2621]/5 px-1 py-0.5 font-mono text-[12.5px]">
+                          {props.children}
+                        </code>
+                      ),
+                    }}
+                  >
+                    {section.heading
+                      ? `## ${section.heading}\n\n${section.body.join("\n")}`
+                      : section.body.join("\n")}
+                  </ReactMarkdown>
+                </div>
+              ))}
             </div>
           </motion.div>
         </motion.div>
@@ -1296,7 +1380,7 @@ const GreenElementsScreen = ({
     const sections: string[] = [];
 
     if (item.esg) {
-      sections.push(`## ESG Sarawak\n\n${item.esg}`);
+      sections.push(`## Sarawak 13ᵗʰ Malaysia Plan\n\n${item.esg}`);
     }
 
     if (item.suggestions) {

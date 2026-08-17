@@ -42,7 +42,7 @@ function UserAvatar({ name, profilePic }: { name: string; profilePic?: string })
 
 function BotAvatar() {
   return (
-    <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-[#2B3A31] to-[#1E2621] shadow-sm ring-2 ring-white">
+    <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-linear-to-br from-[#2B3A31] to-[#1E2621] shadow-sm ring-2 ring-white">
       <Bot size={13} className="text-[#E8C27E]" />
     </div>
   );
@@ -212,7 +212,7 @@ export default function AIAvatar() {
               exit={{ opacity: 0, scale: 0.94, y: 12 }}
               transition={{ type: 'spring', damping: 26, stiffness: 320 }}
               style={{ transformOrigin: 'bottom right' }}
-              className="fixed inset-x-0 bottom-0 z-50 flex h-[88vh] w-full flex-col overflow-hidden bg-paper shadow-[0_24px_60px_rgba(20,24,21,0.25)] sm:inset-x-auto sm:bottom-7 sm:right-7 sm:h-[620px] sm:max-h-[80vh] sm:w-[400px] sm:rounded-[28px] sm:ring-1 sm:ring-black/5"
+              className="fixed inset-x-0 bottom-0 z-50 flex h-[88vh] w-full flex-col overflow-hidden bg-paper shadow-[0_24px_60px_rgba(20,24,21,0.25)] sm:inset-x-auto sm:bottom-7 sm:right-7 sm:h-155 sm:max-h-[80vh] sm:w-100 sm:rounded-[28px] sm:ring-1 sm:ring-black/5"
             >
               {/* Header */}
               <div className="relative shrink-0 overflow-hidden bg-[#1E2621] px-5 py-4">
@@ -268,8 +268,8 @@ export default function AIAvatar() {
                         <div
                           className={`px-4 py-2.5 text-[14.5px] leading-6 shadow-sm ${
                             isUser
-                              ? 'rounded-[18px] rounded-br-[6px] bg-gradient-to-br from-sage to-sage-dark text-white'
-                              : 'rounded-[18px] rounded-bl-[6px] border border-black/[0.04] bg-white text-ink'
+                              ? 'rounded-[18px] rounded-br-md bg-linear-to-br from-sage to-sage-dark text-white'
+                              : 'rounded-[18px] rounded-bl-md border border-black/4 bg-white text-ink'
                           }`}
                         >
                           {isUser ? (
@@ -309,7 +309,7 @@ export default function AIAvatar() {
                     <div className="w-7 shrink-0">
                       <BotAvatar />
                     </div>
-                    <div className="rounded-[18px] rounded-bl-[6px] border border-black/[0.04] bg-white px-4 py-3 shadow-sm">
+                    <div className="rounded-[18px] rounded-bl-md border border-black/4 bg-white px-4 py-3 shadow-sm">
                       <div className="flex gap-1.5">
                         <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-slate-300 [animation-delay:0ms]" />
                         <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-slate-300 [animation-delay:150ms]" />
@@ -323,8 +323,8 @@ export default function AIAvatar() {
               </div>
 
               {/* Composer */}
-              <div className="shrink-0 border-t border-black/[0.05] bg-paper px-4 pb-4 pt-3">
-                <div className="flex items-center gap-2 rounded-[24px] border border-slate-200 bg-white px-3 py-2 shadow-sm transition-colors focus-within:border-sage/50 focus-within:ring-2 focus-within:ring-sage/15">
+              <div className="shrink-0 border-t border-black/5 bg-paper px-4 pb-4 pt-3">
+                <div className="flex items-center gap-2 rounded-3xl border border-slate-200 bg-white px-3 py-2 shadow-sm transition-colors focus-within:border-sage/50 focus-within:ring-2 focus-within:ring-sage/15">
                   <textarea
                     ref={inputRef}
                     className="max-h-20 flex-1 overflow-hidden resize-none bg-transparent px-1 py-1.5 text-sm text-ink placeholder-slate-400 outline-none align-middle"

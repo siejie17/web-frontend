@@ -26,6 +26,7 @@ import {
   History,
   Award,
   Lightbulb,
+  Landmark,
 } from "lucide-react";
 import CustomDropdown from "../form/CustomDropdown";
 import ReactMarkdown from "react-markdown";
@@ -276,8 +277,8 @@ function splitMdxSections(info: string): { heading?: string; body: string }[] {
 
 function headingIcon(text: string): { icon: React.ReactNode; color: string } | null {
   const lower = text.toLowerCase();
-  if (lower.includes("esg")) {
-    return { icon: <Leaf size={14} className="shrink-0" />, color: "#3E6B52" };
+  if (lower.includes("malaysia plan")) {
+    return { icon: <Landmark size={14} className="shrink-0" />, color: "#2C4A3A" };
   }
   if (lower.includes("suggestion") || lower.includes("material")) {
     return {
@@ -609,30 +610,43 @@ const ActualGBIAssessment = ({
     return null;
   }, [criteria, selectedCriterion]);
 
+  const scrollAssessmentToTop = useCallback(() => {
+    const inner = verticalScrollRef.current;
+    if (inner && inner.scrollHeight > inner.clientHeight) {
+      inner.scrollTo({ top: 0, behavior: "smooth" });
+    } else {
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    }
+  }, []);
+
   const handleSectionPress = useCallback((criterion: CriterionType) => {
     setSelectedCriterion(criterion.name);
-    verticalScrollRef.current?.scrollTo({ top: 0, behavior: "smooth" });
+    scrollAssessmentToTop();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
-    const root = verticalScrollRef.current;
-
-    if (!root || criteria.length === 0) {
+    if (criteria.length === 0) {
       setShowOverview(false);
       return;
     }
 
     const update = () => {
-      setShowOverview(root.scrollTop > 80);
+      const inner = verticalScrollRef.current;
+      const scrolled = inner && inner.scrollHeight > inner.clientHeight ? inner.scrollTop : window.scrollY;
+      setShowOverview(scrolled > 80);
     };
 
     update();
-    root.addEventListener("scroll", update, { passive: true });
+    const inner = verticalScrollRef.current;
+    inner?.addEventListener("scroll", update, { passive: true });
+    window.addEventListener("scroll", update, { passive: true });
 
     return () => {
-      root.removeEventListener("scroll", update);
+      inner?.removeEventListener("scroll", update);
+      window.removeEventListener("scroll", update);
     };
-  }, [criteria.length, selectedProject]);
+  }, [criteria.length, selectedProject, loading]);
 
   useEffect(() => {
     if (safeGreenElements.length > 0) {
@@ -1217,7 +1231,7 @@ const ActualGBIAssessment = ({
   const buildSupplementalInfo = useCallback((item: ItemType) => {
     const sections: string[] = [];
     if (item.esg) {
-      sections.push(`## ESG Sarawak\n\n${item.esg}`);
+      sections.push(`## Sarawak 13ᵗʰ Malaysia Plan\n\n${item.esg}`);
     }
     if (item.suggestions) {
       sections.push(`## Materials & Suggestions\n\n${item.suggestions}`);
@@ -2819,12 +2833,7 @@ const ActualGBIAssessment = ({
           >
             <div
               className="flex w-full max-w-xl cursor-pointer items-center gap-3 rounded-full border border-[#E4E1D8] bg-white/95 px-4 py-2.5 shadow-[0_8px_24px_rgba(30,38,33,0.14)] backdrop-blur-md"
-              onClick={() =>
-                verticalScrollRef.current?.scrollTo({
-                  top: 0,
-                  behavior: "smooth",
-                })
-              }
+              onClick={() => scrollAssessmentToTop()}
             >
               <div className="flex min-w-0 flex-1 items-center gap-2">
                 <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[#3E6B52]/9">
@@ -2934,10 +2943,7 @@ const ActualGBIAssessment = ({
                 // readOnly={displayOnly}
                 onChange={(item) => {
                   handleSectionPress(item);
-                  verticalScrollRef.current?.scrollTo({
-                    top: 0,
-                    behavior: "smooth",
-                  });
+                  scrollAssessmentToTop();
                 }}
                 renderItem={(item: CriterionType) => {
                   const earned = calculateCumulativeMarks(item) || 0;

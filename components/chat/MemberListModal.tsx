@@ -40,7 +40,7 @@ export function MemberListModal({
 
   return (
     <div
-      className="fixed inset-0 z-[60] flex items-center justify-center bg-[#1E2621]/40 p-4 backdrop-blur-sm"
+      className="fixed inset-0 z-60 flex items-center justify-center bg-[#1E2621]/40 p-4 backdrop-blur-sm"
       role="dialog"
       aria-modal="true"
       onClick={onClose}
