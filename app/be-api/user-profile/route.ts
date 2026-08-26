@@ -18,17 +18,21 @@ export async function PATCH(request: NextRequest) {
   }
 
   const body = await request.json().catch(() => ({}));
+  const isProfilePictureUpdate = typeof body.profile_pic === "string";
 
   try {
-    const res = await fetch(`${apiBaseUrl}/user/profile`, {
-      method: "PATCH",
+    const res = await fetch(
+      `${apiBaseUrl}${isProfilePictureUpdate ? "/user/update-profile-pic" : "/user/profile"}`,
+      {
+      method: isProfilePictureUpdate ? "PUT" : "PATCH",
       headers: {
         "Content-Type": "application/json",
         Accept: "application/json",
         Authorization: `Bearer ${token}`,
       },
       body: JSON.stringify(body),
-    });
+      }
+    );
 
     const data = await res.json().catch(() => null);
 

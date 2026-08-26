@@ -126,6 +126,8 @@ function matchesQuery(project: Project, query: string) {
     project.type_name,
     project.classification,
     project.target_certification,
+    project.certificate?.certification_level,
+    project.certificate?.certificate_number,
   ]
     .filter(Boolean)
     .join(" ")
@@ -849,6 +851,18 @@ function ProjectCard({
         </div>
 
         <div className="flex flex-row items-center gap-2.5 sm:shrink-0 sm:flex-col sm:items-end sm:gap-2.5">
+          {project.certificate?.status === "issued" && (
+            <div className="flex min-w-36 items-center gap-2 rounded-lg border border-[#b9cbbf] bg-[#f3f8f4] px-3 py-2 text-[#2a4b3a]">
+              <Award size={16} className="shrink-0" />
+              <div>
+                <p className="text-[9px] font-semibold uppercase">Final certificate</p>
+                <p className="text-xs font-bold">{project.certificate.certification_level}</p>
+                <p className="text-[10px] text-[#68756d]">
+                  {project.certificate.approved_actual_score}/{project.certificate.maximum_score} points
+                </p>
+              </div>
+            </div>
+          )}
           {project.target_certification &&
           project.target_certification !== "Not Certified" ? (
             <div className="flex flex-col gap-1.5">

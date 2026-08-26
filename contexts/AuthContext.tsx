@@ -13,7 +13,10 @@ type User = {
     profile_pic: string;
     profile_picture?: string;
     created_at?: string;
+    email_notifications?: boolean;
+    push_notifications?: boolean;
     role_id?: number | null;
+    system_role?: "user" | "admin" | "super_admin" | "facilitator_admin";
     role?:
         | {
               id: number;

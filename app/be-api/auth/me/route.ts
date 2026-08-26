@@ -30,14 +30,26 @@ export async function GET(request: NextRequest) {
                 data ?? { message: "Unable to fetch user" },
                 { status: res.status }
             );
-            response.cookies.delete("session_token");
+            if (res.status === 401 || res.status === 403) {
+                response.cookies.delete("session_token");
+                response.cookies.delete("session_validated_at");
+                response.cookies.delete("system_role");
+            }
             return response;
         }
 
-        return NextResponse.json(
+        const response = NextResponse.json(
             { user: data?.user ?? data },
             { status: 200 }
         );
+        const restoredUser = data?.user ?? data;
+        response.cookies.set("system_role", restoredUser?.system_role || "user", {
+            httpOnly: true,
+            secure: process.env.NODE_ENV === "production",
+            sameSite: "lax",
+            path: "/",
+        });
+        return response;
     } catch (error) {
         console.error(error);
 

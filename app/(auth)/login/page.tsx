@@ -13,6 +13,13 @@ import BusyModal from "@/components/ui/BusyModal";
 
 type FieldState = { value: string; error: string };
 
+function homeForRole(role?: string) {
+    if (role === "super_admin") return "/admin";
+    if (role === "admin") return "/admin";
+    if (role === "facilitator_admin") return "/facilitator";
+    return "/dashboard";
+}
+
 export default function LoginPage() {
     const { login } = useAuth();
     const router = useRouter();
@@ -30,10 +37,6 @@ export default function LoginPage() {
     useEffect(() => {
         setIsResetSentModalOpen(searchParams.get("passwordResetEmailSent") === "true");
     }, [searchParams]);
-
-    useEffect(() => {
-        router.prefetch("/dashboard");
-    }, [router]);
 
     const onLoginPressed = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -74,12 +77,17 @@ export default function LoginPage() {
                 const dest =
                     redirectTo && redirectTo.startsWith("/")
                         ? redirectTo
-                        : "/dashboard";
+                        : homeForRole(user.system_role);
                 router.replace(dest);
             } else {
                 setIsNotVerifiedModalOpen(true);
             }
         } catch (err: any) {
+            if (err.response?.data?.reason === "email_unverified") {
+                setIsNotVerifiedModalOpen(true);
+                return;
+            }
+
             const message = err.response?.data?.message || "Network or server error";
 
             let emailFieldError = "";
@@ -103,6 +111,7 @@ export default function LoginPage() {
             setPassword((s) => ({ ...s, error: passwordFieldError }));
         } finally {
             setLoading(false);
+            setIsSigningIn(false);
         }
     };
 

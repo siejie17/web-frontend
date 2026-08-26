@@ -28,6 +28,15 @@ export type Project = {
   actual_rating?: number;
   target_certification?: string;
   certifications?: Record<string, unknown>;
+  certificate?: {
+    certificate_number: string;
+    certification_level: string;
+    approved_actual_score: number;
+    maximum_score: number;
+    status: "issued" | "revoked";
+    verification_code: string;
+    issued_at?: string | null;
+  } | null;
   created_at?: string;
 };
 

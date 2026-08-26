@@ -17,7 +17,8 @@ import type {
  * Echo/Pusher when broadcasting is configured.
  * ------------------------------------------------------------------------ */
 
-const POLL_MS = 4000;
+const CHANGE_POLL_MS = 1500;
+const MEMBER_POLL_MS = 10000;
 
 class ApiError extends Error {
   status: number;
@@ -176,6 +177,7 @@ function toMessage(raw: any): ProjectMessage {
         ? str(m.replyToId)
         : null,
     createdAt: str(m?.created_at ?? m?.createdAt ?? ""),
+    editedAt: m?.edited_at ?? m?.editedAt ?? null,
     system: !!(m?.is_system ?? m?.system),
     reactions: toReactions(m),
   };
@@ -183,7 +185,8 @@ function toMessage(raw: any): ProjectMessage {
 
 function toMember(raw: any): MemberWithUser {
   const mem = raw?.membership ?? raw;
-  const role = (mem?.role ?? raw?.role ?? "member") as ProjectRole;
+  const rawRole = mem?.role ?? raw?.role ?? "member";
+  const role = (typeof rawRole === "string" ? rawRole : rawRole?.name ?? "member") as ProjectRole;
   return {
     membership: {
       id: str(mem?.id),
@@ -191,6 +194,10 @@ function toMember(raw: any): MemberWithUser {
       userId: str(mem?.user_id ?? mem?.userId ?? raw?.user_id ?? raw?.user?.id),
       addedBy: str(mem?.added_by ?? mem?.addedBy ?? ""),
       role,
+      roleId: Number.isFinite(Number(mem?.role_id ?? mem?.roleId))
+        ? Number(mem?.role_id ?? mem?.roleId)
+        : null,
+      permissions: Array.isArray(mem?.permissions) ? mem.permissions : [],
       createdAt: str(mem?.created_at ?? mem?.createdAt ?? ""),
     },
     user: toUser(raw?.user ?? raw),
@@ -221,7 +228,47 @@ export const apiProjectChatService = {
     return {
       messages: list.map(toMessage),
       hasMore: !!(raw?.hasMore ?? raw?.has_more),
+      cursor: str(raw?.cursor),
+      unreadCount: num(raw?.unreadCount ?? raw?.unread_count),
     };
+  },
+
+  async getProjectChanges(projectId: number, since: string): Promise<{
+    messages: ProjectMessage[];
+    deletedIds: string[];
+    cursor: string;
+    hasMore: boolean;
+  }> {
+    const raw = await api<any>(
+      `/be-api/projects/${projectId}/messages/changes?since=${encodeURIComponent(since)}`,
+    );
+    const messages = Array.isArray(raw?.messages ?? raw?.data)
+      ? (raw?.messages ?? raw?.data).map(toMessage)
+      : [];
+    return {
+      messages,
+      deletedIds: Array.isArray(raw?.deletedIds) ? raw.deletedIds.map(str) : [],
+      cursor: str(raw?.cursor),
+      hasMore: !!raw?.hasMore,
+    };
+  },
+
+  async getUnreadCounts(): Promise<Record<number, number>> {
+    const raw = await api<any>("/be-api/projects/unread-counts");
+    return Object.fromEntries(
+      Object.entries(raw?.counts ?? {}).map(([projectId, count]) => [
+        Number(projectId),
+        num(count),
+      ]),
+    );
+  },
+
+  async markProjectRead(projectId: number, messageId?: string): Promise<number> {
+    const raw = await api<any>(`/be-api/projects/${projectId}/messages/read`, {
+      method: "POST",
+      body: JSON.stringify({ message_id: messageId }),
+    });
+    return num(raw?.unreadCount ?? raw?.unread_count);
   },
 
   async sendMessage(
@@ -240,17 +287,15 @@ export const apiProjectChatService = {
   },
 
   async toggleReaction(
-    projectId: number,
+    _projectId: number,
     messageId: string,
     emoji: string,
-  ): Promise<ProjectMessage> {
+  ): Promise<Record<string, string[]>> {
     const raw = await api<any>(`/be-api/messages/${messageId}/reactions`, {
       method: "POST",
       body: JSON.stringify({ emoji }),
     });
-    // The hook only uses the resolved value to confirm success; build a
-    // best-effort message so the response shape never breaks the caller.
-    return toMessage(raw) ?? { id: messageId, projectId, senderId: "", message: "", createdAt: "" };
+    return toReactions(raw);
   },
 
   async uploadAttachment(
@@ -332,74 +377,136 @@ export const apiProjectChatService = {
     });
   },
 
+  async updateMessage(
+    projectId: number,
+    messageId: string,
+    message: string,
+  ): Promise<ProjectMessage> {
+    const raw = await api<any>(
+      `/be-api/projects/${projectId}/messages/${messageId}`,
+      {
+        method: "PATCH",
+        body: JSON.stringify({ message }),
+      },
+    );
+    return toMessage(raw);
+  },
+
+  async deleteMessage(projectId: number, messageId: string): Promise<void> {
+    await api(`/be-api/projects/${projectId}/messages/${messageId}`, {
+      method: "DELETE",
+    });
+  },
+
+  async updateProjectMemberRole(
+    projectId: number,
+    userId: string,
+    roleId: number,
+  ): Promise<void> {
+    await api(`/be-api/projects/${projectId}/members/${userId}`, {
+      method: "PATCH",
+      body: JSON.stringify({ role_id: roleId }),
+    });
+  },
+
   /**
-   * Poll-based realtime. Emits the same event contract the hook expects:
+   * Incremental synchronization. Message polling returns only rows changed
+   * since the server cursor; the less volatile member list refreshes separately.
+   * Emits the same event contract the hook expects:
    *   { type: "message" }  -> new message
    *   { type: "update" }   -> existing message changed (reactions/edits)
+   *   { type: "delete" }   -> a message disappeared from the polled window
    *   { type: "member" }   -> membership changed
    */
   subscribe(projectId: number, handler: (e: any) => void): () => void {
-    let firstTick = true;
-    const seen = new Set<string>();
-    const signatures = new Map<string, string>();
+    const seen = new Map<string, string>();
+    let cursor = "";
     let memberSig = "";
+    let disposed = false;
+    let changeTimer: ReturnType<typeof setTimeout> | null = null;
 
     const memberSignature = (list: MemberWithUser[]) =>
       list
         .map((m) => `${m.user.id}:${m.isOwner}:${m.role ?? ""}`)
         .sort()
         .join(",");
+    const messageSignature = (message: ProjectMessage) =>
+      JSON.stringify(message);
 
-    const tick = async () => {
+    const pollChanges = async () => {
+      if (disposed || !cursor) return;
       try {
-        const [page, members] = await Promise.all([
-          this.getProjectMessages(projectId, { limit: 60 }),
-          this.getProjectMembers(projectId),
-        ]);
-
-        if (firstTick) {
-          firstTick = false;
-          page.messages.forEach((m) => {
-            seen.add(m.id);
-            signatures.set(m.id, messageSignature(m));
-          });
-          memberSig = memberSignature(members);
-          return;
-        }
-
-        const msig = memberSignature(members);
-        if (msig !== memberSig) {
-          memberSig = msig;
-          handler({ type: "member", members });
-        }
-
-        for (const m of page.messages) {
-          const sig = messageSignature(m);
-          if (!seen.has(m.id)) {
-            seen.add(m.id);
-            signatures.set(m.id, sig);
-            handler({ type: "message", message: m });
-          } else if (signatures.get(m.id) !== sig) {
-            signatures.set(m.id, sig);
-            handler({ type: "update", message: m });
+        const cursorTime = new Date(cursor).getTime();
+        let fetchCursor = Number.isFinite(cursorTime)
+          ? new Date(cursorTime - 2_000).toISOString()
+          : cursor;
+        do {
+          const changes = await this.getProjectChanges(projectId, fetchCursor);
+          for (const messageId of changes.deletedIds) {
+            if (seen.delete(messageId)) handler({ type: "delete", messageId });
           }
-        }
+          for (const message of changes.messages) {
+            const signature = messageSignature(message);
+            const previousSignature = seen.get(message.id);
+            if (previousSignature !== signature) {
+              handler({
+                type: previousSignature === undefined ? "message" : "update",
+                message,
+              });
+              seen.set(message.id, signature);
+            }
+          }
+          cursor = changes.cursor || cursor;
+          if (!changes.hasMore) break;
+          fetchCursor = cursor;
+        } while (!disposed);
+      } catch {
+        /* ignore transient poll errors */
+      } finally {
+        if (!disposed) changeTimer = setTimeout(pollChanges, CHANGE_POLL_MS);
+      }
+    };
+
+    const pollMembers = async () => {
+      try {
+        const members = await this.getProjectMembers(projectId);
+        const signature = memberSignature(members);
+        if (memberSig && signature !== memberSig) handler({ type: "member", members });
+        memberSig = signature;
       } catch {
         /* ignore transient poll errors */
       }
     };
 
-    tick();
-    const interval = setInterval(tick, POLL_MS);
-    return () => clearInterval(interval);
+    Promise.allSettled([
+      this.getProjectMessages(projectId, { limit: 60 }),
+      this.getProjectMembers(projectId),
+    ]).then(([pageResult, membersResult]) => {
+      if (disposed) return;
+      if (pageResult.status === "fulfilled") {
+        pageResult.value.messages.forEach((message) =>
+          seen.set(message.id, messageSignature(message)),
+        );
+        cursor = pageResult.value.cursor || new Date().toISOString();
+      } else {
+        cursor = new Date(Date.now() - 1_000).toISOString();
+      }
+      void pollChanges();
+      if (membersResult.status === "fulfilled") {
+        memberSig = memberSignature(membersResult.value);
+      }
+    });
+    const memberInterval = setInterval(pollMembers, MEMBER_POLL_MS);
+
+    return () => {
+      disposed = true;
+      if (changeTimer) clearTimeout(changeTimer);
+      clearInterval(memberInterval);
+    };
   },
 
-  /** No-op; realtime is handled by the polling `subscribe`. */
+  /** No-op; live updates are handled by the incremental `subscribe`. */
   simulateIncoming(_projectId: number): { cancel: () => void } {
     return { cancel: () => {} };
   },
 };
-
-function messageSignature(m: ProjectMessage): string {
-  return `${m.message}|${m.attachment?.id ?? ""}|${JSON.stringify(m.reactions ?? {})}`;
-}

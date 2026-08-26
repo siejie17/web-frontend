@@ -66,7 +66,7 @@ function groupMessages(messages: Message[]) {
   });
 }
 
-export default function AIAvatar() {
+export default function AIAvatar({ showLauncher = true }: { showLauncher?: boolean }) {
   const { user } = useAuth();
   const [open, setOpen] = useState(false);
   const [messages, setMessages] = useState<Message[]>([
@@ -98,6 +98,12 @@ export default function AIAvatar() {
     ]);
     setTimeout(() => inputRef.current?.focus(), 300);
   }, [open]);
+
+  useEffect(() => {
+    const openAssistant = () => setOpen(true);
+    window.addEventListener("open-ai-assistant", openAssistant);
+    return () => window.removeEventListener("open-ai-assistant", openAssistant);
+  }, []);
 
   useEffect(() => {
     if (!open) return;
@@ -141,10 +147,13 @@ export default function AIAvatar() {
       };
 
       setMessages((prev) => [...prev, botMsg]);
-    } catch {
+    } catch (error) {
       const errorMsg: Message = {
         id: (Date.now() + 1).toString(),
-        text: 'Sorry, I encountered an error. Please try again.',
+        text:
+          error instanceof Error
+            ? error.message
+            : 'Sorry, I encountered an error. Please try again.',
         sender: 'bot',
         timestamp: new Date(),
       };
@@ -166,7 +175,7 @@ export default function AIAvatar() {
 
   return (
     <>
-      {!open && (
+      {!open && showLauncher && (
         <div className="fixed bottom-7 right-7 z-30">
           <button
             onClick={() => setOpen((v) => !v)}

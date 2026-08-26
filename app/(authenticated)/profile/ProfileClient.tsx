@@ -5,11 +5,13 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import {
   AtSign,
+  Bell,
   Calendar,
   ChevronRight,
   ClipboardList,
   Info,
   KeyRound,
+  Mail,
   ShieldCheck,
   User,
   Users,
@@ -22,21 +24,17 @@ import { useAuth } from "@/contexts/AuthContext";
 import ChangePasswordModal from "@/components/profile/ChangePasswordModal";
 import EditFieldModal from "@/components/profile/EditFieldModal";
 import EditPictureModal from "@/components/profile/EditPictureModal";
-import EditRoleModal, {
-  formatRoleLabel,
-  type RoleOption,
-} from "@/components/profile/EditRoleModal";
 import GlassPanel from "@/components/profile/GlassPanel";
 import InfoTile from "@/components/profile/InfoTile";
+import PreferenceCard from "@/components/profile/PreferenceCard";
 import ProfileHero from "@/components/profile/ProfileHero";
 import { BackButton } from "@/components/ui/BackButton";
+import UserPageTabs from "@/components/user/UserPageTabs";
 
 type ProfileOverrides = {
   first_name?: string;
   last_name?: string;
   profile_pic?: string;
-  role_id?: number | null;
-  role_label?: string;
 };
 
 const QUICK_LINKS: {
@@ -112,14 +110,16 @@ export default function ProfileClient() {
   const { user } = useAuth();
 
   const [overrides, setOverrides] = useState<ProfileOverrides>({});
-  const [roles, setRoles] = useState<RoleOption[]>([]);
-  const [loadingRoles, setLoadingRoles] = useState(true);
   const [message, setMessage] = useState<string | null>(null);
+  const [emailNotifications, setEmailNotifications] = useState(Boolean(user?.email_notifications));
+  const [pushNotifications, setPushNotifications] = useState(Boolean(user?.push_notifications));
+  const [preferencesLoading, setPreferencesLoading] = useState(false);
+  const [vapidPublicKey, setVapidPublicKey] = useState<string | null>(null);
+  const [pushAvailable, setPushAvailable] = useState(false);
 
   const [editingField, setEditingField] = useState<
     "first_name" | "last_name" | null
   >(null);
-  const [showRoleModal, setShowRoleModal] = useState(false);
   const [showPictureModal, setShowPictureModal] = useState(false);
   const [showPasswordModal, setShowPasswordModal] = useState(false);
 
@@ -130,45 +130,93 @@ export default function ProfileClient() {
 
     let isActive = true;
 
-    const fetchRoles = async () => {
-      try {
-        setLoadingRoles(true);
-        const res = await fetch("/be-api/roles", {
-          credentials: "include",
-          headers: { "Content-Type": "application/json" },
-        });
-
-        const data = await res.json().catch(() => null);
-
-        if (!res.ok) {
-          throw new Error(data?.message ?? "Unable to fetch roles");
-        }
-
-        const fetchedRoles = Array.isArray(data?.roles) ? data.roles : [];
-
-        if (!isActive) {
-          return;
-        }
-
-        setRoles(fetchedRoles);
-      } catch (error) {
-        console.error("Error fetching roles:", error);
-        if (isActive) {
-          setMessage("Could not load roles right now.");
-        }
-      } finally {
-        if (isActive) {
-          setLoadingRoles(false);
-        }
+    Promise.all([
+      fetch(`/be-api/preferences?userId=${user.id}`, { credentials: "include", cache: "no-store" }),
+      fetch("/be-api/push-subscriptions", { credentials: "include", cache: "no-store" }),
+    ]).then(async ([preferencesResponse, pushResponse]) => {
+      const preferences = await preferencesResponse.json().catch(() => null);
+      const push = await pushResponse.json().catch(() => null);
+      if (!isActive) return;
+      if (preferencesResponse.ok) {
+        setEmailNotifications(Boolean(preferences?.preferences?.email_notifications));
+        setPushNotifications(Boolean(preferences?.preferences?.push_notifications && push?.subscribed));
       }
-    };
-
-    fetchRoles();
+      setPushAvailable(Boolean(pushResponse.ok && push?.enabled && "serviceWorker" in navigator && "PushManager" in window));
+      setVapidPublicKey(push?.public_key ?? null);
+    }).catch(() => {
+      if (isActive) setPushAvailable(false);
+    });
 
     return () => {
       isActive = false;
     };
   }, [user]);
+
+  const updatePreference = async (payload: { email_notifications?: boolean; push_notifications?: boolean }) => {
+    if (!user) throw new Error("Not signed in");
+    const response = await fetch(`/be-api/preferences?userId=${user.id}`, {
+      method: "PATCH",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    const data = await response.json().catch(() => null);
+    if (!response.ok) throw new Error(data?.message ?? "Unable to update notification preferences.");
+  };
+
+  const toggleEmailNotifications = async (enabled: boolean) => {
+    setPreferencesLoading(true);
+    try {
+      await updatePreference({ email_notifications: enabled });
+      setEmailNotifications(enabled);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Unable to update email notifications.");
+    } finally {
+      setPreferencesLoading(false);
+    }
+  };
+
+  const togglePushNotifications = async (enabled: boolean) => {
+    setPreferencesLoading(true);
+    try {
+      if (!pushAvailable || !vapidPublicKey) throw new Error("Browser push is unavailable or not configured.");
+      const registration = await navigator.serviceWorker.register("/push-sw.js");
+      await navigator.serviceWorker.ready;
+      let subscription = await registration.pushManager.getSubscription();
+
+      if (enabled) {
+        const permission = await Notification.requestPermission();
+        if (permission !== "granted") throw new Error("Notification permission was not granted.");
+        subscription ??= await registration.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: urlBase64ToUint8Array(vapidPublicKey),
+        });
+        const serialized = subscription.toJSON();
+        const response = await fetch("/be-api/push-subscriptions", {
+          method: "POST",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ ...serialized, content_encoding: "aes128gcm" }),
+        });
+        if (!response.ok) throw new Error("Unable to register this browser for push notifications.");
+      } else if (subscription) {
+        await fetch("/be-api/push-subscriptions", {
+          method: "DELETE",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ endpoint: subscription.endpoint }),
+        });
+        await subscription.unsubscribe();
+      }
+
+      await updatePreference({ push_notifications: enabled });
+      setPushNotifications(enabled);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Unable to update push notifications.");
+    } finally {
+      setPreferencesLoading(false);
+    }
+  };
 
   useEffect(() => {
     if (!user) {
@@ -193,20 +241,16 @@ export default function ProfileClient() {
     const data = await res.json().catch(() => null);
 
     if (!res.ok) {
-      throw new Error(data?.message ?? "Unable to save changes.");
+      const validationMessage = data?.errors
+        ? (Object.values(data.errors).flat().find((value) => typeof value === "string") as string | undefined)
+        : undefined;
+      throw new Error(validationMessage ?? data?.message ?? "Unable to save changes.");
     }
 
     return data;
   };
 
-  const currentRoleId =
-    overrides.role_id ??
-    getUserRoleId(user?.role_id ?? null, user?.role ?? null) ??
-    getRoleIdFromLabel(getUserRoleLabel(user?.role ?? null), roles) ??
-    null;
   const currentRoleLabel =
-    overrides.role_label ??
-    getRoleLabelFromId(currentRoleId, roles) ??
     getUserRoleLabel(user?.role ?? null) ??
     "Member";
 
@@ -235,6 +279,8 @@ export default function ProfileClient() {
           text="Dashboard"
           redirect="/dashboard"
         />
+
+        <UserPageTabs />
 
         {/* ---------------- Profile Hero ---------------- */}
         <ProfileHero
@@ -290,7 +336,6 @@ export default function ProfileClient() {
               icon={ShieldCheck}
               label="Role"
               value={currentRoleLabel}
-              onEdit={() => setShowRoleModal(true)}
             />
             <InfoTile
               icon={AtSign}
@@ -307,6 +352,28 @@ export default function ProfileClient() {
             <KeyRound size={14} />
             Change password
           </button>
+        </GlassPanel>
+
+        <GlassPanel className="p-5 sm:p-6">
+          <SectionLabel>Notifications</SectionLabel>
+          <div className="mt-3 space-y-1">
+            <PreferenceCard
+              icon={Mail}
+              title="Email notifications"
+              description="Project invitations, facilitator assignments, and assessment decisions"
+              checked={emailNotifications}
+              loading={preferencesLoading}
+              onChange={toggleEmailNotifications}
+            />
+            <PreferenceCard
+              icon={Bell}
+              title="Push notifications"
+              description={pushAvailable ? "Project activity and new chat messages on this device" : "Unavailable until browser push is configured"}
+              checked={pushNotifications && pushAvailable}
+              loading={preferencesLoading || !pushAvailable}
+              onChange={togglePushNotifications}
+            />
+          </div>
         </GlassPanel>
 
         {/* ---------------- Quick Links ---------------- */}
@@ -348,56 +415,6 @@ export default function ProfileClient() {
         />
       )}
 
-      {showRoleModal && (
-        <EditRoleModal
-          roles={roles}
-          currentRoleId={currentRoleId}
-          loadingRoles={loadingRoles}
-          onClose={() => setShowRoleModal(false)}
-          onSave={async ({ roleId, customRole }) => {
-            if (!user) {
-              throw new Error("Not signed in");
-            }
-
-            const res = await fetch(`/be-api/users/${user.id}/role`, {
-              method: "PATCH",
-              credentials: "include",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify(
-                customRole !== undefined
-                  ? { custom_role: customRole }
-                  : { role_id: roleId }
-              ),
-            });
-
-            const data = await res.json().catch(() => null);
-
-            if (!res.ok) {
-              throw new Error(data?.message ?? "Unable to update role.");
-            }
-
-            const roleLabel =
-              customRole !== undefined
-                ? customRole
-                : (() => {
-                    const selectedRole = roles.find(
-                      (role) => role.id === roleId
-                    );
-                    return selectedRole
-                      ? formatRoleLabel(selectedRole)
-                      : undefined;
-                  })();
-
-            setOverrides((prev) => ({
-              ...prev,
-              role_id: customRole !== undefined ? null : roleId,
-              role_label: roleLabel ?? prev.role_label,
-            }));
-            setMessage("Role updated.");
-          }}
-        />
-      )}
-
       {showPasswordModal && (
         <ChangePasswordModal
           onClose={() => setShowPasswordModal(false)}
@@ -430,6 +447,13 @@ export default function ProfileClient() {
   );
 }
 
+function urlBase64ToUint8Array(value: string): Uint8Array<ArrayBuffer> {
+  const padding = "=".repeat((4 - (value.length % 4)) % 4);
+  const base64 = (value + padding).replace(/-/g, "+").replace(/_/g, "/");
+  const raw = window.atob(base64);
+  return Uint8Array.from(raw, (character) => character.charCodeAt(0));
+}
+
 function getFullName(firstName?: string, lastName?: string, name?: string) {
   const parts = [firstName, lastName].filter(Boolean).join(" ").trim();
   if (parts) {
@@ -455,21 +479,6 @@ function getMemberSince(createdAt?: string) {
   const date = new Date(createdAt);
   if (Number.isNaN(date.getTime())) return undefined;
   return date.getFullYear().toString();
-}
-
-function getUserRoleId(
-  roleId?: number | null,
-  role?: { id?: number } | string | null
-) {
-  if (typeof roleId === "number") {
-    return roleId;
-  }
-
-  if (role && typeof role === "object" && typeof role.id === "number") {
-    return role.id;
-  }
-
-  return null;
 }
 
 function getUserRoleLabel(
@@ -498,45 +507,4 @@ function getUserRoleLabel(
     role.name ??
     (typeof role.level === "number" ? `Level ${role.level}` : null)
   );
-}
-
-function getRoleLabelFromId(
-  roleId: number | null,
-  roles: RoleOption[]
-) {
-  if (roleId === null) {
-    return null;
-  }
-
-  const role = roles.find((item) => item.id === roleId);
-  return role ? formatRoleLabel(role) : null;
-}
-
-function getRoleIdFromLabel(
-  roleLabel: string | null,
-  roles: RoleOption[]
-) {
-  if (!roleLabel) {
-    return null;
-  }
-
-  const normalizedLabel = normalizeRoleValue(roleLabel);
-  const role = roles.find((item) => {
-    const candidates = [
-      item.label,
-      item.display_name,
-      item.title,
-      item.name,
-    ].filter(Boolean) as string[];
-
-    return candidates.some(
-      (candidate) => normalizeRoleValue(candidate) === normalizedLabel
-    );
-  });
-
-  return role?.id ?? null;
-}
-
-function normalizeRoleValue(value: string) {
-  return value.trim().toLowerCase().replace(/[_-]+/g, " ");
 }

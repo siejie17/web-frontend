@@ -342,7 +342,7 @@ function InfoGuideModal({
     <AnimatePresence>
       {isVisible && (
         <motion.div
-          className="fixed inset-0 z-50 flex items-end justify-center bg-[#1E2621]/40 backdrop-blur-sm sm:items-center"
+          className="fixed inset-0 z-50 flex items-end justify-center bg-[#1E2621]/40 sm:items-center"
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
@@ -1387,7 +1387,9 @@ const GreenElementsScreen = ({
       sections.push(`## Materials & Suggestions\n\n${item.suggestions}`);
     }
 
-    return sections.join("\n\n");
+    return sections.length > 0
+      ? sections.join("\n\n")
+      : "## ESG alignment\n\nNo ESG alignment or material suggestions have been recorded for this item yet.";
   }, []);
 
   // Custom render function for dropdown items with marks
@@ -1571,21 +1573,14 @@ const GreenElementsScreen = ({
                     />
                   ) : null}
 
-                  {item.suggestions || item.esg ? (
-                    <IconButton
-                      onPress={() =>
-                        handleInfoGuideOpen(
-                          buildSupplementalInfo(item),
-                          "ESG & Suggestions",
-                          "Details",
-                        )
-                      }
-                      icon="doc"
-                      color="#B7791F"
-                      bg="bg-[#B7791F]/[0.08]"
-                      activeBg="hover:bg-[#B7791F]/[0.14]"
-                    />
-                  ) : null}
+                  <button
+                    type="button"
+                    onClick={() => handleInfoGuideOpen(buildSupplementalInfo(item), "ESG & Suggestions", "Details")}
+                    className="flex h-7 items-center gap-1 rounded-lg bg-[#B7791F]/[0.08] px-2 text-[10px] font-bold text-[#9A6418] transition-colors hover:bg-[#B7791F]/[0.14]"
+                    aria-label="ESG and suggestions"
+                  >
+                    <FileText size={12} /> ESG
+                  </button>
                 </div>
               </div>
 

@@ -146,17 +146,24 @@ export function MessageComposer({
 
   const submit = useCallback(async () => {
     const trimmed = text.trim();
-    if (!trimmed || uploading || disabled) return;
+    if ((!trimmed && !attachment) || uploading || disabled) return;
     const att = attachment;
-    setText("");
-    setAttachment(null);
-    await onSend({
-      message: trimmed,
-      attachment: att,
-      replyToId: replyTarget?.messageId ?? null,
-    });
-    onCancelReply?.();
-  }, [text, attachment, uploading, disabled, onSend, replyTarget, onCancelReply]);
+    try {
+      await onSend({
+        message: trimmed,
+        attachment: att,
+        replyToId: replyTarget?.messageId ?? null,
+      });
+      setText("");
+      setAttachment(null);
+      onCancelReply?.();
+    } catch (error) {
+      onToast(
+        "error",
+        error instanceof Error ? error.message : "Unable to send message.",
+      );
+    }
+  }, [text, attachment, uploading, disabled, onSend, replyTarget, onCancelReply, onToast]);
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
@@ -165,7 +172,8 @@ export function MessageComposer({
     }
   };
 
-  const canSend = text.trim().length > 0 && !uploading && !disabled;
+  const canSend =
+    (text.trim().length > 0 || attachment !== null) && !uploading && !disabled;
   const charCount = text.length;
 
   return (

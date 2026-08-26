@@ -169,6 +169,7 @@ These routes act as the frontend backend-for-frontend layer:
 
 - Session state is stored in an HTTP-only `session_token` cookie
 - The root `proxy.ts` redirects unauthenticated users away from protected routes
+- Expired validation is fail-closed: invalid sessions are cleared, while an unavailable authentication service returns a non-cacheable `503` without extending session trust
 - `contexts/AuthContext.tsx` restores the current user from `/api/auth/me`
 - The authenticated layout provides the shared header and user menu
 
