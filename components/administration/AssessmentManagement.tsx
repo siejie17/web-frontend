@@ -422,9 +422,16 @@ export default function AssessmentManagement({ mode }: { mode: "admin" | "facili
   const reviewSectionClass = (section: ReviewSectionKey) => `rounded-lg px-3 py-2 text-sm font-semibold transition ${activeReviewSection === section ? "bg-white text-[#315b45] shadow-sm ring-1 ring-[#dce6de]" : "text-[#66756c] hover:bg-white/70 hover:text-[#315b45]"}`;
   const scrollToReviewSection = (section: ReviewSectionKey, id: string) => {
     const container = reviewScrollRef.current;
-    const target = document.getElementById(id);
+    const target = container?.querySelector<HTMLElement>(`#${id}`);
     if (!container || !target) return;
     setActiveReviewSection(section);
+    const top = target.getBoundingClientRect().top - container.getBoundingClientRect().top + container.scrollTop - 72;
+    container.scrollTo({ top, behavior: "smooth" });
+  };
+  const scrollToFacilitatorAccess = () => {
+    const container = reviewScrollRef.current;
+    const target = container?.querySelector<HTMLElement>("#facilitator-access");
+    if (!container || !target) return;
     const top = target.getBoundingClientRect().top - container.getBoundingClientRect().top + container.scrollTop - 72;
     container.scrollTo({ top, behavior: "smooth" });
   };
@@ -503,7 +510,7 @@ export default function AssessmentManagement({ mode }: { mode: "admin" | "facili
                 <p className="text-xs font-semibold uppercase tracking-[0.15em] text-[#789083]">Assessment #{selected.assessment.id}</p>
                 <h2 id="assessment-review-title" className="mt-2 text-2xl font-bold text-[#173b2a]">{selected.assessment.name}</h2>
                 <p className="mt-1 text-sm text-[#6d796f]">{selected.assessment.owner?.email}</p>
-                {mode === "admin" && <div className="mt-2 flex flex-wrap items-center gap-2 text-sm"><span className="font-semibold text-[#536159]">Facilitator:</span><span className={activeAssignments.length > 0 ? "font-semibold text-[#315b45]" : "text-[#8a948e]"}>{activeAssignments.length > 0 ? activeAssignments.map((assignment) => `${assignment.facilitator?.first_name || ""} ${assignment.facilitator?.last_name || ""}`.trim()).filter(Boolean).join(", ") : "Not assigned"}</span><button type="button" onClick={() => document.getElementById("facilitator-access")?.scrollIntoView({ behavior: "smooth", block: "center" })} className="rounded-md bg-[#eaf2eb] px-2 py-1 font-semibold text-[#315b45] transition hover:bg-[#dce9df]">{activeAssignments.length > 0 ? "Change" : "Assign facilitator"}</button></div>}
+                {mode === "admin" && <div className="mt-2 flex flex-wrap items-center gap-2 text-sm"><span className="font-semibold text-[#536159]">Facilitator:</span><span className={activeAssignments.length > 0 ? "font-semibold text-[#315b45]" : "text-[#8a948e]"}>{activeAssignments.length > 0 ? activeAssignments.map((assignment) => `${assignment.facilitator?.first_name || ""} ${assignment.facilitator?.last_name || ""}`.trim()).filter(Boolean).join(", ") : "Not assigned"}</span><button type="button" aria-controls="facilitator-access" onClick={scrollToFacilitatorAccess} className="rounded-md bg-[#eaf2eb] px-2 py-1 font-semibold text-[#315b45] transition hover:bg-[#dce9df]">{activeAssignments.length > 0 ? "Change" : "Assign facilitator"}</button></div>}
               </div>
               <button onClick={closeReview} className="rounded-full bg-[#f1f3ef] p-2 text-[#65736a]" aria-label="Close assessment"><X size={18} /></button>
             </div>
@@ -545,7 +552,7 @@ export default function AssessmentManagement({ mode }: { mode: "admin" | "facili
             </div>
 
             {selected.certificate && (
-              <div id="facilitator-access" className="mt-6 scroll-mt-6">
+              <div className="mt-6">
                 <CertificatePanel certificate={selected.certificate} projectId={selected.assessment.id} />
                 {mode === "admin" && selected.certificate.status === "issued" && (
                   <div className="mt-3 flex justify-end">
@@ -710,7 +717,7 @@ export default function AssessmentManagement({ mode }: { mode: "admin" | "facili
             )}
 
             {mode === "admin" && (
-              <div className="mt-6">
+              <div id="facilitator-access" className="mt-6 scroll-mt-20">
                 <label className="mb-2 block text-sm font-semibold text-[#59675e]">Facilitator access</label>
                 {activeAssignments.length > 0 && (
                   <div className="mb-3 space-y-2">
