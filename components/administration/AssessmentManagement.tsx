@@ -7,6 +7,8 @@ import { AdminUser, administrationApi, Assessment, Paginated } from "@/lib/admin
 import { ErrorState, inputClass, LoadingState, PageHeading, primaryButton, secondaryButton, StatusBadge } from "./AdminUI";
 import EvidenceRemovalDialog from "@/components/assessment/EvidenceRemovalDialog";
 import CertificatePanel, { IssuedCertificate } from "@/components/project/CertificatePanel";
+import { isDistinctPurpose } from "@/lib/adminReviewContent";
+import { calculateActualAwardedMarks, getCertificationReviewState, getReviewResultCategory, type ReviewResultCategory } from "@/lib/adminReviewResults";
 
 type ScoreReviewItem = {
   item_id: number;
@@ -24,16 +26,12 @@ type ScoreReviewItem = {
   actual_choices: Array<{ choice_key: string; label: string; score: number; submitted: boolean; accepted: boolean }>;
   remarks?: string | null;
   evidence?: Array<{ id: number; original_name: string; filename: string; kind: string; size: number; uploaded_at?: string | null }>;
-  review_status: "pending" | "reviewed";
-  reviewed_at?: string | null;
-  reviewed_by?: Pick<AdminUser, "id" | "first_name" | "last_name"> | null;
 };
 
 type ScoreReview = {
   items: ScoreReviewItem[];
   predicted_total: number;
   actual_total: number;
-  reviewed_items: number;
   total_items: number;
   all_actual_reviewed: boolean;
   calculated_certification_level?: string | null;
@@ -59,6 +57,17 @@ type ScoreUpdateResponse = {
 
 type FacilitatorAssignment = NonNullable<Assessment["facilitator_assignments"]>[number];
 type ReviewSectionKey = "summary" | "items" | "history" | "decision";
+type ReviewItemFilter = "all" | "awarded" | "not_awarded";
+type ReviewItemInsight = {
+  item: ScoreReviewItem;
+  predictedClaimed: boolean;
+  evidenceSubmitted: boolean;
+  actualAwarded: boolean;
+  actualAwardedScore: number;
+  hasRemark: boolean;
+  decisionDirty: boolean;
+  resultCategory: ReviewResultCategory;
+};
 
 const CHANGE_REQUEST_MIN_CHARACTERS = 80;
 const CHANGE_REQUEST_MIN_WORDS = 12;
@@ -76,7 +85,7 @@ export default function AssessmentManagement({ mode }: { mode: "admin" | "facili
   const [remarks, setRemarks] = useState("");
   const [remarksRequired, setRemarksRequired] = useState(false);
   const [facilitatorId, setFacilitatorId] = useState("");
-  const [acceptedActualDraft, setAcceptedActualDraft] = useState<Record<string, boolean>>({});
+  const [awardedActualDraft, setAwardedActualDraft] = useState<Record<string, boolean>>({});
   const [itemRemarksDraft, setItemRemarksDraft] = useState<Record<number, string>>({});
   const [actualSelectionsDirty, setActualSelectionsDirty] = useState(false);
   const actualSelectionsDirtyRef = useRef(false);
@@ -90,7 +99,9 @@ export default function AssessmentManagement({ mode }: { mode: "admin" | "facili
   const [certificateRevocationReason, setCertificateRevocationReason] = useState("");
   const [requirementItem, setRequirementItem] = useState<ScoreReviewItem | null>(null);
   const [activeReviewSection, setActiveReviewSection] = useState<ReviewSectionKey>("summary");
+  const [reviewItemFilter, setReviewItemFilter] = useState<ReviewItemFilter>("all");
   const reviewScrollRef = useRef<HTMLDivElement>(null);
+  const reviewToolbarRef = useRef<HTMLDivElement>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -168,6 +179,7 @@ export default function AssessmentManagement({ mode }: { mode: "admin" | "facili
       { key: "decision", id: "review-decision" },
     ];
     const visibleSections = new Set<ReviewSectionKey>();
+    const toolbarOffset = reviewToolbarRef.current?.offsetHeight || 72;
     const observer = new IntersectionObserver((entries) => {
       entries.forEach((entry) => {
         const section = sections.find(({ id }) => id === entry.target.id);
@@ -179,7 +191,7 @@ export default function AssessmentManagement({ mode }: { mode: "admin" | "facili
       if (active) setActiveReviewSection((current) => current === active.key ? current : active.key);
     }, {
       root,
-      rootMargin: "-72px 0px -70% 0px",
+      rootMargin: `-${toolbarOffset + 12}px 0px -70% 0px`,
       threshold: 0,
     });
 
@@ -194,7 +206,7 @@ export default function AssessmentManagement({ mode }: { mode: "admin" | "facili
   const applyDetail = (detail: Detail) => {
     setActiveReviewSection("summary");
     setSelected(detail);
-    setAcceptedActualDraft(Object.fromEntries(
+    setAwardedActualDraft(Object.fromEntries(
       detail.score_review.items.flatMap((item) => item.actual_choices.map((choice) => [choice.choice_key, choice.accepted])),
     ));
     setItemRemarksDraft(Object.fromEntries(
@@ -209,6 +221,7 @@ export default function AssessmentManagement({ mode }: { mode: "admin" | "facili
     setPendingReviewConfirmation(null);
     setConfirmCertificateRevocation(false);
     setCertificateRevocationReason("");
+    setReviewItemFilter("all");
   };
 
   const open = async (item: Assessment) => {
@@ -286,7 +299,7 @@ export default function AssessmentManagement({ mode }: { mode: "admin" | "facili
           items: selected.score_review.items.map((item) => ({
             item_id: item.item_id,
             accepted_choice_keys: item.actual_choices
-              .filter((choice) => acceptedActualDraft[choice.choice_key])
+              .filter((choice) => awardedActualDraft[choice.choice_key])
               .map((choice) => choice.choice_key),
             remarks: itemRemarksDraft[item.item_id]?.trim() || null,
           })),
@@ -398,10 +411,7 @@ export default function AssessmentManagement({ mode }: { mode: "admin" | "facili
   };
 
   const draftTotal = selected?.score_review.items.reduce(
-    (sum, item) => sum + Math.min(
-      item.actual_choices.reduce((itemTotal, choice) => itemTotal + (acceptedActualDraft[choice.choice_key] ? choice.score : 0), 0),
-      item.max_score,
-    ),
+    (sum, item) => sum + calculateActualAwardedMarks(item.actual_choices, awardedActualDraft, item.max_score),
     0,
   ) ?? 0;
   const maximumTotal = selected?.score_review.items.reduce((sum, item) => sum + item.max_score, 0) ?? 0;
@@ -419,20 +429,59 @@ export default function AssessmentManagement({ mode }: { mode: "admin" | "facili
   const availableFacilitators = facilitators.filter((facilitator) =>
     !activeAssignments.some((assignment) => assignment.user_id === facilitator.id),
   );
-  const reviewSectionClass = (section: ReviewSectionKey) => `rounded-lg px-3 py-2 text-sm font-semibold transition ${activeReviewSection === section ? "bg-white text-[#315b45] shadow-sm ring-1 ring-[#dce6de]" : "text-[#66756c] hover:bg-white/70 hover:text-[#315b45]"}`;
+  const reviewSummary = buildReviewSummary(
+    selected?.score_review.items || [],
+    awardedActualDraft,
+    itemRemarksDraft,
+  );
+  const visibleActualItems = reviewSummary.insights.filter((insight) => {
+    if (reviewItemFilter === "all") return true;
+    if (reviewItemFilter === "awarded") return insight.resultCategory === "awarded";
+    return insight.resultCategory === "not-awarded";
+  });
+  const emptyFilterMessage = reviewItemFilter === "awarded"
+    ? "No items currently have awarded Actual marks."
+    : "No items currently have zero Actual marks.";
+  const certificateIssued = selected?.certificate?.status === "issued";
+  const { certificationDoesNotQualify, certificationReady } = getCertificationReviewState({
+    predictionApproved,
+    everyItemReviewed,
+    hasUnsavedChanges: actualSelectionsDirty,
+    certificationQualified,
+    certificateIssued,
+  });
+  const readinessReasons = predictionApproved ? [
+    ...(selected?.score_review.total_items === 0 ? ["No assessment items are available to review."] : []),
+    ...(!everyItemReviewed ? ["Save reviewer decisions before certification."] : []),
+    ...(actualSelectionsDirty ? ["Actual selections or reviewer remarks have unsaved changes."] : []),
+    ...(everyItemReviewed && !certificationQualified ? ["The saved Actual score does not qualify for a configured certification level."] : []),
+  ] : [];
+  const reviewNavigationColumnClass = predictionRejected
+    ? selected?.assessment.reviews?.length ? "grid-cols-3" : "grid-cols-2"
+    : selected?.assessment.reviews?.length ? "grid-cols-2 sm:grid-cols-4" : "grid-cols-3";
+  const reviewSectionClass = (section: ReviewSectionKey) => `inline-flex items-center justify-center rounded-lg px-3 py-2 text-sm font-semibold transition ${activeReviewSection === section ? "bg-white text-[#315b45] shadow-sm ring-1 ring-[#dce6de]" : "text-[#66756c] hover:bg-white/70 hover:text-[#315b45]"}`;
   const scrollToReviewSection = (section: ReviewSectionKey, id: string) => {
     const container = reviewScrollRef.current;
-    const target = container?.querySelector<HTMLElement>(`#${id}`);
-    if (!container || !target) return;
+    if (!container) return;
     setActiveReviewSection(section);
-    const top = target.getBoundingClientRect().top - container.getBoundingClientRect().top + container.scrollTop - 72;
+
+    if (section === "summary") {
+      container.scrollTo({ top: 0, behavior: "smooth" });
+      return;
+    }
+
+    const target = container.querySelector<HTMLElement>(`#${id}`);
+    if (!target) return;
+    const toolbarOffset = reviewToolbarRef.current?.offsetHeight || 0;
+    const top = target.getBoundingClientRect().top - container.getBoundingClientRect().top + container.scrollTop - toolbarOffset - 12;
     container.scrollTo({ top, behavior: "smooth" });
   };
   const scrollToFacilitatorAccess = () => {
     const container = reviewScrollRef.current;
     const target = container?.querySelector<HTMLElement>("#facilitator-access");
     if (!container || !target) return;
-    const top = target.getBoundingClientRect().top - container.getBoundingClientRect().top + container.scrollTop - 72;
+    const toolbarOffset = reviewToolbarRef.current?.offsetHeight || 0;
+    const top = target.getBoundingClientRect().top - container.getBoundingClientRect().top + container.scrollTop - toolbarOffset - 12;
     container.scrollTo({ top, behavior: "smooth" });
   };
   return (
@@ -517,23 +566,22 @@ export default function AssessmentManagement({ mode }: { mode: "admin" | "facili
 
             <div ref={reviewScrollRef} className="scrollbar-hidden min-h-0 flex-1 overscroll-contain overflow-y-auto px-6 pb-[max(1.5rem,env(safe-area-inset-bottom))] sm:px-8 sm:pb-8">
 
-            <div className="sticky top-0 z-10 -mx-6 flex flex-col gap-3 border-b border-[#dbe4dc] bg-[#fbfcfa] px-6 py-3 shadow-[0_8px_20px_rgba(30,38,33,0.06)] sm:-mx-8 lg:flex-row lg:items-center lg:justify-between sm:px-8">
-              <div className="flex flex-wrap items-center gap-2.5">
+            <div ref={reviewToolbarRef} className="sticky top-0 z-10 -mx-6 flex flex-col gap-2 border-b border-[#dbe4dc] bg-[#fbfcfa] px-6 py-3 shadow-[0_8px_20px_rgba(30,38,33,0.06)] sm:-mx-8 sm:px-8">
+              <div className={predictionApproved ? "grid w-full items-stretch gap-2 sm:grid-cols-2 lg:grid-cols-4" : "flex flex-wrap items-center gap-2"}>
                 {predictionApproved ? <>
-                  <div className="min-w-48 rounded-xl border border-[#e0e7e1] bg-white px-3 py-2 shadow-sm">
-                    <div className="flex items-center justify-between gap-3 text-sm"><span className="font-semibold text-[#53645a]">Review progress</span><strong className="text-[#294334]">{selected.score_review.reviewed_items}/{selected.score_review.total_items}</strong></div>
-                    <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-[#e8ede9]"><span className="block h-full rounded-full bg-[#4f8061] transition-[width]" style={{ width: `${selected.score_review.total_items > 0 ? Math.min((selected.score_review.reviewed_items / selected.score_review.total_items) * 100, 100) : 0}%` }} /></div>
-                  </div>
-                  {selected.score_review.total_items - selected.score_review.reviewed_items > 0
-                    ? <span className="rounded-full bg-[#fff4df] px-3 py-2 text-sm font-semibold text-[#8a6420]">{Math.max(selected.score_review.total_items - selected.score_review.reviewed_items, 0)} items remaining</span>
-                    : <span className="inline-flex items-center gap-1.5 rounded-full bg-[#eaf4ec] px-3 py-2 text-sm font-semibold text-[#356247]"><CheckCircle2 size={14} />All items reviewed</span>}
-                  <span className="rounded-xl border border-[#dfe6e0] bg-white px-3 py-2 text-sm text-[#65736a] shadow-sm">Draft score <strong className="ml-1 text-[#294334]">{formatScore(draftTotal)}</strong></span>
+                  <span className="inline-flex items-center justify-center whitespace-nowrap rounded-xl border border-[#dce5de] bg-white px-3 py-2 text-sm text-[#65736a]">Actual score <strong className="ml-1 text-[#294334]">{formatScore(draftTotal)}</strong></span>
+                  <span className="inline-flex items-center justify-center rounded-xl bg-[#edf4ee] px-3 py-2 text-sm text-[#53645a]">Evidence submitted <strong className="ml-1 text-[#294334]">{reviewSummary.evidenceSubmittedItems}</strong></span>
+                  <span className="inline-flex items-center justify-center rounded-xl bg-[#f1f3ef] px-3 py-2 text-sm text-[#65736a]">Evidence not submitted <strong className="ml-1 text-[#294334]">{reviewSummary.evidenceNotSubmittedItems}</strong></span>
+                  <span className={`inline-flex items-center justify-center gap-1.5 rounded-xl px-3 py-2 text-center text-sm font-semibold ${certificateIssued || certificationReady ? "bg-[#eaf4ec] text-[#356247]" : "bg-[#fff4df] text-[#8a6420]"}`}>
+                    {certificateIssued || certificationReady ? <CheckCircle2 size={14} /> : <CircleAlert size={14} />}
+                    {certificateIssued ? "Certification issued" : certificationReady ? "Ready for certification" : certificationDoesNotQualify ? "Does not currently qualify" : "Not ready for certification"}
+                  </span>
                 </> : <>
-                  <span className="rounded-xl border border-[#dfe6e0] bg-white px-3 py-2 text-sm text-[#65736a] shadow-sm">Predicted score <strong className="ml-1 text-[#294334]">{formatScore(selected.score_review.predicted_total)}</strong></span>
-                  <span className="rounded-full bg-[#eef3ef] px-3 py-2 text-sm font-semibold text-[#53645a]">{selected.score_review.total_items} GBI items</span>
+                  <span className="rounded-xl border border-[#dce5de] bg-white px-3 py-2 text-sm text-[#65736a]">Predicted score <strong className="ml-1 text-[#294334]">{formatScore(selected.score_review.predicted_total)}</strong></span>
+                  <span className="rounded-xl bg-[#eef3ef] px-3 py-2 text-sm font-semibold text-[#53645a]">{selected.score_review.total_items} GBI items</span>
                 </>}
               </div>
-              <nav aria-label="Assessment review sections" className="flex w-fit flex-wrap gap-1 rounded-xl border border-[#e0e6e0] bg-[#f0f4f0] p-1">
+              <nav aria-label="Assessment review sections" className={`grid w-full gap-1 rounded-xl border border-[#e0e6e0] bg-[#f0f4f0] p-1 ${reviewNavigationColumnClass}`}>
                 <button type="button" onClick={() => scrollToReviewSection("summary", "assessment-summary")} className={reviewSectionClass("summary")}>Summary</button>
                 <button type="button" onClick={() => scrollToReviewSection("items", "review-items")} className={reviewSectionClass("items")}>Review items</button>
                 {!!selected.assessment.reviews?.length && <button type="button" onClick={() => scrollToReviewSection("history", "review-history")} className={reviewSectionClass("history")}>History</button>}
@@ -545,7 +593,6 @@ export default function AssessmentManagement({ mode }: { mode: "admin" | "facili
               <Summary label="Predicted total score" value={formatScore(selected.score_review.predicted_total)} />
               {predictionApproved && <>
                 <Summary label="Actual total score" value={formatScore(actualSelectionsDirty ? draftTotal : selected.score_review.actual_total)} />
-                <Summary label="Items reviewed" value={`${selected.score_review.reviewed_items}/${selected.score_review.total_items}`} />
               </>}
               <div className="rounded-xl bg-[#f4f6f2] p-4"><p className="text-sm text-[#7c8880]">Verification</p><div className="mt-1"><StatusBadge value={selected.score_review.verification_status} /></div></div>
               {predictionApproved && <div className="rounded-xl bg-[#f4f6f2] p-4"><p className="text-sm text-[#7c8880]">Certification</p><div className="mt-1"><StatusBadge value={selected.score_review.certification_status} /></div>{selected.score_review.calculated_certification_level && <p className="mt-1 text-sm font-semibold text-[#3e6b52]">{selected.score_review.calculated_certification_level}</p>}</div>}
@@ -607,107 +654,132 @@ export default function AssessmentManagement({ mode }: { mode: "admin" | "facili
 
             {predictionApproved && <section id="review-items" className="mt-6 scroll-mt-20 overflow-hidden rounded-2xl border border-[#dfe5df]">
               <div className="flex flex-col gap-3 border-b border-[#e7ebe6] bg-[#f7f9f6] px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
-                <div><h3 className="text-base font-bold text-[#27332c]">Actual assessment review</h3><p className="mt-1 text-sm leading-6 text-[#738078]">Predicted is read-only. Check only the Actual selections that are accepted.</p></div>
+                <div><h3 className="text-base font-bold text-[#27332c]">Actual assessment review</h3><p className="mt-1 text-sm leading-6 text-[#738078]">Review the applicant&apos;s evidence, then award only the Actual marks that the evidence sufficiently supports. Predicted remains read-only.</p></div>
                 <span className="inline-flex w-fit items-center rounded-full border border-[#d8e5db] bg-white px-3 py-1.5 text-sm font-semibold text-[#3e6b52]">Actual draft total&nbsp; {draftTotal}</span>
               </div>
+              <AdminReviewOverview
+                summary={reviewSummary}
+                actualScore={draftTotal}
+                maximumScore={maximumTotal}
+                certificationLevel={selected.score_review.calculated_certification_level}
+                certificateIssued={certificateIssued}
+                certificationReady={certificationReady}
+                certificationDoesNotQualify={certificationDoesNotQualify}
+                readinessReasons={readinessReasons}
+                filter={reviewItemFilter}
+                onFilterChange={setReviewItemFilter}
+                onProceedToDecision={() => scrollToReviewSection("decision", "review-decision")}
+              />
               <div className="divide-y divide-[#edf0eb]">
-                {selected.score_review.items.map((item) => (
-                  <article key={item.item_id} className="p-5 sm:p-6" style={{ contentVisibility: "auto", containIntrinsicSize: "auto 620px" }}>
+                {visibleActualItems.map((insight) => {
+                  const item = insight.item;
+                  const requirementGuidance = getGbiRequirementGuidance(item);
+                  const requirementIsLong = isLongRequirement(requirementGuidance);
+                  const purpose = extractGbiPurpose(item.info);
+                  const showPurpose = isDistinctPurpose(requirementGuidance, purpose);
+                  return (
+                  <article key={item.item_id} className="p-5 sm:p-6">
                     <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                       <div className="min-w-0">
                         <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[#789083]">{[item.criterion, item.subcriterion].filter(Boolean).join(" / ") || `Item ${item.item_id}`}</p>
                         <p className="mt-1.5 text-sm font-semibold leading-5 text-[#2c3730]">{item.description}</p>
                       </div>
                       <div className="flex flex-wrap items-center gap-2">
-                        <button type="button" onClick={() => setRequirementItem(item)} className="inline-flex w-fit items-center gap-1.5 rounded-full border border-[#dbe5dc] bg-white px-3 py-1.5 text-sm font-semibold text-[#52705e] transition hover:border-[#9fb5a5] hover:bg-[#f5f9f5]"><BookOpen size={14} />GBI requirement</button>
-                        <details className="group relative">
-                          <summary className="flex h-8 w-8 cursor-pointer list-none items-center justify-center rounded-full border border-[#eadfca] bg-[#fffaf0] text-[#9a6a32] transition hover:border-[#d7bf93] hover:bg-[#fff5df] marker:hidden" aria-label="Show GBI purpose">
-                            <CircleAlert size={15} />
-                          </summary>
-                          <div className="absolute right-0 z-20 mt-2 hidden w-72 rounded-xl border border-[#dfe6df] bg-white p-3.5 text-left shadow-[0_12px_32px_rgba(30,38,33,0.16)] group-open:block group-hover:block group-focus-within:block sm:w-80">
-                            <p className="text-xs font-bold uppercase tracking-[0.1em] text-[#657a6d]">GBI purpose</p>
-                            <p className="mt-1.5 text-sm leading-6 text-[#4f5e54]">{extractGbiPurpose(item.info) || "No purpose summary is recorded for this item."}</p>
-                          </div>
-                        </details>
-                        {item.review_status !== "reviewed" && <span className="w-fit shrink-0 rounded-full bg-[#f5efe4] px-2.5 py-1 text-xs font-semibold text-[#8a6420]">This item pending</span>}
+                        <span className="rounded-xl border border-[#cad8ce] bg-[#f6faf7] px-3 py-2 text-sm font-bold text-[#315b45]">Actual {insight.actualAwardedScore} / {item.max_score}</span>
                       </div>
                     </div>
 
-                    <div className="mt-4 grid gap-3 sm:grid-cols-2">
-                      <div className="flex min-h-30 flex-col rounded-2xl border border-[#e2e6e1] bg-[#fafbf9] p-4">
-                        <div className="flex items-center justify-between gap-3 border-b border-[#e8ebe7] pb-3">
-                          <div><p className="text-xs font-semibold uppercase tracking-[0.12em] text-[#7b877f]">Predicted</p><p className="mt-0.5 text-xs text-[#9aa29d]">Read-only</p></div>
-                          <span className="rounded-xl bg-[#eef0ed] px-3 py-2 text-sm font-bold text-[#344139]">{item.predicted_score}/{item.max_score}</span>
-                        </div>
-                        {item.predicted_choices.length > 0 ? <div className="mt-3 space-y-2">{item.predicted_choices.map((choice) => (
-                          <div key={choice.choice_key} className={`flex items-start gap-2.5 rounded-xl border px-3 py-2.5 text-sm leading-6 ${choice.selected ? "border-[#dce3dd] bg-white text-[#4d5a52]" : "border-transparent bg-[#f0f2ef] text-[#929a95]"}`}>
-                            <input type="checkbox" checked={choice.selected} readOnly disabled className="mt-0.5 h-4 w-4 shrink-0 rounded border-[#bbc3bd] accent-[#65756b] disabled:opacity-100" aria-label={`${choice.label} ${choice.selected ? "selected" : "not selected"} in Predicted assessment`} />
-                            <span className="flex-1">{choice.label}</span>
-                            <span className="shrink-0 rounded-lg bg-[#e9ece9] px-2 py-0.5 font-semibold text-[#68756d]">{choice.score} {choice.score === 1 ? "mark" : "marks"}</span>
-                          </div>
-                        ))}</div> : <p className="mt-3 text-sm text-[#9aa29d]">No Predicted choices configured</p>}
-                      </div>
+                    <ItemReviewGuidance insight={insight} />
 
-                      <div className="flex min-h-30 flex-col rounded-2xl border border-[#d8e5dc] bg-[#f6faf7] p-4">
-                        <div className="flex items-center justify-between gap-3 border-b border-[#dfe9e2] pb-3">
-                          <div><p className="text-xs font-semibold uppercase tracking-[0.12em] text-[#52705e]">Actual</p><p className="mt-0.5 text-xs text-[#7f9085]">Editable</p></div>
-                          <span className="rounded-xl border border-[#cad8ce] bg-white px-3 py-2 text-sm font-bold text-[#315b45]">{Math.min(item.actual_choices.reduce((total, choice) => total + (acceptedActualDraft[choice.choice_key] ? choice.score : 0), 0), item.max_score)}/{item.max_score}</span>
+                    <div className="mt-3 grid items-start gap-3 md:grid-cols-2 xl:grid-cols-[minmax(0,1.05fr)_minmax(0,0.75fr)_minmax(0,1.2fr)]">
+                      <section className="rounded-2xl border border-[#dfe6df] bg-[#fafcf9] p-4 md:row-span-2 xl:row-span-1">
+                        <div className="flex items-center justify-between gap-3 border-b border-[#e4e9e4] pb-3">
+                          <p className="text-xs font-bold uppercase tracking-[0.12em] text-[#52705e]">GBI requirement</p>
+                          {requirementIsLong && <button type="button" onClick={() => setRequirementItem(item)} className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-[#d6e1d8] bg-white px-2.5 py-1.5 text-xs font-semibold text-[#52705e] transition hover:border-[#9fb5a5] hover:bg-[#f8fbf8]"><BookOpen size={13} />Open full requirement</button>}
                         </div>
+                        <div className="mt-3">
+                          <GbiRequirementContent guidance={requirementGuidance} compact preview={requirementIsLong} />
+                        </div>
+                        {showPurpose && <details className="group mt-3 border-t border-[#e4e9e4] pt-2.5">
+                          <summary className="cursor-pointer list-none text-xs font-semibold text-[#657a6d] marker:hidden after:ml-1 after:content-['▸'] group-open:after:content-['▾']">Why this matters</summary>
+                          <p className="mt-2 text-sm leading-5 text-[#5f6d64]">{purpose}</p>
+                        </details>}
+                      </section>
+
+                      <section className="rounded-2xl border border-[#e2e6e1] bg-white p-4">
+                        <p className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-[0.1em] text-[#657a6d]"><Paperclip size={13} /> Applicant evidence</p>
+                        {!!item.evidence?.length ? <div className="mt-3 space-y-1.5">{item.evidence.map((file) => (
+                          <div key={file.id} className="flex min-w-0 items-center gap-1.5">
+                            <a href={`/be-api/media/${encodeURIComponent(file.filename)}`} target="_blank" rel="noreferrer" className="flex min-w-0 flex-1 items-center justify-between gap-2 rounded-lg border border-[#dce7df] bg-[#f8faf8] px-2.5 py-2 text-sm text-[#3e6b52] transition hover:border-[#90aa98]">
+                              <span className="min-w-0 truncate">{file.original_name}</span><span className="inline-flex shrink-0 items-center gap-1 text-xs font-semibold">Open <ExternalLink size={11} /></span>
+                            </a>
+                            <button type="button" disabled={removingEvidenceId === file.id} onClick={() => setPendingEvidenceRemoval({ itemId: item.item_id, file })} aria-label={`Remove ${file.original_name}`} className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-red-100 bg-white text-red-500 transition hover:border-red-200 hover:bg-red-50 disabled:cursor-wait disabled:opacity-50">
+                              {removingEvidenceId === file.id ? <LoaderCircle size={12} className="animate-spin" /> : <Trash2 size={12} />}
+                            </button>
+                          </div>
+                        ))}</div> : <p className="mt-3 text-sm leading-5 text-[#7d8981]">No evidence submitted.</p>}
+                      </section>
+
+                      <section className="rounded-2xl border border-[#d8e5dc] bg-[#f6faf7] p-4">
+                        <div className="border-b border-[#dfe9e2] pb-3">
+                          <p className="text-xs font-bold uppercase tracking-[0.12em] text-[#52705e]">Actual assessment</p>
+                          <p className="mt-0.5 text-xs text-[#7f9085]">Admin / Facilitator determination</p>
+                        </div>
+                        <p className="mt-3 text-xs leading-5 text-[#617168]">Checked options receive their Actual marks.</p>
                         {item.actual_choices.length > 0 ? <div className="mt-3 space-y-2">{item.actual_choices.map((choice) => (
-                          <label key={choice.choice_key} className={`flex cursor-pointer items-start gap-2.5 rounded-xl border px-3 py-2.5 text-sm leading-6 transition ${acceptedActualDraft[choice.choice_key] ? "border-[#cfe0d3] bg-white text-[#405449]" : "border-transparent bg-[#eef3ef] text-[#869189]"}`}>
+                          <label key={choice.choice_key} className={`flex cursor-pointer items-start gap-2.5 rounded-xl border px-3 py-2.5 text-sm leading-5 transition ${awardedActualDraft[choice.choice_key] ? "border-[#cfe0d3] bg-white text-[#405449]" : "border-transparent bg-[#eef3ef] text-[#869189]"}`}>
                             <input
                               type="checkbox"
                               disabled={busy}
-                              checked={acceptedActualDraft[choice.choice_key] ?? false}
+                              checked={awardedActualDraft[choice.choice_key] ?? false}
+                              aria-label={`Award Actual mark for ${choice.label}`}
                               onChange={(event) => {
-                                setAcceptedActualDraft((current) => ({ ...current, [choice.choice_key]: event.target.checked }));
+                                setAwardedActualDraft((current) => ({ ...current, [choice.choice_key]: event.target.checked }));
                                 actualSelectionsDirtyRef.current = true;
                                 setActualSelectionsDirty(true);
                               }}
                               className="mt-0.5 h-4 w-4 shrink-0 rounded border-[#afc1b3] accent-[#3e6b52] disabled:opacity-50"
                             />
                             <span className="flex-1">{choice.label}</span>
-                            <span className="shrink-0 rounded-lg bg-[#e6efe8] px-2 py-0.5 font-semibold text-[#456a53]">{choice.score} {choice.score === 1 ? "mark" : "marks"}</span>
+                            <span className="shrink-0 rounded-lg bg-[#e6efe8] px-2 py-0.5 text-xs font-semibold text-[#456a53]">{choice.score} {choice.score === 1 ? "mark" : "marks"}</span>
                           </label>
-                        ))}</div> : <p className="mt-3 text-sm text-[#9aa29d]">No Actual selection</p>}
-                        <div className="mt-4 border-t border-[#dfe9e2] pt-3">
-                          <p className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-[0.1em] text-[#52705e]"><Paperclip size={13} /> Submitted evidence</p>
-                          {!!item.evidence?.length ? <div className="mt-2 space-y-1.5">{item.evidence.map((file) => (
-                            <div key={file.id} className="flex items-center gap-1.5">
-                              <a href={`/be-api/media/${encodeURIComponent(file.filename)}`} target="_blank" rel="noreferrer" className="flex min-w-0 flex-1 items-center justify-between gap-2 rounded-xl border border-[#dce7df] bg-white px-3 py-2 text-sm text-[#3e6b52] transition hover:border-[#90aa98]">
-                                <span className="min-w-0 truncate">{file.original_name}</span><ExternalLink size={11} className="shrink-0" />
-                              </a>
-                              <button type="button" disabled={removingEvidenceId === file.id} onClick={() => setPendingEvidenceRemoval({ itemId: item.item_id, file })} aria-label={`Remove ${file.original_name}`} className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-red-100 bg-white text-red-500 transition hover:border-red-200 hover:bg-red-50 disabled:cursor-wait disabled:opacity-50">
-                                {removingEvidenceId === file.id ? <LoaderCircle size={12} className="animate-spin" /> : <Trash2 size={12} />}
-                              </button>
-                            </div>
-                          ))}</div> : <p className="mt-2 rounded-xl bg-white/70 px-3 py-2 text-sm leading-6 text-[#8b958f]">No evidence submitted. Request more evidence before accepting this Actual item.</p>}
-                        </div>
-                        <label className="mt-4 block border-t border-[#dfe9e2] pt-3">
-                          <span className="text-xs font-semibold uppercase tracking-[0.1em] text-[#52705e]">Remark for user <span className="font-normal normal-case tracking-normal text-[#8a958e]">(optional)</span></span>
-                          <textarea
-                            value={itemRemarksDraft[item.item_id] || ""}
-                            maxLength={2000}
-                            disabled={busy}
-                            onChange={(event) => {
-                              setItemRemarksDraft((current) => ({ ...current, [item.item_id]: event.target.value }));
-                              actualSelectionsDirtyRef.current = true;
-                              setActualSelectionsDirty(true);
-                            }}
-                            placeholder="Explain what additional or clearer evidence is required…"
-                            className="mt-2 min-h-22 w-full resize-y rounded-xl border border-[#d7e2da] bg-white px-3 py-2.5 text-sm leading-6 text-[#405449] outline-none transition placeholder:text-[#9ba59f] focus:border-[#7fa18b] disabled:opacity-60"
-                          />
-                          <span className="mt-1 block text-right text-xs text-[#98a19b]">{(itemRemarksDraft[item.item_id] || "").length}/2000</span>
-                        </label>
-                      </div>
+                          ))}</div> : <p className="mt-3 text-sm text-[#9aa29d]">No Actual selection</p>}
+                      </section>
                     </div>
 
-                    {item.reviewed_by && <p className="mt-3 text-right text-sm text-[#859088]">Reviewed by {item.reviewed_by.first_name} {item.reviewed_by.last_name}{item.reviewed_at ? ` · ${new Date(item.reviewed_at.replace(" ", "T")).toLocaleString()}` : ""}</p>}
+                    <section className="mt-3 rounded-xl border border-[#e2e6e1] bg-[#fafbf9] px-3.5 py-3">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <div><p className="text-xs font-semibold uppercase tracking-[0.1em] text-[#657a6d]">Predicted assessment</p><p className="mt-0.5 text-xs text-[#8a958e]">Applicant response · Read-only</p></div>
+                        <span className="rounded-md bg-[#eef1ee] px-2 py-1 text-xs font-semibold text-[#68756d]">Applicant selected {item.predicted_choices.filter((choice) => choice.selected).length} / {item.predicted_choices.length}</span>
+                      </div>
+                      <PredictedSelectionSummary choices={item.predicted_choices} showHeading={false} compact />
+                    </section>
+
+                    <label className="mt-3 block rounded-xl border border-[#d8e5dc] bg-[#f6faf7] p-4">
+                      <span className="text-xs font-semibold uppercase tracking-[0.1em] text-[#52705e]">Reviewer remark <span className="font-normal normal-case tracking-normal text-[#8a958e]">(optional)</span></span>
+                      {insight.actualAwardedScore === 0 && <span className="mt-1 block text-xs leading-5 text-[#7a877f]">Add a remark if the applicant needs clarification or should provide additional evidence.</span>}
+                      <textarea
+                        value={itemRemarksDraft[item.item_id] || ""}
+                        maxLength={2000}
+                        disabled={busy}
+                        onChange={(event) => {
+                          setItemRemarksDraft((current) => ({ ...current, [item.item_id]: event.target.value }));
+                          actualSelectionsDirtyRef.current = true;
+                          setActualSelectionsDirty(true);
+                        }}
+                        placeholder="Explain what additional or clearer evidence is required…"
+                        className="mt-2 min-h-18 w-full resize-y rounded-xl border border-[#d7e2da] bg-white px-3 py-2.5 text-sm leading-6 text-[#405449] outline-none transition placeholder:text-[#9ba59f] focus:border-[#7fa18b] disabled:opacity-60"
+                      />
+                      <span className="mt-1 block text-right text-xs text-[#98a19b]">{(itemRemarksDraft[item.item_id] || "").length}/2000</span>
+                    </label>
+
                   </article>
-                ))}
+                  );
+                })}
                 {selected.score_review.items.length === 0 && <p className="p-8 text-center text-sm text-[#77827b]">No assessment items are configured for this project type.</p>}
+                {selected.score_review.items.length > 0 && visibleActualItems.length === 0 && <div className="p-8 text-center"><CheckCircle2 size={24} className="mx-auto text-[#4f8061]" /><p className="mt-2 text-sm font-semibold text-[#405449]">{emptyFilterMessage}</p><button type="button" onClick={() => setReviewItemFilter("all")} className="mt-3 text-sm font-semibold text-[#3e6b52] hover:underline">Show all items</button></div>}
               </div>
-              {selected.score_review.items.length > 0 && <div className="flex justify-end border-t border-[#e7ebe6] bg-[#fbfcfa] p-4"><button disabled={busy} onClick={saveActualSelections} className={`${primaryButton} gap-2`}><Save size={15} /> Save Actual review</button></div>}
+              {selected.score_review.items.length > 0 && <div className="flex justify-end border-t border-[#e7ebe6] bg-[#fbfcfa] p-4"><button disabled={busy} onClick={saveActualSelections} className={`${primaryButton} gap-2`}><Save size={15} /> Save reviewer decisions</button></div>}
             </section>}
 
             {selected.recommendation && <div className="mt-5 rounded-2xl border border-[#dce5dd] bg-[#f3f8f3] p-5"><p className="text-sm font-bold text-[#315b45]">{selected.recommendation.title}</p><p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-[#5f6e64]">{selected.recommendation.content}</p></div>}
@@ -757,7 +829,7 @@ export default function AssessmentManagement({ mode }: { mode: "admin" | "facili
               {!predictionApproved && <div className="mb-3 rounded-xl border border-[#e6dfc8] bg-[#fffaf0] px-4 py-3 text-sm leading-6 text-[#655b42]">
                 <p className="font-semibold text-[#554a30]">Give the applicant a clear path to approval:</p>
                 <ul className="mt-1 list-disc space-y-0.5 pl-4">
-                  <li>Identify the exact item or evidence that needs attention.</li>
+                  <li>Identify the exact item or evidence that requires clarification.</li>
                   <li>Explain why the current submission does not meet the requirement.</li>
                   <li>State what must be revised or submitted next.</li>
                 </ul>
@@ -778,13 +850,11 @@ export default function AssessmentManagement({ mode }: { mode: "admin" | "facili
                 {remarksRequired ? <p role="alert" className="font-semibold text-red-600">Please provide actionable feedback of at least {CHANGE_REQUEST_MIN_CHARACTERS} characters and {CHANGE_REQUEST_MIN_WORDS} words.</p> : <p className="text-[#748078]">Specific, respectful feedback helps the applicant correct the submission faster.</p>}
                 <span className={remarks.trim().length >= CHANGE_REQUEST_MIN_CHARACTERS ? "font-semibold text-[#3e6b52]" : "text-[#8a948e]"}>{remarks.trim().length}/{CHANGE_REQUEST_MIN_CHARACTERS} minimum characters</span>
               </div>}
-              {predictionApproved && !everyItemReviewed && <p className="mt-2 text-sm text-[#9a6a32]">Review and save the Actual value for every item before certification.</p>}
               {predictionApproved && actualSelectionsDirty && <p className="mt-2 text-sm text-[#9a6a32]">Save the Actual selection changes before certification.</p>}
               {predictionApproved && everyItemReviewed && !actualSelectionsDirty && !certificationQualified && <p className="mt-2 text-sm text-[#9a6a32]">The Actual total does not currently qualify for a configured certification level.</p>}
               <div className="mt-4 flex flex-col gap-3 border-t border-[#edf0eb] pt-4 sm:flex-row sm:items-center sm:justify-between">
                 <div>
                   <button disabled={busy} onClick={closeReview} className={`${secondaryButton} gap-2`}><X size={15} />Close</button>
-                  {predictionApproved && !actualSelectionsDirty && selected.score_review.reviewed_items > 0 && <p className="mt-2 text-sm text-[#7d8981]">The Actual review is saved. Certification can be completed later.</p>}
                 </div>
                 <div className="flex flex-wrap justify-end gap-2">
                   {!predictionApproved && !predictionRejected && <>
@@ -890,11 +960,186 @@ function Summary({ label, value }: { label: string; value: React.ReactNode }) {
   return <div className="rounded-xl bg-[#f4f6f2] p-4"><p className="text-sm text-[#7c8880]">{label}</p><p className="mt-1 font-bold">{value}</p></div>;
 }
 
-function GbiRequirementDialog({ item, onClose }: { item: ScoreReviewItem; onClose: () => void }) {
+type AdminReviewSummaryModel = {
+  insights: ReviewItemInsight[];
+  actualItemsAwarded: number;
+  notAwardedItems: number;
+  evidenceSubmittedItems: number;
+  evidenceNotSubmittedItems: number;
+  reviewerRemarks: number;
+};
+
+function buildReviewSummary(
+  items: ScoreReviewItem[],
+  awardedDraft: Record<string, boolean>,
+  remarksDraft: Record<number, string>,
+): AdminReviewSummaryModel {
+  const insights = items.map((item): ReviewItemInsight => {
+    const predictedClaimed = item.predicted_choices.some((choice) => choice.selected);
+    const evidenceSubmitted = Boolean(item.evidence?.length);
+    const decisionDirty = item.actual_choices.some((choice) => Boolean(awardedDraft[choice.choice_key]) !== Boolean(choice.accepted))
+      || (remarksDraft[item.item_id] || "").trim() !== (item.remarks || "").trim();
+    const actualAwardedScore = calculateActualAwardedMarks(item.actual_choices, awardedDraft, item.max_score);
+    const actualAwarded = actualAwardedScore > 0;
+    const hasRemark = Boolean((remarksDraft[item.item_id] || "").trim());
+    const resultCategory = getReviewResultCategory({
+      actualAwardedMarks: actualAwardedScore,
+    });
+
+    return {
+      item,
+      predictedClaimed,
+      evidenceSubmitted,
+      actualAwarded,
+      actualAwardedScore,
+      hasRemark,
+      decisionDirty,
+      resultCategory,
+    };
+  });
+
+  return {
+    insights,
+    actualItemsAwarded: insights.filter((insight) => insight.resultCategory === "awarded").length,
+    notAwardedItems: insights.filter((insight) => insight.resultCategory === "not-awarded").length,
+    evidenceSubmittedItems: insights.filter((insight) => insight.evidenceSubmitted).length,
+    evidenceNotSubmittedItems: insights.filter((insight) => !insight.evidenceSubmitted).length,
+    reviewerRemarks: insights.filter((insight) => insight.hasRemark).length,
+  };
+}
+
+function AdminReviewOverview({
+  summary,
+  actualScore,
+  maximumScore,
+  certificationLevel,
+  certificateIssued,
+  certificationReady,
+  certificationDoesNotQualify,
+  readinessReasons,
+  filter,
+  onFilterChange,
+  onProceedToDecision,
+}: {
+  summary: AdminReviewSummaryModel;
+  actualScore: number;
+  maximumScore: number;
+  certificationLevel?: string | null;
+  certificateIssued: boolean;
+  certificationReady: boolean;
+  certificationDoesNotQualify: boolean;
+  readinessReasons: string[];
+  filter: ReviewItemFilter;
+  onFilterChange: (filter: ReviewItemFilter) => void;
+  onProceedToDecision: () => void;
+}) {
+  const stats: Array<{ label: string; value: string | number; filter?: ReviewItemFilter }> = [
+    { label: "Awarded Actual items", value: summary.actualItemsAwarded, filter: "awarded" },
+    { label: "Not awarded items", value: summary.notAwardedItems, filter: "not_awarded" },
+    { label: "Evidence submitted", value: summary.evidenceSubmittedItems },
+    { label: "Evidence not submitted", value: summary.evidenceNotSubmittedItems },
+    { label: "Reviewer remarks", value: summary.reviewerRemarks },
+    { label: "Actual score", value: `${actualScore} / ${maximumScore}` },
+  ];
+
+  return (
+    <div className="border-b border-[#e4e9e4] bg-white p-4 sm:p-5">
+      <div className="grid gap-4 lg:grid-cols-[minmax(0,1.15fr)_minmax(18rem,0.85fr)]">
+        <div>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <p className="text-xs font-bold uppercase tracking-[0.12em] text-[#64766b]">Admin review summary</p>
+            <div className="flex flex-wrap rounded-lg bg-[#f0f4f0] p-1 text-xs font-semibold">
+              <button type="button" onClick={() => onFilterChange("all")} className={`rounded-md px-2.5 py-1.5 ${filter === "all" ? "bg-white text-[#315b45] shadow-sm" : "text-[#718078]"}`}>All items ({summary.insights.length})</button>
+              <button type="button" onClick={() => onFilterChange("awarded")} className={`rounded-md px-2.5 py-1.5 ${filter === "awarded" ? "bg-white text-[#315b45] shadow-sm" : "text-[#718078]"}`}>Awarded Actual ({summary.actualItemsAwarded})</button>
+              <button type="button" onClick={() => onFilterChange("not_awarded")} className={`rounded-md px-2.5 py-1.5 ${filter === "not_awarded" ? "bg-white text-[#53645a] shadow-sm" : "text-[#718078]"}`}>Not awarded ({summary.notAwardedItems})</button>
+            </div>
+          </div>
+          <div className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2 sm:grid-cols-3 xl:grid-cols-4">
+            {stats.map((stat) => stat.filter ? (
+              <button key={stat.label} type="button" onClick={() => onFilterChange(stat.filter!)} className={`rounded-lg px-3 py-2 text-left transition hover:bg-[#eef4ef] ${filter === stat.filter ? "bg-[#edf4ee] ring-1 ring-[#cfded2]" : "bg-[#f7f9f6]"}`}>
+                <span className="block text-xs leading-4 text-[#6f7d74]">{stat.label}</span>
+                <span className="mt-0.5 block text-sm font-bold text-[#2f3d34]">{stat.value}</span>
+              </button>
+            ) : (
+              <div key={stat.label} className="rounded-lg bg-[#f7f9f6] px-3 py-2">
+                <span className="block text-xs leading-4 text-[#7a8780]">{stat.label}</span>
+                <span className="mt-0.5 block text-sm font-bold text-[#2f3d34]">{stat.value}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className={`rounded-xl border p-4 ${certificateIssued || certificationReady ? "border-[#cfe0d3] bg-[#f3f8f4]" : "border-[#eadfca] bg-[#fffaf0]"}`}>
+          <p className="text-xs font-bold uppercase tracking-[0.12em] text-[#64766b]">Certification status</p>
+          <p className={`mt-2 flex items-center gap-2 text-sm font-bold ${certificateIssued || certificationReady ? "text-[#356247]" : "text-[#8a6420]"}`}>
+            {certificateIssued || certificationReady ? <CheckCircle2 size={17} /> : <CircleAlert size={17} />}
+            {certificateIssued ? "Certification issued" : certificationReady ? "Ready for certification" : certificationDoesNotQualify ? "Does not currently qualify for certification" : "Not ready for certification"}
+          </p>
+          {certificateIssued ? <p className="mt-2 text-sm leading-5 text-[#5f6e64]">This assessment has already been certified.</p> : certificationReady ? <div className="mt-2 text-sm leading-5 text-[#5f6e64]"><p>The saved Actual score qualifies under the existing certification rules.</p><p className="mt-1 font-semibold text-[#405449]">Actual score: {actualScore} / {maximumScore}{certificationLevel ? ` · ${certificationLevel}` : ""}</p></div> : <ul className="mt-2 space-y-1 text-sm leading-5 text-[#6d624a]">{readinessReasons.map((reason) => <li key={reason} className="flex items-start gap-1.5"><span aria-hidden="true">•</span><span>{reason}</span></li>)}</ul>}
+          <div className="mt-3 flex flex-wrap gap-2">
+            <button type="button" onClick={onProceedToDecision} className="rounded-lg border border-[#cfdcd2] bg-white px-3 py-2 text-xs font-semibold text-[#3e6b52] transition hover:bg-[#f4f8f4]">Proceed to Decision</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ItemReviewGuidance({ insight }: { insight: ReviewItemInsight }) {
+  const guidance = insight.decisionDirty
+    ? "Actual selections or the reviewer remark have unsaved changes."
+    : insight.evidenceSubmitted
+      ? "Review the submitted evidence against the GBI requirement before awarding Actual marks."
+      : insight.actualAwardedScore > 0
+        ? "No evidence submitted. Review the available project information before saving these Actual marks."
+        : "No evidence submitted. No Actual mark has been awarded; add a reviewer remark if additional evidence should be requested.";
+
+  return (
+    <div className="mt-3 rounded-xl border border-[#e2e7e2] bg-[#fbfcfa] px-3.5 py-3">
+      <div className="flex flex-wrap gap-1.5 text-xs font-semibold">
+        <ReviewSignal label={`Predicted: ${insight.item.predicted_score}/${insight.item.max_score}`} />
+        <ReviewSignal label={insight.evidenceSubmitted ? "Evidence: Submitted" : "Evidence: Not submitted"} warning={!insight.evidenceSubmitted && insight.predictedClaimed} />
+        <ReviewSignal label={`Actual: ${insight.actualAwardedScore}/${insight.item.max_score}`} positive={insight.actualAwarded} />
+        {insight.hasRemark && <ReviewSignal label="Reviewer remark present" />}
+      </div>
+      {guidance && <p className="mt-2 border-t border-[#e5e9e5] pt-2 text-sm leading-5 text-[#5f6c64]">{guidance}</p>}
+    </div>
+  );
+}
+
+function ReviewSignal({ label, positive = false, warning = false }: { label: string; positive?: boolean; warning?: boolean }) {
+  return <span className={`inline-flex items-center gap-1 rounded-md px-2 py-1 ${warning ? "bg-[#fff2dc] text-[#865f25]" : positive ? "bg-[#e8f2ea] text-[#356247]" : "bg-[#eef1ee] text-[#68756d]"}`}>{positive ? <CheckCircle2 size={12} /> : warning ? <CircleAlert size={12} /> : null}{label}</span>;
+}
+
+function getGbiRequirementGuidance(item: ScoreReviewItem) {
   const lines = (item.info || "").replaceAll("\\n", "\n").trim().split("\n");
   const firstLineLabel = lines[0]?.replaceAll("**", "").trim().toLowerCase();
   if (firstLineLabel === item.description.trim().toLowerCase()) lines.shift();
-  const guidance = lines.join("\n").trim();
+  return lines.join("\n").trim();
+}
+
+function isLongRequirement(guidance: string) {
+  return guidance.length > 700 || guidance.split("\n").filter((line) => line.trim()).length > 10;
+}
+
+function GbiRequirementContent({ guidance, compact = false, preview = false }: { guidance: string; compact?: boolean; preview?: boolean }) {
+  if (!guidance) return <p className={`text-sm text-[#7d8981] ${compact ? "leading-5" : "rounded-xl bg-[#f5f7f4] px-4 py-5"}`}>No detailed GBI requirement has been recorded for this item.</p>;
+
+  return (
+    <div className={`text-sm text-[#59675e] ${compact ? "leading-6" : "leading-7"} ${preview ? "max-h-64 overflow-hidden [mask-image:linear-gradient(to_bottom,black_82%,transparent)]" : ""}`}>
+      <ReactMarkdown components={{
+        p: ({ children }) => <p className={compact ? "mb-2 last:mb-0" : "mb-3 last:mb-0"}>{children}</p>,
+        ul: ({ children }) => <ul className={`${compact ? "space-y-1.5" : "space-y-2.5"} pl-5 [list-style-type:disc]`}>{children}</ul>,
+        ol: ({ children }) => <ol className={`${compact ? "space-y-1.5" : "space-y-2.5"} pl-5 [list-style-type:decimal]`}>{children}</ol>,
+        li: ({ children }) => <li className="pl-1">{children}</li>,
+        strong: ({ children }) => <strong className="font-semibold text-[#304238]">{children}</strong>,
+      }}>{guidance}</ReactMarkdown>
+    </div>
+  );
+}
+
+function GbiRequirementDialog({ item, onClose }: { item: ScoreReviewItem; onClose: () => void }) {
+  const guidance = getGbiRequirementGuidance(item);
 
   return (
     <div className="fixed inset-0 z-90 flex items-center justify-center bg-[#17201b]/45 p-4 backdrop-blur-[2px]" role="dialog" aria-modal="true" aria-labelledby="gbi-requirement-title">
@@ -905,15 +1150,7 @@ function GbiRequirementDialog({ item, onClose }: { item: ScoreReviewItem; onClos
           <button type="button" aria-label="Close" onClick={onClose} className="rounded-full bg-white p-2 text-[#65736a] shadow-sm transition hover:bg-[#edf2ed]"><X size={17} /></button>
         </div>
         <div className="min-h-0 overflow-y-auto px-6 py-5">
-          {guidance ? <div className="text-sm leading-7 text-[#59675e]">
-            <ReactMarkdown components={{
-              p: ({ children }) => <p className="mb-3 last:mb-0">{children}</p>,
-              ul: ({ children }) => <ul className="space-y-2.5 pl-5 [list-style-type:disc]">{children}</ul>,
-              ol: ({ children }) => <ol className="space-y-2.5 pl-5 [list-style-type:decimal]">{children}</ol>,
-              li: ({ children }) => <li className="pl-1">{children}</li>,
-              strong: ({ children }) => <strong className="font-semibold text-[#304238]">{children}</strong>,
-            }}>{guidance}</ReactMarkdown>
-          </div> : <p className="rounded-xl bg-[#f5f7f4] px-4 py-5 text-sm text-[#7d8981]">No detailed GBI requirement has been recorded for this item.</p>}
+          <GbiRequirementContent guidance={guidance} />
         </div>
         <div className="flex justify-end border-t border-[#e4eae4] bg-[#fafbf9] px-6 py-4"><button type="button" onClick={onClose} className={secondaryButton}>Close</button></div>
       </div>
@@ -930,8 +1167,72 @@ function extractGbiPurpose(info?: string | null) {
     .filter((line) => line.startsWith("- "))
     .map((line) => line.slice(2).replaceAll("**", "")) ?? [];
 
-  return guidanceBullets.find((line) => !/^(landed|low-rise|high-rise|buildings?\s)/i.test(line))
-    || (guidanceBullets.length > 0 ? "Requirements vary by project type; open the GBI requirements for the applicable criteria." : null);
+  return guidanceBullets.find((line) => !/^(landed|low-rise|high-rise|buildings?\s)/i.test(line)) || null;
+}
+
+type PredictedChoice = ScoreReviewItem["predicted_choices"][number];
+
+function formatChoiceList(choices: PredictedChoice[]) {
+  const labels = choices.map((choice) => choice.label.trim()).filter(Boolean);
+  if (labels.length <= 1) return labels[0] || "the selected measure";
+  if (labels.length === 2) return `${labels[0]} and ${labels[1]}`;
+  return `${labels.slice(0, -1).join(", ")}, and ${labels.at(-1)}`;
+}
+
+function PredictedSelectionSummary({
+  choices,
+  showHeading = true,
+  compact = false,
+}: {
+  choices: PredictedChoice[];
+  showHeading?: boolean;
+  compact?: boolean;
+}) {
+  const selectedChoices = choices.filter((choice) => choice.selected);
+  const optionLabel = choices.length === 1 ? "option" : "options";
+  const meaning = selectedChoices.length > 0
+    ? `The applicant's Predicted assessment states that the project plans to include ${formatChoiceList(selectedChoices)}. Review these stated measures against the GBI requirements before verification.`
+    : "The applicant has not selected any of the available measures for this item in the Predicted assessment. Review the project information against the GBI requirements before verification.";
+
+  if (compact) {
+    return (
+      <div className="mt-2">
+        {selectedChoices.length > 0 ? (
+          <ul className="flex flex-wrap gap-1.5" aria-label="Options selected by the applicant in the Predicted assessment">
+            {selectedChoices.map((choice) => (
+              <li key={choice.choice_key} className="inline-flex items-center gap-1.5 rounded-md bg-white px-2 py-1.5 text-xs font-semibold leading-4 text-[#355744] shadow-[inset_0_0_0_1px_#dce7df]">
+                <CheckCircle2 size={12} className="shrink-0 text-[#4f8061]" aria-hidden="true" />
+                <span>{choice.label}</span>
+              </li>
+            ))}
+          </ul>
+        ) : <p className="text-sm text-[#7f8c84]">No options were selected by the applicant.</p>}
+      </div>
+    );
+  }
+
+  return (
+    <div className={showHeading ? "rounded-xl border border-[#dbe6dd] bg-[#f3f8f4] p-3.5" : "mt-3"}>
+      {showHeading && <p className="text-xs font-bold uppercase tracking-[0.1em] text-[#52705e]">Predicted assessment — applicant selected</p>}
+      <p className={`${showHeading ? "mt-1.5" : ""} text-xs font-semibold text-[#68776e]`}>Selected {selectedChoices.length} of {choices.length} {optionLabel}</p>
+
+      {selectedChoices.length > 0 ? (
+        <ul className="mt-2 space-y-1.5" aria-label="Options selected by the applicant in the Predicted assessment">
+          {selectedChoices.map((choice) => (
+            <li key={choice.choice_key} className="flex items-start gap-2 rounded-lg bg-white px-2.5 py-2 text-sm font-semibold leading-5 text-[#355744] shadow-[inset_0_0_0_1px_#dce7df]">
+              <CheckCircle2 size={15} className="mt-0.5 shrink-0 text-[#4f8061]" aria-hidden="true" />
+              <span>{choice.label}</span>
+            </li>
+          ))}
+        </ul>
+      ) : <p className="mt-2 text-sm text-[#7f8c84]">No options were selected by the applicant.</p>}
+
+      <div className="mt-3 border-t border-[#dce6dd] pt-2.5">
+        <p className="text-[11px] font-bold uppercase tracking-[0.1em] text-[#718078]">What this means</p>
+        <p className="mt-1 text-sm leading-5 text-[#5b6960]">{meaning}</p>
+      </div>
+    </div>
+  );
 }
 
 function GbiItemContext({
@@ -943,26 +1244,19 @@ function GbiItemContext({
   choices: Array<{ choice_key: string; label: string; score: number; selected: boolean }>;
   showApplicantResponse?: boolean;
 }) {
-  const selectedChoices = choices.filter((choice) => choice.selected);
   const guidance = info?.replaceAll("\\n", "\n").trim();
   const purpose = extractGbiPurpose(info);
+  const showPurpose = isDistinctPurpose(guidance, purpose);
 
   return (
     <div className="mt-3 overflow-hidden rounded-xl border border-[#e0e7e1] bg-[#fafcf9]">
-      <div className={`grid gap-3 px-3.5 py-3 ${showApplicantResponse ? "sm:grid-cols-[minmax(0,1fr)_minmax(13rem,0.72fr)]" : ""} sm:items-start`}>
-        <div>
+      <div className="space-y-3 px-3.5 py-3">
+        {showPurpose && <div>
           <p className="text-xs font-bold uppercase tracking-[0.1em] text-[#657a6d]">GBI purpose</p>
-          <p className="mt-1.5 text-sm leading-6 text-[#4f5e54]">{purpose || "No purpose summary is recorded for this item."}</p>
-        </div>
-
-        {showApplicantResponse && <div className="rounded-lg bg-[#edf5ee] px-3 py-2.5">
-          <p className="text-xs font-bold uppercase tracking-[0.1em] text-[#52705e]">Applicant declared</p>
-          {selectedChoices.length > 0 ? <div className="mt-1.5 flex flex-wrap gap-1.5">
-            {selectedChoices.map((choice) => (
-              <span key={choice.choice_key} className="rounded-md bg-white px-2.5 py-1.5 text-sm font-semibold text-[#356047] shadow-[inset_0_0_0_1px_#d8e5db]">{choice.label}</span>
-            ))}
-          </div> : <p className="mt-1 text-sm text-[#89948d]">No qualifying response submitted.</p>}
+          <p className="mt-1.5 text-sm leading-6 text-[#4f5e54]">{purpose}</p>
         </div>}
+
+        {showApplicantResponse && <PredictedSelectionSummary choices={choices} />}
       </div>
 
       {guidance && <details className="group border-t border-[#e4e9e4] bg-white px-3.5 py-2.5">

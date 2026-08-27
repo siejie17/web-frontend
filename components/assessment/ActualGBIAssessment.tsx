@@ -2378,7 +2378,7 @@ const ActualGBIAssessment = ({
                               background: `${T.actual}1A`,
                             }}
                           >
-                            Actual
+                            Actual · reviewer determined
                           </label>
                           <CustomDropdown
                             data={group.selections}
@@ -2544,7 +2544,7 @@ const ActualGBIAssessment = ({
                                     background: `${T.actual}1A`,
                                   }}
                                 >
-                                  Actual
+                                  Actual · reviewer determined
                                 </label>
                                 <CustomDropdown
                                   disable={!isActive}
@@ -2929,8 +2929,8 @@ const ActualGBIAssessment = ({
               Information:
             </p>
             <p className="text-sm leading-5 text-blue-700">
-              Review the predicted answers, toggle the actual checkboxes, and
-              submit the pending additions or deletions.
+              Predicted answers are the applicant&apos;s plan. Submit supporting
+              evidence for an administrator to determine the Actual assessment.
             </p>
           </div>
         </div>
@@ -3236,7 +3236,7 @@ function CompareCheckboxes({
           tone="predicted"
         />
         <PremiumCheckbox
-          label="Actual"
+          label="Actual · reviewer"
           checked={!!actual}
           tone="actual"
           onToggle={onToggle}
