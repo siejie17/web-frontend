@@ -61,6 +61,7 @@ import {
   X,
 } from "lucide-react";
 import { Project } from "@/lib/server/project-access"; // Adjust this import path
+import { getHistoryProjectStage } from "@/lib/historyProjectStage";
 import { BackButton } from "@/components/ui/BackButton";
 import { useChatUnread } from "@/contexts/ChatUnreadContext";
 
@@ -728,25 +729,40 @@ function ProjectCard({
   unread?: number;
   onOpen?: () => void;
 }) {
+  const stage = getHistoryProjectStage(project.certificate);
+  const isCertified = stage === "Certified";
+
   return (
     <a
       href={`/projects/${project.id}`}
       onClick={onOpen}
       className="group/card relative block overflow-hidden rounded-3xl border bg-white transition-all hover:-translate-y-0.5 focus-visible:outline focus-visible:outline-offset-2"
       style={{
-        borderColor: T.hairline,
-        boxShadow: "0 8px 24px rgba(30,38,33,0.04)",
+        borderColor: isCertified ? "#B7CDBD" : T.hairline,
+        boxShadow: isCertified
+          ? "0 8px 26px rgba(62,107,82,0.10)"
+          : "0 8px 24px rgba(30,38,33,0.04)",
         outlineColor: T.forest,
       }}
       onMouseEnter={(e) => {
-        e.currentTarget.style.borderColor = "#C9D3CC";
-        e.currentTarget.style.boxShadow = "0 16px 36px rgba(30,38,33,0.09)";
+        e.currentTarget.style.borderColor = isCertified ? "#82A38D" : "#C9D3CC";
+        e.currentTarget.style.boxShadow = isCertified
+          ? "0 16px 38px rgba(62,107,82,0.16)"
+          : "0 16px 36px rgba(30,38,33,0.09)";
       }}
       onMouseLeave={(e) => {
-        e.currentTarget.style.borderColor = T.hairline;
-        e.currentTarget.style.boxShadow = "0 8px 24px rgba(30,38,33,0.04)";
+        e.currentTarget.style.borderColor = isCertified ? "#B7CDBD" : T.hairline;
+        e.currentTarget.style.boxShadow = isCertified
+          ? "0 8px 26px rgba(62,107,82,0.10)"
+          : "0 8px 24px rgba(30,38,33,0.04)";
       }}
     >
+      {isCertified && (
+        <div
+          aria-hidden="true"
+          className="absolute inset-y-0 left-0 w-1 bg-[#3E6B52]"
+        />
+      )}
       {/* graph-paper texture, confined to the right-hand margin so it never
               sits under text — visible without competing with content */}
       <div
@@ -801,12 +817,26 @@ function ProjectCard({
             )}
           </div>
 
-          <h3
-            className="truncate text-[16.5px] font-bold leading-tight tracking-[-0.01em] transition-colors sm:text-[18px]"
-            style={{ fontFamily: "var(--font-display)", color: T.ink }}
-          >
-            {project.name}
-          </h3>
+          <div className="flex min-w-0 flex-wrap items-center gap-2">
+            <h3
+              className="min-w-0 truncate text-[16.5px] font-bold leading-tight tracking-[-0.01em] transition-colors sm:text-[18px]"
+              style={{ fontFamily: "var(--font-display)", color: T.ink }}
+            >
+              {project.name}
+            </h3>
+            <span
+              className={`inline-flex shrink-0 items-center gap-1.5 rounded-full border px-2.5 py-1 text-[10px] font-bold uppercase leading-none tracking-[0.05em] sm:text-[10.5px] ${
+                isCertified
+                  ? "border-[#315B45] bg-[#3E6B52] text-white shadow-[0_3px_10px_rgba(62,107,82,0.28)]"
+                  : "border-[#d3ddd5] bg-[#f4f7f4] text-[#52675a]"
+              }`}
+              style={{ fontFamily: "var(--font-mono)" }}
+              aria-label={`Project stage: ${stage}`}
+            >
+              {isCertified && <Award size={12} strokeWidth={2.5} />}
+              {stage}
+            </span>
+          </div>
           <p
             className="mt-1 truncate text-[12.5px] sm:text-[13px]"
             style={{ color: T.muted }}
@@ -851,18 +881,6 @@ function ProjectCard({
         </div>
 
         <div className="flex flex-row items-center gap-2.5 sm:shrink-0 sm:flex-col sm:items-end sm:gap-2.5">
-          {project.certificate?.status === "issued" && (
-            <div className="flex min-w-36 items-center gap-2 rounded-lg border border-[#b9cbbf] bg-[#f3f8f4] px-3 py-2 text-[#2a4b3a]">
-              <Award size={16} className="shrink-0" />
-              <div>
-                <p className="text-[9px] font-semibold uppercase">Final certificate</p>
-                <p className="text-xs font-bold">{project.certificate.certification_level}</p>
-                <p className="text-[10px] text-[#68756d]">
-                  {project.certificate.approved_actual_score}/{project.certificate.maximum_score} points
-                </p>
-              </div>
-            </div>
-          )}
           {project.target_certification &&
           project.target_certification !== "Not Certified" ? (
             <div className="flex flex-col gap-1.5">

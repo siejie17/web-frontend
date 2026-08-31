@@ -30,6 +30,9 @@ import {
 } from "lucide-react";
 import CustomDropdown from "../form/CustomDropdown";
 import ReactMarkdown from "react-markdown";
+import { formatEsgMapping } from "@/lib/esgMapping";
+import EsgSuggestionsContent from "./EsgSuggestionsContent";
+import GuideContent from "./GuideContent";
 import AssessmentEvidenceUploader, { type AssessmentEvidenceFile, type AssessmentItemFeedback } from "./AssessmentEvidenceUploader";
 
 type ID = string | number;
@@ -343,7 +346,7 @@ function InfoGuideModal({
               </button>
             </div>
             <div className="max-h-[60vh] overflow-y-auto px-5 py-4 text-[13.5px] leading-6 text-[#1E2621]/75">
-              {sections.map((section, i) => (
+              {title === "ESG & Suggestions" ? <EsgSuggestionsContent markdown={info} /> : title === "Information" && label === "Guide" ? <GuideContent markdown={info} /> : sections.map((section, i) => (
                 <div
                   key={i}
                   className={isBoxed ? "rounded-xl border border-[#1E2621]/8 bg-[#1E2621]/2 px-4 py-3.5 mb-3 last:mb-0" : "last:mb-0"}
@@ -538,7 +541,7 @@ const ActualGBIAssessment = ({
   const assessmentStatus = selectedProject?.projectData?.assessment_status
     ?? selectedProject?.assessment_status
     ?? "submitted";
-  const constructionEvidenceUnlocked = ["verified", "certified"].includes(assessmentStatus);
+  const evidenceUnlocked = ["submitted", "pending_verification", "verified", "requires_changes", "certified"].includes(assessmentStatus);
   // Actual decisions are made only in the administration review workflow.
   const actualControlsLocked = true;
   const handleExportGbiPdf = otherProps?.handleExportGbiPdf as
@@ -1245,7 +1248,7 @@ const ActualGBIAssessment = ({
   const buildSupplementalInfo = useCallback((item: ItemType) => {
     const sections: string[] = [];
     if (item.esg) {
-      sections.push(`## Sarawak 13ᵗʰ Malaysia Plan\n\n${item.esg}`);
+      sections.push(formatEsgMapping(item.esg));
     }
     if (item.suggestions) {
       sections.push(`## Materials & Suggestions\n\n${item.suggestions}`);
@@ -2752,11 +2755,9 @@ const ActualGBIAssessment = ({
             itemId={item.id}
             files={assessmentEvidence.filter((file) => String(file.item_id) === String(item.id))}
             feedback={assessmentItemFeedback.find((entry) => String(entry.item_id) === String(item.id))}
-            readOnly={displayOnly || !constructionEvidenceUnlocked}
-            disabledReason={!displayOnly && !constructionEvidenceUnlocked
-              ? assessmentStatus === "requires_changes"
-                ? "This project requires changes and is read-only. Create a new project with the revised prediction."
-                : "Evidence submissions open after an administrator verifies the Predicted assessment."
+            readOnly={displayOnly || !evidenceUnlocked}
+            disabledReason={!displayOnly && !evidenceUnlocked
+              ? "Evidence submissions open after the Predicted assessment is submitted."
               : undefined}
             onUploaded={(file) => setAssessmentEvidence((current) => [...current, file])}
             onRemoved={(fileId) => setAssessmentEvidence((current) => current.filter((file) => file.id !== fileId))}
@@ -2775,7 +2776,7 @@ const ActualGBIAssessment = ({
       customInputs,
       deleteCustomItem,
       displayOnly,
-      constructionEvidenceUnlocked,
+      evidenceUnlocked,
       assessmentStatus,
       assessmentEvidence,
       assessmentItemFeedback,

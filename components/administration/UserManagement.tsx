@@ -222,6 +222,7 @@ export default function UserManagement({ mode }: { mode: "super" | "admin" }) {
     <div className="mb-5 grid gap-3 rounded-2xl border border-[#e1e5de] bg-white p-4 sm:grid-cols-[1fr_220px]"><label className="relative"><Search className="absolute left-3.5 top-3 text-[#819087]" size={17} /><input className={`${inputClass} pl-10`} value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search name or email" /></label><select className={inputClass} value={role} onChange={(e) => setRole(e.target.value)}>{filterRoles.map((value) => <option key={value} value={value}>{value ? value.replaceAll("_", " ") : mode === "super" ? "All roles" : "All managed roles"}</option>)}</select></div>
     {error && <div className="mb-4"><ErrorState message={error} /></div>}
     {loading ? <LoadingState /> : <div className="overflow-hidden rounded-3xl border border-[#e1e5de] bg-white">
+      <p className="border-b border-[#edf0eb] bg-[#fafbf9] px-4 py-2.5 text-xs text-[#748078] sm:hidden">Swipe sideways to view account details and actions.</p>
       <div className="overflow-x-auto">
         <table className={`w-full text-left ${mode === "admin" ? "min-w-250" : "min-w-190"}`}>
           <thead className="bg-[#f7f8f5] text-xs uppercase tracking-[0.1em] text-[#77827b]">

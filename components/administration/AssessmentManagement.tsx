@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowUpRight, BadgeCheck, BookOpen, CheckCircle2, CircleAlert, ExternalLink, LoaderCircle, Paperclip, Save, Search, ShieldX, Trash2, UserMinus, UserPlus, X } from "lucide-react";
+import { ArrowUpRight, BadgeCheck, BookOpen, CheckCircle2, ChevronDown, CircleAlert, ClipboardCheck, ExternalLink, FileCheck2, FileText, FolderOpen, LoaderCircle, Paperclip, Save, Search, ShieldX, Trash2, UserMinus, UserPlus, X } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import { AdminUser, administrationApi, Assessment, Paginated } from "@/lib/administrationApi";
@@ -8,7 +8,8 @@ import { ErrorState, inputClass, LoadingState, PageHeading, primaryButton, secon
 import EvidenceRemovalDialog from "@/components/assessment/EvidenceRemovalDialog";
 import CertificatePanel, { IssuedCertificate } from "@/components/project/CertificatePanel";
 import { isDistinctPurpose } from "@/lib/adminReviewContent";
-import { calculateActualAwardedMarks, getCertificationReviewState, getReviewResultCategory, type ReviewResultCategory } from "@/lib/adminReviewResults";
+import { calculateActualAwardedMarks, getCertificationReviewState, getReviewResultCategory, hasUnsavedActualReviewChanges, type ReviewResultCategory } from "@/lib/adminReviewResults";
+import { parseMidaCriteria, splitEsgMapping } from "@/lib/esgMapping";
 
 type ScoreReviewItem = {
   item_id: number;
@@ -16,6 +17,8 @@ type ScoreReviewItem = {
   subcriterion?: string | null;
   description: string;
   info?: string | null;
+  esg?: string | null;
+  suggestions?: string | null;
   max_score: number;
   predicted_score: number;
   predicted_selections: string[];
@@ -35,7 +38,6 @@ type ScoreReview = {
   total_items: number;
   all_actual_reviewed: boolean;
   calculated_certification_level?: string | null;
-  verification_status: string;
   certification_status: string;
 };
 
@@ -69,9 +71,6 @@ type ReviewItemInsight = {
   resultCategory: ReviewResultCategory;
 };
 
-const CHANGE_REQUEST_MIN_CHARACTERS = 80;
-const CHANGE_REQUEST_MIN_WORDS = 12;
-
 export default function AssessmentManagement({ mode }: { mode: "admin" | "facilitator" }) {
   const prefix = mode === "admin" ? "admin" : "facilitator";
   const [items, setItems] = useState<Assessment[]>([]);
@@ -83,7 +82,6 @@ export default function AssessmentManagement({ mode }: { mode: "admin" | "facili
   const [modalError, setModalError] = useState("");
   const [selected, setSelected] = useState<Detail | null>(null);
   const [remarks, setRemarks] = useState("");
-  const [remarksRequired, setRemarksRequired] = useState(false);
   const [facilitatorId, setFacilitatorId] = useState("");
   const [awardedActualDraft, setAwardedActualDraft] = useState<Record<string, boolean>>({});
   const [itemRemarksDraft, setItemRemarksDraft] = useState<Record<number, string>>({});
@@ -94,14 +92,53 @@ export default function AssessmentManagement({ mode }: { mode: "admin" | "facili
   const [pendingEvidenceRemoval, setPendingEvidenceRemoval] = useState<{ itemId: number; file: NonNullable<ScoreReviewItem["evidence"]>[number] } | null>(null);
   const [pendingRevoke, setPendingRevoke] = useState<FacilitatorAssignment | null>(null);
   const [confirmDiscard, setConfirmDiscard] = useState(false);
-  const [pendingReviewConfirmation, setPendingReviewConfirmation] = useState<"certify" | "reopen" | null>(null);
+  const [pendingReviewConfirmation, setPendingReviewConfirmation] = useState<"certify" | null>(null);
   const [confirmCertificateRevocation, setConfirmCertificateRevocation] = useState(false);
   const [certificateRevocationReason, setCertificateRevocationReason] = useState("");
   const [requirementItem, setRequirementItem] = useState<ScoreReviewItem | null>(null);
+  const [supplementalItem, setSupplementalItem] = useState<ScoreReviewItem | null>(null);
   const [activeReviewSection, setActiveReviewSection] = useState<ReviewSectionKey>("summary");
   const [reviewItemFilter, setReviewItemFilter] = useState<ReviewItemFilter>("all");
+  const [reviewCriterion, setReviewCriterion] = useState("");
+  const [reviewNavigationStuck, setReviewNavigationStuck] = useState(false);
+  const reviewModalRef = useRef<HTMLDivElement>(null);
   const reviewScrollRef = useRef<HTMLDivElement>(null);
   const reviewToolbarRef = useRef<HTMLDivElement>(null);
+  const reviewTabsRef = useRef<HTMLDivElement>(null);
+
+  const getReviewScrollContainer = useCallback(() => window.matchMedia("(min-width: 640px)").matches
+    ? reviewScrollRef.current
+    : reviewModalRef.current, []);
+  const getReviewToolbarOffset = useCallback(() => window.matchMedia("(min-width: 640px)").matches
+    ? reviewToolbarRef.current?.offsetHeight || 0
+    : reviewTabsRef.current?.offsetHeight || 0, []);
+
+  useEffect(() => {
+    if (!selected) return;
+    const scrollContainer = getReviewScrollContainer();
+    const tabs = reviewTabsRef.current;
+    const toolbar = reviewToolbarRef.current;
+    if (!scrollContainer || !tabs || !toolbar) return;
+
+    const updateReviewNavigationStuck = () => {
+      const stickyElement = window.matchMedia("(min-width: 640px)").matches ? toolbar : tabs;
+      const scrollTop = scrollContainer.getBoundingClientRect().top;
+      setReviewNavigationStuck(stickyElement.getBoundingClientRect().top <= scrollTop + 1);
+    };
+
+    scrollContainer.addEventListener("scroll", updateReviewNavigationStuck, { passive: true });
+    return () => scrollContainer.removeEventListener("scroll", updateReviewNavigationStuck);
+  }, [selected, getReviewScrollContainer]);
+
+  const closeReview = useCallback(() => {
+    if (actualSelectionsDirtyRef.current) {
+      setConfirmDiscard(true);
+      return;
+    }
+    setRequirementItem(null);
+    setSupplementalItem(null);
+    setSelected(null);
+  }, []);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -142,7 +179,12 @@ export default function AssessmentManagement({ mode }: { mode: "admin" | "facili
 
     const handleEscape = (event: KeyboardEvent) => {
       if (event.key !== "Escape") return;
-      if (pendingEvidenceRemoval) {
+      if (busy) return;
+      if (supplementalItem) {
+        setSupplementalItem(null);
+      } else if (requirementItem) {
+        setRequirementItem(null);
+      } else if (pendingEvidenceRemoval) {
         setPendingEvidenceRemoval(null);
       } else if (pendingRevoke) {
         setPendingRevoke(null);
@@ -153,10 +195,8 @@ export default function AssessmentManagement({ mode }: { mode: "admin" | "facili
         setCertificateRevocationReason("");
       } else if (confirmDiscard) {
         setConfirmDiscard(false);
-      } else if (actualSelectionsDirtyRef.current) {
-        setConfirmDiscard(true);
       } else {
-        setSelected(null);
+        closeReview();
       }
     };
     window.addEventListener("keydown", handleEscape);
@@ -166,10 +206,10 @@ export default function AssessmentManagement({ mode }: { mode: "admin" | "facili
       document.body.style.paddingRight = previousPaddingRight;
       window.removeEventListener("keydown", handleEscape);
     };
-  }, [selected, actualSelectionsDirty, pendingEvidenceRemoval, pendingRevoke, pendingReviewConfirmation, confirmCertificateRevocation, confirmDiscard]);
+  }, [selected, busy, supplementalItem, requirementItem, pendingEvidenceRemoval, pendingRevoke, pendingReviewConfirmation, confirmCertificateRevocation, confirmDiscard, closeReview]);
 
   useEffect(() => {
-    const root = reviewScrollRef.current;
+    const root = getReviewScrollContainer();
     if (!selected || !root) return;
 
     const sections: Array<{ key: ReviewSectionKey; id: string }> = [
@@ -179,7 +219,7 @@ export default function AssessmentManagement({ mode }: { mode: "admin" | "facili
       { key: "decision", id: "review-decision" },
     ];
     const visibleSections = new Set<ReviewSectionKey>();
-    const toolbarOffset = reviewToolbarRef.current?.offsetHeight || 72;
+    const toolbarOffset = getReviewToolbarOffset() || 72;
     const observer = new IntersectionObserver((entries) => {
       entries.forEach((entry) => {
         const section = sections.find(({ id }) => id === entry.target.id);
@@ -201,10 +241,13 @@ export default function AssessmentManagement({ mode }: { mode: "admin" | "facili
     });
 
     return () => observer.disconnect();
-  }, [selected]);
+  }, [selected, getReviewScrollContainer, getReviewToolbarOffset]);
 
   const applyDetail = (detail: Detail) => {
     setActiveReviewSection("summary");
+    setReviewNavigationStuck(false);
+    setRequirementItem(null);
+    setSupplementalItem(null);
     setSelected(detail);
     setAwardedActualDraft(Object.fromEntries(
       detail.score_review.items.flatMap((item) => item.actual_choices.map((choice) => [choice.choice_key, choice.accepted])),
@@ -215,13 +258,13 @@ export default function AssessmentManagement({ mode }: { mode: "admin" | "facili
     actualSelectionsDirtyRef.current = false;
     setActualSelectionsDirty(false);
     setRemarks("");
-    setRemarksRequired(false);
     setFacilitatorId("");
     setModalError("");
     setPendingReviewConfirmation(null);
     setConfirmCertificateRevocation(false);
     setCertificateRevocationReason("");
     setReviewItemFilter("all");
+    setReviewCriterion(detail.score_review.items.find((item) => item.criterion?.trim())?.criterion?.trim() || "");
   };
 
   const open = async (item: Assessment) => {
@@ -288,8 +331,8 @@ export default function AssessmentManagement({ mode }: { mode: "admin" | "facili
     }
   };
 
-  const saveActualSelections = async () => {
-    if (!selected || selected.score_review.items.length === 0) return;
+  const saveActualSelections = async (): Promise<boolean> => {
+    if (!selected || selected.score_review.items.length === 0) return false;
     setBusy(true);
     setModalError("");
     try {
@@ -311,30 +354,24 @@ export default function AssessmentManagement({ mode }: { mode: "admin" | "facili
         score_review: result.score_review,
       });
       await load();
+      return true;
     } catch (reason) {
       setModalError(reason instanceof Error ? reason.message : "Unable to save the Actual selections.");
+      return false;
     } finally {
       setBusy(false);
     }
   };
 
-  const review = async (action: "verify" | "certify" | "reject" | "reopen") => {
+  const review = async () => {
     if (!selected) return;
-    const trimmedRemarks = remarks.trim();
-    const remarkWordCount = trimmedRemarks.split(/\s+/).filter(Boolean).length;
-    if (action === "reject" && (trimmedRemarks.length < CHANGE_REQUEST_MIN_CHARACTERS || remarkWordCount < CHANGE_REQUEST_MIN_WORDS)) {
-      setModalError("");
-      setRemarksRequired(true);
-      return;
-    }
-    setRemarksRequired(false);
     setPendingReviewConfirmation(null);
     setBusy(true);
     setModalError("");
     try {
       await administrationApi(`${prefix}/assessments/${selected.assessment.id}/review`, {
         method: "POST",
-        body: JSON.stringify({ action, remarks }),
+        body: JSON.stringify({ action: "certify", remarks }),
       });
       setSelected(null);
       await load();
@@ -395,17 +432,16 @@ export default function AssessmentManagement({ mode }: { mode: "admin" | "facili
     }
   };
 
-  const closeReview = () => {
-    if (actualSelectionsDirtyRef.current) {
-      setConfirmDiscard(true);
-      return;
-    }
-    setSelected(null);
-  };
-
   const discardAndClose = () => {
     actualSelectionsDirtyRef.current = false;
     setActualSelectionsDirty(false);
+    setConfirmDiscard(false);
+    setSelected(null);
+  };
+
+  const saveAndClose = async () => {
+    const saved = await saveActualSelections();
+    if (!saved) return;
     setConfirmDiscard(false);
     setSelected(null);
   };
@@ -416,15 +452,18 @@ export default function AssessmentManagement({ mode }: { mode: "admin" | "facili
   ) ?? 0;
   const maximumTotal = selected?.score_review.items.reduce((sum, item) => sum + item.max_score, 0) ?? 0;
   const formatScore = (score: number) => maximumTotal > 0 ? `${score} / ${maximumTotal}` : score;
+  const syncActualDirtyState = (nextAwardedDraft: Record<string, boolean>, nextRemarksDraft: Record<number, string>) => {
+    const dirty = selected
+      ? hasUnsavedActualReviewChanges(selected.score_review.items, nextAwardedDraft, nextRemarksDraft)
+      : false;
+    actualSelectionsDirtyRef.current = dirty;
+    setActualSelectionsDirty(dirty);
+  };
   const everyItemReviewed = selected?.score_review.all_actual_reviewed ?? false;
   const certificationQualified = Boolean(
     selected?.score_review.calculated_certification_level
       && selected.score_review.calculated_certification_level !== "Not Certified",
   );
-  const predictionApproved = selected
-    ? ["verified", "certified"].includes(selected.assessment.assessment_status)
-    : false;
-  const predictionRejected = selected?.assessment.assessment_status === "requires_changes";
   const activeAssignments = selected?.assessment.facilitator_assignments || [];
   const availableFacilitators = facilitators.filter((facilitator) =>
     !activeAssignments.some((assignment) => assignment.user_id === facilitator.id),
@@ -434,34 +473,49 @@ export default function AssessmentManagement({ mode }: { mode: "admin" | "facili
     awardedActualDraft,
     itemRemarksDraft,
   );
-  const visibleActualItems = reviewSummary.insights.filter((insight) => {
-    if (reviewItemFilter === "all") return true;
+  const criterionSummaries = Array.from(
+    reviewSummary.insights.reduce((criteria, insight) => {
+      const criterion = insight.item.criterion?.trim() || "Other assessment items";
+      const current = criteria.get(criterion) || { criterion, actualScore: 0, maximumScore: 0, itemCount: 0 };
+      current.actualScore += insight.actualAwardedScore;
+      current.maximumScore += insight.item.max_score;
+      current.itemCount += 1;
+      criteria.set(criterion, current);
+      return criteria;
+    }, new Map<string, { criterion: string; actualScore: number; maximumScore: number; itemCount: number }>()),
+  ).map(([, summary]) => summary);
+  const selectedCriterionInsights = reviewSummary.insights.filter((insight) => {
+    const criterion = insight.item.criterion?.trim() || "Other assessment items";
+    return !reviewCriterion || criterion === reviewCriterion;
+  });
+  const selectedCriterionItemCount = selectedCriterionInsights.length;
+  const selectedCriterionAwardedCount = selectedCriterionInsights.filter((insight) => insight.resultCategory === "awarded").length;
+  const selectedCriterionNotAwardedCount = selectedCriterionInsights.filter((insight) => insight.resultCategory === "not-awarded").length;
+  const selectedCriterionRemarksCount = selectedCriterionInsights.filter((insight) => insight.hasRemark).length;
+  const visibleActualItems = selectedCriterionInsights.filter((insight) => {
     if (reviewItemFilter === "awarded") return insight.resultCategory === "awarded";
-    return insight.resultCategory === "not-awarded";
+    if (reviewItemFilter === "not_awarded") return insight.resultCategory === "not-awarded";
+    return true;
   });
   const emptyFilterMessage = reviewItemFilter === "awarded"
     ? "No items currently have awarded Actual marks."
     : "No items currently have zero Actual marks.";
   const certificateIssued = selected?.certificate?.status === "issued";
-  const { certificationDoesNotQualify, certificationReady } = getCertificationReviewState({
-    predictionApproved,
+  const certificationLevelIsDistinct = Boolean(
+    selected?.score_review.calculated_certification_level
+      && selected.score_review.calculated_certification_level.toLocaleLowerCase().replaceAll("_", " ")
+        !== selected.score_review.certification_status.toLocaleLowerCase().replaceAll("_", " "),
+  );
+  const { certificationReady } = getCertificationReviewState({
     everyItemReviewed,
     hasUnsavedChanges: actualSelectionsDirty,
     certificationQualified,
     certificateIssued,
   });
-  const readinessReasons = predictionApproved ? [
-    ...(selected?.score_review.total_items === 0 ? ["No assessment items are available to review."] : []),
-    ...(!everyItemReviewed ? ["Save reviewer decisions before certification."] : []),
-    ...(actualSelectionsDirty ? ["Actual selections or reviewer remarks have unsaved changes."] : []),
-    ...(everyItemReviewed && !certificationQualified ? ["The saved Actual score does not qualify for a configured certification level."] : []),
-  ] : [];
-  const reviewNavigationColumnClass = predictionRejected
-    ? selected?.assessment.reviews?.length ? "grid-cols-3" : "grid-cols-2"
-    : selected?.assessment.reviews?.length ? "grid-cols-2 sm:grid-cols-4" : "grid-cols-3";
-  const reviewSectionClass = (section: ReviewSectionKey) => `inline-flex items-center justify-center rounded-lg px-3 py-2 text-sm font-semibold transition ${activeReviewSection === section ? "bg-white text-[#315b45] shadow-sm ring-1 ring-[#dce6de]" : "text-[#66756c] hover:bg-white/70 hover:text-[#315b45]"}`;
+  const reviewNavigationColumnClass = selected?.assessment.reviews?.length ? "grid-cols-4" : "grid-cols-3";
+  const reviewSectionClass = (section: ReviewSectionKey) => `relative inline-flex items-center justify-center whitespace-nowrap rounded-lg px-1 py-2 text-xs font-semibold transition sm:px-3 sm:text-sm ${activeReviewSection === section ? "bg-paper text-ink after:absolute after:inset-x-0 after:bottom-0 after:h-0.5 after:rounded-full after:bg-sage" : "text-slate hover:bg-paper/70 hover:text-ink-700"}`;
   const scrollToReviewSection = (section: ReviewSectionKey, id: string) => {
-    const container = reviewScrollRef.current;
+    const container = getReviewScrollContainer();
     if (!container) return;
     setActiveReviewSection(section);
 
@@ -472,26 +526,26 @@ export default function AssessmentManagement({ mode }: { mode: "admin" | "facili
 
     const target = container.querySelector<HTMLElement>(`#${id}`);
     if (!target) return;
-    const toolbarOffset = reviewToolbarRef.current?.offsetHeight || 0;
+    const toolbarOffset = getReviewToolbarOffset();
     const top = target.getBoundingClientRect().top - container.getBoundingClientRect().top + container.scrollTop - toolbarOffset - 12;
     container.scrollTo({ top, behavior: "smooth" });
   };
   const scrollToFacilitatorAccess = () => {
-    const container = reviewScrollRef.current;
+    const container = getReviewScrollContainer();
     const target = container?.querySelector<HTMLElement>("#facilitator-access");
     if (!container || !target) return;
-    const toolbarOffset = reviewToolbarRef.current?.offsetHeight || 0;
+    const toolbarOffset = getReviewToolbarOffset();
     const top = target.getBoundingClientRect().top - container.getBoundingClientRect().top + container.scrollTop - toolbarOffset - 12;
     container.scrollTo({ top, behavior: "smooth" });
   };
   return (
     <>
       <PageHeading
-        eyebrow={mode === "admin" ? "Assessment operations" : "Assigned verification"}
+        eyebrow={mode === "admin" ? "Assessment operations" : "Assigned reviews"}
         title={mode === "admin" ? "Assessment management" : "My appointments"}
         description={mode === "admin"
-          ? "Approve the Predicted assessment before construction, then review evidence and certify the Actual result."
-          : "Verify the Predicted assessment first, then review construction evidence and the Actual result."}
+          ? "Use the applicant's Predicted assessment as a read-only baseline, review evidence, and certify the awarded Actual result."
+          : "Review the Predicted baseline and submitted evidence, then award and certify the Actual result."}
       />
 
       <div className="mb-5 grid gap-3 rounded-2xl border border-[#e1e5de] bg-white p-4 sm:grid-cols-[1fr_220px]">
@@ -501,7 +555,7 @@ export default function AssessmentManagement({ mode }: { mode: "admin" | "facili
         </label>
         <select className={inputClass} value={status} onChange={(event) => setStatus(event.target.value)}>
           <option value="">All statuses</option>
-          {[{ value: "awaiting_verification", label: "Awaiting Verification" }, { value: "changes_requested", label: "Changes Requested" }, { value: "verified", label: "Verified" }, { value: "certified", label: "Certified" }].map((option) => (
+          {[{ value: "actual_review", label: "Actual Review" }, { value: "certified", label: "Certified" }].map((option) => (
             <option key={option.value} value={option.value}>{option.label}</option>
           ))}
         </select>
@@ -549,53 +603,71 @@ export default function AssessmentManagement({ mode }: { mode: "admin" | "facili
       {selected && (
         <div className="fixed inset-0 z-60 flex items-end justify-center overflow-hidden bg-black/30 p-0 sm:items-center sm:p-6">
           <div
+            ref={reviewModalRef}
             role="dialog"
             aria-modal="true"
             aria-labelledby="assessment-review-title"
-            className="flex h-[100dvh] w-full max-w-5xl flex-col overflow-hidden rounded-t-3xl bg-white shadow-2xl sm:h-auto sm:max-h-[94dvh] sm:rounded-3xl"
+            className="scrollbar-hidden block h-[100dvh] w-full max-w-5xl overflow-y-auto overscroll-contain bg-white shadow-2xl sm:flex sm:h-auto sm:max-h-[94dvh] sm:flex-col sm:overflow-hidden sm:rounded-3xl"
           >
-            <div className="z-20 flex shrink-0 items-start justify-between gap-4 border-b border-[#edf0eb] bg-white px-6 py-5 shadow-[0_8px_18px_rgba(30,38,33,0.04)] sm:px-8">
-              <div>
+            <div ref={reviewScrollRef} className="assessment-review-scroll px-4 pb-[max(1.5rem,env(safe-area-inset-bottom))] sm:min-h-0 sm:flex-1 sm:overscroll-contain sm:overflow-y-auto sm:px-8 sm:pb-8">
+            <div className="relative z-20 -mx-4 flex shrink-0 items-start gap-3 border-b border-[#edf0eb] bg-white px-4 py-4 shadow-[0_8px_18px_rgba(30,38,33,0.04)] sm:-mx-8 sm:px-8 sm:py-5">
+              <div className="min-w-0 pr-12 sm:pr-14">
                 <p className="text-xs font-semibold uppercase tracking-[0.15em] text-[#789083]">Assessment #{selected.assessment.id}</p>
-                <h2 id="assessment-review-title" className="mt-2 text-2xl font-bold text-[#173b2a]">{selected.assessment.name}</h2>
-                <p className="mt-1 text-sm text-[#6d796f]">{selected.assessment.owner?.email}</p>
+                <h2 id="assessment-review-title" className="mt-1.5 break-words text-xl font-bold text-[#173b2a] sm:mt-2 sm:text-2xl">{selected.assessment.name}</h2>
+                <p className="mt-1 break-all text-sm text-[#6d796f]">{selected.assessment.owner?.email}</p>
                 {mode === "admin" && <div className="mt-2 flex flex-wrap items-center gap-2 text-sm"><span className="font-semibold text-[#536159]">Facilitator:</span><span className={activeAssignments.length > 0 ? "font-semibold text-[#315b45]" : "text-[#8a948e]"}>{activeAssignments.length > 0 ? activeAssignments.map((assignment) => `${assignment.facilitator?.first_name || ""} ${assignment.facilitator?.last_name || ""}`.trim()).filter(Boolean).join(", ") : "Not assigned"}</span><button type="button" aria-controls="facilitator-access" onClick={scrollToFacilitatorAccess} className="rounded-md bg-[#eaf2eb] px-2 py-1 font-semibold text-[#315b45] transition hover:bg-[#dce9df]">{activeAssignments.length > 0 ? "Change" : "Assign facilitator"}</button></div>}
               </div>
-              <button onClick={closeReview} className="rounded-full bg-[#f1f3ef] p-2 text-[#65736a]" aria-label="Close assessment"><X size={18} /></button>
+              <button type="button" disabled={busy} onClick={closeReview} className="absolute right-4 top-4 flex h-9 w-9 shrink-0 cursor-pointer items-center justify-center rounded-full border border-slate-200 bg-paper text-slate shadow-sm transition-colors hover:border-sage-100 hover:bg-sage-50 hover:text-sage-dark disabled:cursor-wait disabled:opacity-50 sm:right-8 sm:top-5" aria-label="Close assessment" title="Close"><X size={18} /></button>
             </div>
 
-            <div ref={reviewScrollRef} className="scrollbar-hidden min-h-0 flex-1 overscroll-contain overflow-y-auto px-6 pb-[max(1.5rem,env(safe-area-inset-bottom))] sm:px-8 sm:pb-8">
-
-            <div ref={reviewToolbarRef} className="sticky top-0 z-10 -mx-6 flex flex-col gap-2 border-b border-[#dbe4dc] bg-[#fbfcfa] px-6 py-3 shadow-[0_8px_20px_rgba(30,38,33,0.06)] sm:-mx-8 sm:px-8">
-              <div className={predictionApproved ? "grid w-full items-stretch gap-2 sm:grid-cols-2 lg:grid-cols-4" : "flex flex-wrap items-center gap-2"}>
-                {predictionApproved ? <>
-                  <span className="inline-flex items-center justify-center whitespace-nowrap rounded-xl border border-[#dce5de] bg-white px-3 py-2 text-sm text-[#65736a]">Actual score <strong className="ml-1 text-[#294334]">{formatScore(draftTotal)}</strong></span>
-                  <span className="inline-flex items-center justify-center rounded-xl bg-[#edf4ee] px-3 py-2 text-sm text-[#53645a]">Evidence submitted <strong className="ml-1 text-[#294334]">{reviewSummary.evidenceSubmittedItems}</strong></span>
-                  <span className="inline-flex items-center justify-center rounded-xl bg-[#f1f3ef] px-3 py-2 text-sm text-[#65736a]">Evidence not submitted <strong className="ml-1 text-[#294334]">{reviewSummary.evidenceNotSubmittedItems}</strong></span>
-                  <span className={`inline-flex items-center justify-center gap-1.5 rounded-xl px-3 py-2 text-center text-sm font-semibold ${certificateIssued || certificationReady ? "bg-[#eaf4ec] text-[#356247]" : "bg-[#fff4df] text-[#8a6420]"}`}>
-                    {certificateIssued || certificationReady ? <CheckCircle2 size={14} /> : <CircleAlert size={14} />}
-                    {certificateIssued ? "Certification issued" : certificationReady ? "Ready for certification" : certificationDoesNotQualify ? "Does not currently qualify" : "Not ready for certification"}
-                  </span>
-                </> : <>
-                  <span className="rounded-xl border border-[#dce5de] bg-white px-3 py-2 text-sm text-[#65736a]">Predicted score <strong className="ml-1 text-[#294334]">{formatScore(selected.score_review.predicted_total)}</strong></span>
-                  <span className="rounded-xl bg-[#eef3ef] px-3 py-2 text-sm font-semibold text-[#53645a]">{selected.score_review.total_items} GBI items</span>
-                </>}
+            <div ref={reviewToolbarRef} className="contents sm:sticky sm:top-0 sm:z-10 sm:-mx-8 sm:flex sm:flex-col sm:gap-2 sm:border-b sm:border-slate-200 sm:bg-paper sm:px-8 sm:py-3">
+              <button type="button" disabled={busy} onClick={closeReview} className={`${reviewNavigationStuck ? "sm:pointer-events-auto sm:opacity-100" : "sm:pointer-events-none sm:opacity-0"} absolute right-8 top-3 z-20 hidden h-9 w-9 shrink-0 cursor-pointer items-center justify-center rounded-full border border-slate-200 bg-paper text-slate shadow-sm transition-[opacity,background-color,border-color] duration-200 hover:border-sage-100 hover:bg-sage-50 hover:text-sage-dark disabled:cursor-wait disabled:opacity-50 sm:flex`} aria-label="Close assessment" title="Close"><X size={18} /></button>
+              <div className={`${reviewNavigationStuck ? "sm:pr-12" : "sm:pr-0"} mt-2.5 grid w-full grid-cols-1 items-stretch gap-2 transition-[padding] duration-200 ease-out min-[360px]:grid-cols-2 sm:mt-0 sm:gap-2.5 lg:grid-cols-4`}>
+                <ReviewMetricTile
+                  icon={<ClipboardCheck size={19} />}
+                  label="Actual Score"
+                  value={formatScore(draftTotal)}
+                />
+                <ReviewMetricTile
+                  icon={<FileCheck2 size={19} />}
+                  label="Predicted Evidence"
+                  value={`${reviewSummary.predictedEvidenceCovered} / ${reviewSummary.predictedItems}`}
+                />
+                <ReviewMetricTile
+                  icon={<FolderOpen size={19} />}
+                  iconTone="gold"
+                  label="Missing Evidence"
+                  value={reviewSummary.predictedEvidenceMissing}
+                />
+                <ReviewMetricTile
+                  icon={certificateIssued || certificationReady ? <CheckCircle2 size={19} /> : <CircleAlert size={19} />}
+                  iconTone={certificateIssued || certificationReady ? "sage" : "gold"}
+                  label="Certification Readiness"
+                  value={certificateIssued ? "Certification issued" : certificationReady ? "Ready for certification" : "Not ready for certification"}
+                  valueTone={certificateIssued || certificationReady ? "default" : "warning"}
+                  compactValue
+                />
               </div>
-              <nav aria-label="Assessment review sections" className={`grid w-full gap-1 rounded-xl border border-[#e0e6e0] bg-[#f0f4f0] p-1 ${reviewNavigationColumnClass}`}>
-                <button type="button" onClick={() => scrollToReviewSection("summary", "assessment-summary")} className={reviewSectionClass("summary")}>Summary</button>
-                <button type="button" onClick={() => scrollToReviewSection("items", "review-items")} className={reviewSectionClass("items")}>Review items</button>
-                {!!selected.assessment.reviews?.length && <button type="button" onClick={() => scrollToReviewSection("history", "review-history")} className={reviewSectionClass("history")}>History</button>}
-                {!predictionRejected && <button type="button" onClick={() => scrollToReviewSection("decision", "review-decision")} className={reviewSectionClass("decision")}>Decision</button>}
-              </nav>
+              <div ref={reviewTabsRef} className="sticky top-0 z-10 -mx-4 mt-2 border-b border-slate-200 bg-paper px-3 py-2 sm:relative sm:m-0 sm:block sm:border-0 sm:bg-transparent sm:p-0">
+                <nav aria-label="Assessment review sections" className={`${reviewNavigationStuck ? "mr-12" : "mr-0"} grid min-w-0 gap-1 rounded-xl border border-slate-200 bg-mist p-1 transition-[margin] duration-200 ease-out sm:mr-0 ${reviewNavigationColumnClass}`}>
+                  <button type="button" onClick={() => scrollToReviewSection("summary", "assessment-summary")} className={reviewSectionClass("summary")}>Summary</button>
+                  <button type="button" onClick={() => scrollToReviewSection("items", "review-items")} className={reviewSectionClass("items")}>Review items</button>
+                  {!!selected.assessment.reviews?.length && <button type="button" onClick={() => scrollToReviewSection("history", "review-history")} className={reviewSectionClass("history")}>History</button>}
+                  <button type="button" onClick={() => scrollToReviewSection("decision", "review-decision")} className={reviewSectionClass("decision")}>Decision</button>
+                </nav>
+                <button type="button" disabled={busy} onClick={closeReview} className={`${reviewNavigationStuck ? "pointer-events-auto opacity-100" : "pointer-events-none opacity-0"} absolute right-3 top-1/2 flex h-9 w-9 -translate-y-1/2 shrink-0 cursor-pointer items-center justify-center rounded-full border border-slate-200 bg-paper text-slate shadow-sm transition-[opacity,background-color,border-color] duration-200 hover:border-sage-100 hover:bg-sage-50 hover:text-sage-dark disabled:cursor-wait disabled:opacity-50 sm:hidden`} aria-label="Close assessment" title="Close"><X size={18} /></button>
+              </div>
             </div>
 
-            <div id="assessment-summary" className="mt-6 scroll-mt-20 grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-5">
-              <Summary label="Predicted total score" value={formatScore(selected.score_review.predicted_total)} />
-              {predictionApproved && <>
-                <Summary label="Actual total score" value={formatScore(actualSelectionsDirty ? draftTotal : selected.score_review.actual_total)} />
-              </>}
-              <div className="rounded-xl bg-[#f4f6f2] p-4"><p className="text-sm text-[#7c8880]">Verification</p><div className="mt-1"><StatusBadge value={selected.score_review.verification_status} /></div></div>
-              {predictionApproved && <div className="rounded-xl bg-[#f4f6f2] p-4"><p className="text-sm text-[#7c8880]">Certification</p><div className="mt-1"><StatusBadge value={selected.score_review.certification_status} /></div>{selected.score_review.calculated_certification_level && <p className="mt-1 text-sm font-semibold text-[#3e6b52]">{selected.score_review.calculated_certification_level}</p>}</div>}
+            <div id="assessment-summary" className="mt-5 scroll-mt-36 grid grid-cols-1 gap-3 min-[360px]:grid-cols-2 sm:mt-6 sm:grid-cols-3">
+              <Summary label="Predicted Score" value={formatScore(selected.score_review.predicted_total)} />
+              <SummaryCard label="Assessment Stage">
+                <StatusBadge value={selected.assessment.assessment_status} variant="stage" />
+              </SummaryCard>
+              <SummaryCard label="Certification">
+                <StatusBadge value={selected.score_review.certification_status} />
+                {certificationLevelIsDistinct && <p className="mt-1 text-sm font-semibold text-ink-700">{selected.score_review.calculated_certification_level}</p>}
+              </SummaryCard>
             </div>
 
             {selected.certificate && (
@@ -619,57 +691,45 @@ export default function AssessmentManagement({ mode }: { mode: "admin" | "facili
 
             {modalError && <div className="mt-5"><ErrorState message={modalError} /></div>}
 
-            {!predictionApproved && (
-              <section id="review-items" className={`mt-6 scroll-mt-20 rounded-2xl border p-5 ${predictionRejected ? "border-[#ead9bd] bg-[#fffaf0]" : "border-[#dce5dd] bg-[#f5f9f5]"}`}>
-                <h3 className="text-sm font-bold text-[#27332c]">Predicted assessment decision</h3>
-                <p className="mt-2 text-sm leading-6 text-[#68756d]">
-                  {predictionRejected
-                    ? "Changes were requested for this project. The user must create a new project with revised inputs; this project remains as a read-only record."
-                    : "Review the read-only Predicted result. Verify it to let the user proceed with construction, or request changes with a clear remark."}
-                </p>
-                {predictionRejected && (
-                  <button
-                    type="button"
-                    disabled={busy}
-                    onClick={() => setPendingReviewConfirmation("reopen")}
-                    className={`${secondaryButton} mt-4`}
-                  >Undo changes request</button>
-                )}
-                <div className="mt-4 divide-y divide-[#e5e9e4] overflow-hidden rounded-xl border border-[#e0e6e0] bg-white">
-                  {selected.score_review.items.map((item) => (
-                    <article key={item.item_id} className="p-4" style={{ contentVisibility: "auto", containIntrinsicSize: "auto 320px" }}>
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="min-w-0">
-                          <p className="text-xs font-semibold uppercase tracking-[0.12em] text-[#789083]">{[item.criterion, item.subcriterion].filter(Boolean).join(" / ") || `Item ${item.item_id}`}</p>
-                          <p className="mt-1 text-sm font-semibold leading-5 text-[#2c3730]">{item.description}</p>
-                        </div>
-                        <span className="shrink-0 rounded-lg bg-[#eef2ee] px-2.5 py-1.5 text-sm font-bold text-[#344139]">{item.predicted_score}/{item.max_score}</span>
-                      </div>
-                      <GbiItemContext info={item.info} choices={item.predicted_choices} />
-                    </article>
-                  ))}
-                </div>
-              </section>
-            )}
-
-            {predictionApproved && <section id="review-items" className="mt-6 scroll-mt-20 overflow-hidden rounded-2xl border border-[#dfe5df]">
-              <div className="flex flex-col gap-3 border-b border-[#e7ebe6] bg-[#f7f9f6] px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
-                <div><h3 className="text-base font-bold text-[#27332c]">Actual assessment review</h3><p className="mt-1 text-sm leading-6 text-[#738078]">Review the applicant&apos;s evidence, then award only the Actual marks that the evidence sufficiently supports. Predicted remains read-only.</p></div>
-                <span className="inline-flex w-fit items-center rounded-full border border-[#d8e5db] bg-white px-3 py-1.5 text-sm font-semibold text-[#3e6b52]">Actual draft total&nbsp; {draftTotal}</span>
+            <section id="review-items" className="mt-6 scroll-mt-20 overflow-hidden rounded-2xl border border-[#dfe5df]">
+              <div className="border-b border-[#e7ebe6] bg-[#f7f9f6] px-5 py-4">
+                <div className="min-w-0"><h3 className="text-base font-bold text-ink">Actual assessment review</h3><p className="mt-1 text-sm leading-6 text-slate">Review the applicant&apos;s evidence, then award only the Actual marks that the evidence sufficiently supports. Predicted remains read-only.</p></div>
               </div>
-              <AdminReviewOverview
-                summary={reviewSummary}
-                actualScore={draftTotal}
-                maximumScore={maximumTotal}
-                certificationLevel={selected.score_review.calculated_certification_level}
-                certificateIssued={certificateIssued}
-                certificationReady={certificationReady}
-                certificationDoesNotQualify={certificationDoesNotQualify}
-                readinessReasons={readinessReasons}
-                filter={reviewItemFilter}
-                onFilterChange={setReviewItemFilter}
-                onProceedToDecision={() => scrollToReviewSection("decision", "review-decision")}
-              />
+              {criterionSummaries.length > 0 && (
+                <div className="border-b border-[#e2e8e3] bg-white px-4 py-4 sm:px-5">
+                  <label className="block text-xs font-bold uppercase tracking-[0.12em] text-[#657a6d]" htmlFor="review-criterion">
+                    Assessment category
+                  </label>
+                  <div className="mt-2">
+                    <div className="relative min-w-0 max-w-full flex-1">
+                      <select
+                        id="review-criterion"
+                        value={reviewCriterion}
+                        onChange={(event) => setReviewCriterion(event.target.value)}
+                        className="w-full appearance-none rounded-xl border border-[#b9cbbd] bg-[#f9fbf9] py-3 pl-3 pr-10 text-sm font-semibold text-[#2d4938] outline-none transition focus:border-[#3e6b52] focus:ring-3 focus:ring-[#3e6b52]/10 sm:pl-4 sm:pr-10"
+                      >
+                        {criterionSummaries.map((summary) => (
+                          <option key={summary.criterion} value={summary.criterion}>
+                            {summary.criterion} — {summary.actualScore}/{summary.maximumScore} points
+                          </option>
+                        ))}
+                      </select>
+                      <ChevronDown aria-hidden="true" className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+                    </div>
+                    <p className="mt-1.5 text-right text-xs text-slate">
+                      {selectedCriterionItemCount} {selectedCriterionItemCount === 1 ? "item" : "items"} · {reviewSummary.insights.length} total
+                    </p>
+                    <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                      <div className="flex w-fit max-w-full flex-wrap rounded-lg bg-mist p-1 text-xs font-semibold">
+                        <button type="button" onClick={() => setReviewItemFilter("all")} className={`rounded-md px-2.5 py-1.5 ${reviewItemFilter === "all" ? "bg-paper text-ink-700" : "text-slate"}`}>All items ({selectedCriterionItemCount})</button>
+                        <button type="button" onClick={() => setReviewItemFilter("awarded")} className={`rounded-md px-2.5 py-1.5 ${reviewItemFilter === "awarded" ? "bg-paper text-ink-700" : "text-slate"}`}>Awarded Actual ({selectedCriterionAwardedCount})</button>
+                        <button type="button" onClick={() => setReviewItemFilter("not_awarded")} className={`rounded-md px-2.5 py-1.5 ${reviewItemFilter === "not_awarded" ? "bg-paper text-ink-700" : "text-slate"}`}>Not awarded ({selectedCriterionNotAwardedCount})</button>
+                      </div>
+                      <p className="text-xs text-slate"><span className="font-semibold text-ink">{selectedCriterionRemarksCount}</span> reviewer {selectedCriterionRemarksCount === 1 ? "remark" : "remarks"}</p>
+                    </div>
+                  </div>
+                </div>
+              )}
               <div className="divide-y divide-[#edf0eb]">
                 {visibleActualItems.map((insight) => {
                   const item = insight.item;
@@ -678,13 +738,16 @@ export default function AssessmentManagement({ mode }: { mode: "admin" | "facili
                   const purpose = extractGbiPurpose(item.info);
                   const showPurpose = isDistinctPurpose(requirementGuidance, purpose);
                   return (
-                  <article key={item.item_id} className="p-5 sm:p-6">
+                  <article key={item.item_id} className="p-4 sm:p-6">
                     <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                       <div className="min-w-0">
                         <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[#789083]">{[item.criterion, item.subcriterion].filter(Boolean).join(" / ") || `Item ${item.item_id}`}</p>
                         <p className="mt-1.5 text-sm font-semibold leading-5 text-[#2c3730]">{item.description}</p>
                       </div>
                       <div className="flex flex-wrap items-center gap-2">
+                        <button type="button" onClick={() => setSupplementalItem(item)} className="inline-flex items-center gap-1.5 rounded-lg bg-[#B7791F]/[0.08] px-3 py-2 text-xs font-bold text-[#9A6418] transition-colors hover:bg-[#B7791F]/[0.14]" aria-label={`View ESG and suggestions for ${item.description}`}>
+                          <FileText size={13} /> ESG &amp; Suggestions
+                        </button>
                         <span className="rounded-xl border border-[#cad8ce] bg-[#f6faf7] px-3 py-2 text-sm font-bold text-[#315b45]">Actual {insight.actualAwardedScore} / {item.max_score}</span>
                       </div>
                     </div>
@@ -734,9 +797,9 @@ export default function AssessmentManagement({ mode }: { mode: "admin" | "facili
                               checked={awardedActualDraft[choice.choice_key] ?? false}
                               aria-label={`Award Actual mark for ${choice.label}`}
                               onChange={(event) => {
-                                setAwardedActualDraft((current) => ({ ...current, [choice.choice_key]: event.target.checked }));
-                                actualSelectionsDirtyRef.current = true;
-                                setActualSelectionsDirty(true);
+                                const nextDraft = { ...awardedActualDraft, [choice.choice_key]: event.target.checked };
+                                setAwardedActualDraft(nextDraft);
+                                syncActualDirtyState(nextDraft, itemRemarksDraft);
                               }}
                               className="mt-0.5 h-4 w-4 shrink-0 rounded border-[#afc1b3] accent-[#3e6b52] disabled:opacity-50"
                             />
@@ -763,9 +826,9 @@ export default function AssessmentManagement({ mode }: { mode: "admin" | "facili
                         maxLength={2000}
                         disabled={busy}
                         onChange={(event) => {
-                          setItemRemarksDraft((current) => ({ ...current, [item.item_id]: event.target.value }));
-                          actualSelectionsDirtyRef.current = true;
-                          setActualSelectionsDirty(true);
+                          const nextDraft = { ...itemRemarksDraft, [item.item_id]: event.target.value };
+                          setItemRemarksDraft(nextDraft);
+                          syncActualDirtyState(awardedActualDraft, nextDraft);
                         }}
                         placeholder="Explain what additional or clearer evidence is required…"
                         className="mt-2 min-h-18 w-full resize-y rounded-xl border border-[#d7e2da] bg-white px-3 py-2.5 text-sm leading-6 text-[#405449] outline-none transition placeholder:text-[#9ba59f] focus:border-[#7fa18b] disabled:opacity-60"
@@ -780,7 +843,7 @@ export default function AssessmentManagement({ mode }: { mode: "admin" | "facili
                 {selected.score_review.items.length > 0 && visibleActualItems.length === 0 && <div className="p-8 text-center"><CheckCircle2 size={24} className="mx-auto text-[#4f8061]" /><p className="mt-2 text-sm font-semibold text-[#405449]">{emptyFilterMessage}</p><button type="button" onClick={() => setReviewItemFilter("all")} className="mt-3 text-sm font-semibold text-[#3e6b52] hover:underline">Show all items</button></div>}
               </div>
               {selected.score_review.items.length > 0 && <div className="flex justify-end border-t border-[#e7ebe6] bg-[#fbfcfa] p-4"><button disabled={busy} onClick={saveActualSelections} className={`${primaryButton} gap-2`}><Save size={15} /> Save reviewer decisions</button></div>}
-            </section>}
+            </section>
 
             {selected.recommendation && <div className="mt-5 rounded-2xl border border-[#dce5dd] bg-[#f3f8f3] p-5"><p className="text-sm font-bold text-[#315b45]">{selected.recommendation.title}</p><p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-[#5f6e64]">{selected.recommendation.content}</p></div>}
 
@@ -819,52 +882,24 @@ export default function AssessmentManagement({ mode }: { mode: "admin" | "facili
             )}
 
             {!!selected.assessment.reviews?.length && (
-              <div id="review-history" className="mt-6 scroll-mt-20 rounded-2xl border border-[#e1e5de] p-5"><p className="text-sm font-semibold text-[#59675e]">Verification and certification history</p><div className="mt-3 space-y-3">{selected.assessment.reviews.map((entry) => <div key={entry.id} className="flex items-start justify-between gap-4 border-b border-[#edf0eb] pb-3 text-sm last:border-0 last:pb-0"><div><div className="flex flex-wrap items-center gap-2"><StatusBadge value={entry.action} />{entry.approved_actual_total !== null && entry.approved_actual_total !== undefined && <span className="font-semibold text-[#3e6b52]">Actual total: {entry.approved_actual_total}</span>}{entry.certification_level && <span className="text-[#68756d]">{entry.certification_level}</span>}</div><p className="mt-1 text-[#68756d]">{entry.remarks || "No remarks"}</p></div><span className="shrink-0 text-right text-xs text-[#8a948e]">{entry.reviewer?.first_name} {entry.reviewer?.last_name}<br />{new Date(entry.created_at.replace(" ", "T")).toLocaleString()}</span></div>)}</div></div>
+              <div id="review-history" className="mt-6 scroll-mt-20 rounded-2xl border border-[#e1e5de] p-5"><p className="text-sm font-semibold text-[#59675e]">Assessment history</p><div className="mt-3 space-y-3">{selected.assessment.reviews.map((entry) => <div key={entry.id} className="flex items-start justify-between gap-4 border-b border-[#edf0eb] pb-3 text-sm last:border-0 last:pb-0"><div><div className="flex flex-wrap items-center gap-2"><StatusBadge value={entry.action} />{entry.approved_actual_total !== null && entry.approved_actual_total !== undefined && <span className="font-semibold text-[#3e6b52]">Actual total: {entry.approved_actual_total}</span>}{entry.certification_level && <span className="text-[#68756d]">{entry.certification_level}</span>}</div><p className="mt-1 text-[#68756d]">{entry.remarks || "No remarks"}</p></div><span className="shrink-0 text-right text-xs text-[#8a948e]">{entry.reviewer?.first_name} {entry.reviewer?.last_name}<br />{new Date(entry.created_at.replace(" ", "T")).toLocaleString()}</span></div>)}</div></div>
             )}
 
-            {!predictionRejected && <div id="review-decision" className="mt-6 scroll-mt-20">
-              <label className="mb-2 block text-sm font-semibold text-[#59675e]">
-                {predictionApproved ? "Certification remarks" : <>Change request feedback <span className="font-normal text-[#8a6420]">(required)</span></>}
-              </label>
-              {!predictionApproved && <div className="mb-3 rounded-xl border border-[#e6dfc8] bg-[#fffaf0] px-4 py-3 text-sm leading-6 text-[#655b42]">
-                <p className="font-semibold text-[#554a30]">Give the applicant a clear path to approval:</p>
-                <ul className="mt-1 list-disc space-y-0.5 pl-4">
-                  <li>Identify the exact item or evidence that requires clarification.</li>
-                  <li>Explain why the current submission does not meet the requirement.</li>
-                  <li>State what must be revised or submitted next.</li>
-                </ul>
-              </div>}
+            <div id="review-decision" className="mt-6 scroll-mt-20">
+              <label className="mb-2 block text-sm font-semibold text-[#59675e]">Certification remarks</label>
               <textarea
                 maxLength={5000}
-                className={`${inputClass} min-h-28 resize-y ${remarksRequired ? "border-red-400 focus:border-red-500" : ""}`}
+                className={`${inputClass} min-h-28 resize-y`}
                 value={remarks}
-                onChange={(event) => {
-                  setRemarks(event.target.value);
-                  const nextValue = event.target.value.trim();
-                  const nextWordCount = nextValue.split(/\s+/).filter(Boolean).length;
-                  if (nextValue.length >= CHANGE_REQUEST_MIN_CHARACTERS && nextWordCount >= CHANGE_REQUEST_MIN_WORDS) setRemarksRequired(false);
-                }}
-                placeholder={predictionApproved ? "Add certification observations…" : "Example: The roof U-value evidence does not show the lightweight assembly calculation. Please upload the revised energy model and calculation sheet showing compliance with the stated limit."}
+                onChange={(event) => setRemarks(event.target.value)}
+                placeholder="Add certification observations…"
               />
-              {!predictionApproved && <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-sm">
-                {remarksRequired ? <p role="alert" className="font-semibold text-red-600">Please provide actionable feedback of at least {CHANGE_REQUEST_MIN_CHARACTERS} characters and {CHANGE_REQUEST_MIN_WORDS} words.</p> : <p className="text-[#748078]">Specific, respectful feedback helps the applicant correct the submission faster.</p>}
-                <span className={remarks.trim().length >= CHANGE_REQUEST_MIN_CHARACTERS ? "font-semibold text-[#3e6b52]" : "text-[#8a948e]"}>{remarks.trim().length}/{CHANGE_REQUEST_MIN_CHARACTERS} minimum characters</span>
-              </div>}
-              {predictionApproved && actualSelectionsDirty && <p className="mt-2 text-sm text-[#9a6a32]">Save the Actual selection changes before certification.</p>}
-              {predictionApproved && everyItemReviewed && !actualSelectionsDirty && !certificationQualified && <p className="mt-2 text-sm text-[#9a6a32]">The Actual total does not currently qualify for a configured certification level.</p>}
-              <div className="mt-4 flex flex-col gap-3 border-t border-[#edf0eb] pt-4 sm:flex-row sm:items-center sm:justify-between">
-                <div>
-                  <button disabled={busy} onClick={closeReview} className={`${secondaryButton} gap-2`}><X size={15} />Close</button>
-                </div>
-                <div className="flex flex-wrap justify-end gap-2">
-                  {!predictionApproved && !predictionRejected && <>
-                    <button disabled={busy} onClick={() => review("reject")} className={secondaryButton}>Request changes</button>
-                    <button disabled={busy} onClick={() => review("verify")} className={primaryButton}>Verify prediction</button>
-                  </>}
-                  {predictionApproved && selected.certificate?.status !== "issued" && <button disabled={busy || !everyItemReviewed || actualSelectionsDirty || !certificationQualified} onClick={() => setPendingReviewConfirmation("certify")} className={primaryButton}>Certify and issue certificate</button>}
-                </div>
+              {actualSelectionsDirty && <p className="mt-2 text-sm text-[#9a6a32]">Save the Actual selection changes before certification.</p>}
+              {everyItemReviewed && !actualSelectionsDirty && !certificationQualified && <p className="mt-2 text-sm text-[#9a6a32]">The Actual total does not currently qualify for a configured certification level.</p>}
+              <div className="mt-4 flex flex-wrap justify-end gap-2 border-t border-[#edf0eb] pt-4">
+                {selected.certificate?.status !== "issued" && <button disabled={busy || !everyItemReviewed || actualSelectionsDirty || !certificationQualified} onClick={() => setPendingReviewConfirmation("certify")} className={primaryButton}>Certify and issue certificate</button>}
               </div>
-            </div>}
+            </div>
             </div>
           </div>
 
@@ -874,22 +909,28 @@ export default function AssessmentManagement({ mode }: { mode: "admin" | "facili
                 <span className={`flex h-11 w-11 items-center justify-center rounded-2xl ${pendingRevoke ? "bg-red-50 text-red-600" : "bg-amber-50 text-amber-700"}`}>
                   {pendingRevoke ? <UserMinus size={20} /> : <X size={20} />}
                 </span>
-                <h3 id="confirmation-title" className="mt-4 text-lg font-bold text-[#243129]">{pendingRevoke ? "Revoke facilitator access?" : "Discard unsaved changes?"}</h3>
+                <h3 id="confirmation-title" className="mt-4 text-lg font-bold text-[#243129]">{pendingRevoke ? "Revoke facilitator access?" : "Unsaved review changes"}</h3>
                 <p className="mt-2 text-sm leading-6 text-[#6d796f]">
                   {pendingRevoke
                     ? `${pendingRevoke.facilitator?.first_name || "This facilitator"} ${pendingRevoke.facilitator?.last_name || ""} will immediately lose access to this project.`
-                    : "Your unsaved Actual selection changes will be lost when this assessment is closed."}
+                    : "You have unsaved Actual assessment changes. Save them before leaving?"}
                 </p>
-                <div className="mt-6 flex justify-end gap-2">
+                {!pendingRevoke && modalError && <p role="alert" className="mt-3 rounded-xl bg-red-50 px-3 py-2 text-sm text-red-700">{modalError}</p>}
+                <div className="mt-6 flex flex-wrap justify-end gap-2">
                   <button type="button" disabled={busy} onClick={() => { setPendingRevoke(null); setConfirmDiscard(false); }} className={secondaryButton}>Cancel</button>
                   <button
                     type="button"
                     disabled={busy}
                     onClick={pendingRevoke ? revokeAssignment : discardAndClose}
-                    className={pendingRevoke ? "inline-flex items-center justify-center rounded-xl bg-red-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-red-700 disabled:opacity-50" : primaryButton}
+                    className={pendingRevoke ? "inline-flex items-center justify-center rounded-xl bg-red-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-red-700 disabled:opacity-50" : "inline-flex items-center justify-center rounded-xl border border-red-200 bg-white px-4 py-2.5 text-sm font-semibold text-red-600 transition hover:border-red-300 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50"}
                   >
                     {busy && pendingRevoke ? "Revoking…" : pendingRevoke ? "Revoke access" : "Discard changes"}
                   </button>
+                  {!pendingRevoke && (
+                    <button type="button" disabled={busy} onClick={saveAndClose} className={`${primaryButton} gap-2`}>
+                      {busy ? <><LoaderCircle size={15} className="animate-spin" /> Saving...</> : <><Save size={15} /> Save &amp; leave</>}
+                    </button>
+                  )}
                 </div>
               </div>
             </div>
@@ -900,24 +941,18 @@ export default function AssessmentManagement({ mode }: { mode: "admin" | "facili
                 <span className="flex h-11 w-11 items-center justify-center rounded-lg bg-[#e7f1e9] text-[#315b45]">
                   <BadgeCheck size={21} />
                 </span>
-                <h3 id="review-confirmation-title" className="mt-4 text-lg font-bold text-[#243129]">
-                  {pendingReviewConfirmation === "certify" ? "Issue project certificate?" : "Reopen Predicted review?"}
-                </h3>
+                <h3 id="review-confirmation-title" className="mt-4 text-lg font-bold text-[#243129]">Issue project certificate?</h3>
                 <p className="mt-2 text-sm leading-6 text-[#6d796f]">
-                  {pendingReviewConfirmation === "certify"
-                    ? `This will certify ${selected.assessment.name} as ${selected.score_review.calculated_certification_level} and generate its downloadable certificate.`
-                    : "This will undo the changes request and return the project to Predicted assessment review."}
+                  This will certify {selected.assessment.name} as {selected.score_review.calculated_certification_level} and generate its downloadable certificate.
                 </p>
-                {pendingReviewConfirmation === "certify" && (
-                  <div className="mt-5 grid grid-cols-2 gap-3 rounded-lg bg-[#f4f7f3] p-4 text-sm">
-                    <div><p className="text-xs font-semibold uppercase text-[#7c8880]">Final rating</p><p className="mt-1 font-bold text-[#315b45]">{selected.score_review.calculated_certification_level}</p></div>
-                    <div><p className="text-xs font-semibold uppercase text-[#7c8880]">Approved score</p><p className="mt-1 font-bold text-[#243129]">{selected.score_review.actual_total}</p></div>
-                  </div>
-                )}
+                <div className="mt-5 grid grid-cols-2 gap-3 rounded-lg bg-[#f4f7f3] p-4 text-sm">
+                  <div><p className="text-xs font-semibold uppercase text-[#7c8880]">Final rating</p><p className="mt-1 font-bold text-[#315b45]">{selected.score_review.calculated_certification_level}</p></div>
+                  <div><p className="text-xs font-semibold uppercase text-[#7c8880]">Approved score</p><p className="mt-1 font-bold text-[#243129]">{selected.score_review.actual_total}</p></div>
+                </div>
                 <div className="mt-6 flex justify-end gap-2">
                   <button type="button" disabled={busy} onClick={() => setPendingReviewConfirmation(null)} className={secondaryButton}>Cancel</button>
-                  <button type="button" disabled={busy} onClick={() => review(pendingReviewConfirmation)} className={primaryButton}>
-                    {busy ? "Processing..." : pendingReviewConfirmation === "certify" ? "Issue certificate" : "Reopen review"}
+                  <button type="button" disabled={busy} onClick={review} className={primaryButton}>
+                    {busy ? "Processing..." : "Issue certificate"}
                   </button>
                 </div>
               </div>
@@ -949,6 +984,7 @@ export default function AssessmentManagement({ mode }: { mode: "admin" | "facili
             </div>
           )}
           {requirementItem && <GbiRequirementDialog item={requirementItem} onClose={() => setRequirementItem(null)} />}
+          {supplementalItem && <EsgSuggestionsDialog item={supplementalItem} onClose={() => setSupplementalItem(null)} />}
           {pendingEvidenceRemoval && <EvidenceRemovalDialog fileName={pendingEvidenceRemoval.file.original_name} busy={removingEvidenceId === pendingEvidenceRemoval.file.id} onCancel={() => setPendingEvidenceRemoval(null)} onConfirm={() => removeEvidence(pendingEvidenceRemoval.itemId, pendingEvidenceRemoval.file)} />}
         </div>
       )}
@@ -957,16 +993,48 @@ export default function AssessmentManagement({ mode }: { mode: "admin" | "facili
 }
 
 function Summary({ label, value }: { label: string; value: React.ReactNode }) {
-  return <div className="rounded-xl bg-[#f4f6f2] p-4"><p className="text-sm text-[#7c8880]">{label}</p><p className="mt-1 font-bold">{value}</p></div>;
+  return <SummaryCard label={label}><p className="text-lg font-bold leading-6 tabular-nums text-ink">{value}</p></SummaryCard>;
+}
+
+function ReviewMetricTile({
+  icon,
+  label,
+  value,
+  iconTone = "sage",
+  valueTone = "default",
+  compactValue = false,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  value: React.ReactNode;
+  iconTone?: "sage" | "gold";
+  valueTone?: "default" | "warning";
+  compactValue?: boolean;
+}) {
+  return (
+    <div className="flex h-full min-w-0 items-center gap-2 rounded-xl border border-slate-200 bg-paper px-2.5 py-2.5 sm:gap-3 sm:px-3.5 sm:py-3">
+      <span aria-hidden="true" className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full sm:h-10 sm:w-10 ${iconTone === "gold" ? "bg-gold-50 text-gold" : "bg-sage-50 text-sage-dark"}`}>
+        {icon}
+      </span>
+      <div className="min-w-0">
+        <p className="text-[11px] font-medium leading-4 text-slate sm:text-xs">{label}</p>
+        <p className={`mt-0.5 break-words font-bold tabular-nums sm:mt-1 ${compactValue ? "text-xs leading-4 sm:text-sm sm:leading-5" : "text-lg leading-5 sm:text-xl sm:leading-6"} ${valueTone === "warning" ? "text-[#8a6420]" : "text-ink"}`}>
+          {value}
+        </p>
+      </div>
+    </div>
+  );
+}
+
+function SummaryCard({ label, children }: { label: string; children: React.ReactNode }) {
+  return <div className="h-full rounded-xl bg-mist px-4 py-3"><p className="whitespace-nowrap text-sm font-medium leading-5 text-slate">{label}</p><div className="mt-1">{children}</div></div>;
 }
 
 type AdminReviewSummaryModel = {
   insights: ReviewItemInsight[];
-  actualItemsAwarded: number;
-  notAwardedItems: number;
-  evidenceSubmittedItems: number;
-  evidenceNotSubmittedItems: number;
-  reviewerRemarks: number;
+  predictedItems: number;
+  predictedEvidenceCovered: number;
+  predictedEvidenceMissing: number;
 };
 
 function buildReviewSummary(
@@ -998,91 +1066,15 @@ function buildReviewSummary(
     };
   });
 
+  const predictedInsights = insights.filter((insight) => insight.predictedClaimed);
+  const predictedEvidenceCovered = predictedInsights.filter((insight) => insight.evidenceSubmitted).length;
+
   return {
     insights,
-    actualItemsAwarded: insights.filter((insight) => insight.resultCategory === "awarded").length,
-    notAwardedItems: insights.filter((insight) => insight.resultCategory === "not-awarded").length,
-    evidenceSubmittedItems: insights.filter((insight) => insight.evidenceSubmitted).length,
-    evidenceNotSubmittedItems: insights.filter((insight) => !insight.evidenceSubmitted).length,
-    reviewerRemarks: insights.filter((insight) => insight.hasRemark).length,
+    predictedItems: predictedInsights.length,
+    predictedEvidenceCovered,
+    predictedEvidenceMissing: predictedInsights.length - predictedEvidenceCovered,
   };
-}
-
-function AdminReviewOverview({
-  summary,
-  actualScore,
-  maximumScore,
-  certificationLevel,
-  certificateIssued,
-  certificationReady,
-  certificationDoesNotQualify,
-  readinessReasons,
-  filter,
-  onFilterChange,
-  onProceedToDecision,
-}: {
-  summary: AdminReviewSummaryModel;
-  actualScore: number;
-  maximumScore: number;
-  certificationLevel?: string | null;
-  certificateIssued: boolean;
-  certificationReady: boolean;
-  certificationDoesNotQualify: boolean;
-  readinessReasons: string[];
-  filter: ReviewItemFilter;
-  onFilterChange: (filter: ReviewItemFilter) => void;
-  onProceedToDecision: () => void;
-}) {
-  const stats: Array<{ label: string; value: string | number; filter?: ReviewItemFilter }> = [
-    { label: "Awarded Actual items", value: summary.actualItemsAwarded, filter: "awarded" },
-    { label: "Not awarded items", value: summary.notAwardedItems, filter: "not_awarded" },
-    { label: "Evidence submitted", value: summary.evidenceSubmittedItems },
-    { label: "Evidence not submitted", value: summary.evidenceNotSubmittedItems },
-    { label: "Reviewer remarks", value: summary.reviewerRemarks },
-    { label: "Actual score", value: `${actualScore} / ${maximumScore}` },
-  ];
-
-  return (
-    <div className="border-b border-[#e4e9e4] bg-white p-4 sm:p-5">
-      <div className="grid gap-4 lg:grid-cols-[minmax(0,1.15fr)_minmax(18rem,0.85fr)]">
-        <div>
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <p className="text-xs font-bold uppercase tracking-[0.12em] text-[#64766b]">Admin review summary</p>
-            <div className="flex flex-wrap rounded-lg bg-[#f0f4f0] p-1 text-xs font-semibold">
-              <button type="button" onClick={() => onFilterChange("all")} className={`rounded-md px-2.5 py-1.5 ${filter === "all" ? "bg-white text-[#315b45] shadow-sm" : "text-[#718078]"}`}>All items ({summary.insights.length})</button>
-              <button type="button" onClick={() => onFilterChange("awarded")} className={`rounded-md px-2.5 py-1.5 ${filter === "awarded" ? "bg-white text-[#315b45] shadow-sm" : "text-[#718078]"}`}>Awarded Actual ({summary.actualItemsAwarded})</button>
-              <button type="button" onClick={() => onFilterChange("not_awarded")} className={`rounded-md px-2.5 py-1.5 ${filter === "not_awarded" ? "bg-white text-[#53645a] shadow-sm" : "text-[#718078]"}`}>Not awarded ({summary.notAwardedItems})</button>
-            </div>
-          </div>
-          <div className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2 sm:grid-cols-3 xl:grid-cols-4">
-            {stats.map((stat) => stat.filter ? (
-              <button key={stat.label} type="button" onClick={() => onFilterChange(stat.filter!)} className={`rounded-lg px-3 py-2 text-left transition hover:bg-[#eef4ef] ${filter === stat.filter ? "bg-[#edf4ee] ring-1 ring-[#cfded2]" : "bg-[#f7f9f6]"}`}>
-                <span className="block text-xs leading-4 text-[#6f7d74]">{stat.label}</span>
-                <span className="mt-0.5 block text-sm font-bold text-[#2f3d34]">{stat.value}</span>
-              </button>
-            ) : (
-              <div key={stat.label} className="rounded-lg bg-[#f7f9f6] px-3 py-2">
-                <span className="block text-xs leading-4 text-[#7a8780]">{stat.label}</span>
-                <span className="mt-0.5 block text-sm font-bold text-[#2f3d34]">{stat.value}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        <div className={`rounded-xl border p-4 ${certificateIssued || certificationReady ? "border-[#cfe0d3] bg-[#f3f8f4]" : "border-[#eadfca] bg-[#fffaf0]"}`}>
-          <p className="text-xs font-bold uppercase tracking-[0.12em] text-[#64766b]">Certification status</p>
-          <p className={`mt-2 flex items-center gap-2 text-sm font-bold ${certificateIssued || certificationReady ? "text-[#356247]" : "text-[#8a6420]"}`}>
-            {certificateIssued || certificationReady ? <CheckCircle2 size={17} /> : <CircleAlert size={17} />}
-            {certificateIssued ? "Certification issued" : certificationReady ? "Ready for certification" : certificationDoesNotQualify ? "Does not currently qualify for certification" : "Not ready for certification"}
-          </p>
-          {certificateIssued ? <p className="mt-2 text-sm leading-5 text-[#5f6e64]">This assessment has already been certified.</p> : certificationReady ? <div className="mt-2 text-sm leading-5 text-[#5f6e64]"><p>The saved Actual score qualifies under the existing certification rules.</p><p className="mt-1 font-semibold text-[#405449]">Actual score: {actualScore} / {maximumScore}{certificationLevel ? ` · ${certificationLevel}` : ""}</p></div> : <ul className="mt-2 space-y-1 text-sm leading-5 text-[#6d624a]">{readinessReasons.map((reason) => <li key={reason} className="flex items-start gap-1.5"><span aria-hidden="true">•</span><span>{reason}</span></li>)}</ul>}
-          <div className="mt-3 flex flex-wrap gap-2">
-            <button type="button" onClick={onProceedToDecision} className="rounded-lg border border-[#cfdcd2] bg-white px-3 py-2 text-xs font-semibold text-[#3e6b52] transition hover:bg-[#f4f8f4]">Proceed to Decision</button>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
 }
 
 function ItemReviewGuidance({ insight }: { insight: ReviewItemInsight }) {
@@ -1158,6 +1150,69 @@ function GbiRequirementDialog({ item, onClose }: { item: ScoreReviewItem; onClos
   );
 }
 
+function EsgSuggestionsDialog({ item, onClose }: { item: ScoreReviewItem; onClose: () => void }) {
+  const hasEsg = Boolean(item.esg?.trim());
+  const hasSuggestions = Boolean(item.suggestions?.trim());
+  const esgMapping = splitEsgMapping(item.esg);
+  const midaCriteria = parseMidaCriteria(esgMapping.mida);
+
+  return (
+    <div className="fixed inset-0 z-90 flex items-center justify-center bg-[#17201b]/45 p-4" role="dialog" aria-modal="true" aria-labelledby="esg-suggestions-title">
+      <button type="button" aria-label="Close ESG and suggestions" className="absolute inset-0 cursor-default" onClick={onClose} />
+      <div className="relative flex max-h-[82dvh] w-full max-w-2xl flex-col overflow-hidden rounded-3xl border border-white/70 bg-white shadow-[0_24px_70px_rgba(23,32,27,0.28)]">
+        <div className="flex items-start justify-between gap-4 border-b border-[#e4eae4] bg-[#f7faf7] px-5 py-4 sm:px-6 sm:py-5">
+          <div className="min-w-0">
+            <p className="text-xs font-bold uppercase tracking-[0.12em] text-[#9A6418]">ESG &amp; Suggestions</p>
+            <h3 id="esg-suggestions-title" className="mt-2 text-xl font-bold text-[#243129] sm:text-2xl">{item.description}</h3>
+            <p className="mt-1.5 text-xs font-semibold uppercase tracking-[0.08em] text-[#315b45]">{[item.criterion, item.subcriterion].filter(Boolean).join(" / ") || `Item ${item.item_id}`}</p>
+          </div>
+          <button type="button" aria-label="Close" onClick={onClose} className="shrink-0 rounded-full bg-white p-2 text-[#65736a] shadow-sm transition hover:bg-[#edf2ed]"><X size={17} /></button>
+        </div>
+        <div className="min-h-0 space-y-5 overflow-y-auto px-5 py-5 sm:px-6">
+          {hasEsg && <section className="space-y-3">
+            {esgMapping.sarawak && <div className="rounded-xl border border-[#dde5de] bg-[#f8faf7] px-4 py-3.5">
+              <div className="mb-2.5 flex items-center gap-2">
+                <span className="h-3.5 w-0.5 rounded-full bg-[#63816d]" />
+                <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-[#3f614c]">Sarawak 13th Malaysia Plan</p>
+              </div>
+              <ReactMarkdown components={{
+                ul: ({ children }) => <ul className="space-y-1.5 pl-4 text-sm leading-5 text-[#36453c] [list-style-type:disc] marker:text-[#64806d]">{children}</ul>,
+                li: ({ children }) => <li className="pl-1">{children}</li>,
+                p: ({ children }) => <p className="text-sm leading-5 text-[#36453c]">{children}</p>,
+                strong: ({ children }) => <strong className="font-bold text-[#27372e]">{children}</strong>,
+                em: ({ children }) => <span className="text-[#46564c]">{children}</span>,
+              }}>{esgMapping.sarawak}</ReactMarkdown>
+            </div>}
+            {midaCriteria.length > 0 && <div className="rounded-xl border border-[#dde5de] bg-[#f8faf7] px-4 py-3.5">
+              <div className="mb-2.5 flex items-center gap-2">
+                <span className="h-3.5 w-0.5 rounded-full bg-[#63816d]" />
+                <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-[#3f614c]">MIDA ESG</p>
+              </div>
+              <div className="space-y-4">
+                {midaCriteria.map((mapping, index) => <div key={`${mapping.criterion}-${index}`} className={index > 0 ? "border-t border-[#e0e7e1] pt-4" : ""}>
+                  <h4 className="mb-2 text-sm font-bold text-[#304b3a]">{mapping.criterion}</h4>
+                  <dl className="space-y-1.5">
+                    {mapping.fields.map((field) => <div key={field.label} className="grid gap-0.5 text-[13px] leading-5 sm:grid-cols-[10.5rem_1fr] sm:gap-3">
+                      <dt className="font-semibold text-[#34483b]">{field.label}</dt>
+                      <dd className="text-[#3f4d45]">{field.value}</dd>
+                    </div>)}
+                  </dl>
+                </div>)}
+              </div>
+            </div>}
+          </section>}
+          {hasSuggestions && <section className={hasEsg ? "border-t border-[#e4eae4] pt-5" : ""}>
+            <p className="text-xs font-bold uppercase tracking-[0.1em] text-[#315b45]">Materials &amp; Suggestions</p>
+            <div className="mt-2 text-sm leading-7 text-[#34443a]"><ReactMarkdown>{item.suggestions}</ReactMarkdown></div>
+          </section>}
+          {!hasEsg && !hasSuggestions && <p className="rounded-xl bg-[#f5f7f4] px-4 py-5 text-sm leading-6 text-[#7d8981]">No ESG alignment or material suggestions have been recorded for this item yet.</p>}
+        </div>
+        <div className="flex justify-end border-t border-[#e4eae4] bg-[#fafbf9] px-5 py-4 sm:px-6"><button type="button" onClick={onClose} className={secondaryButton}>Close</button></div>
+      </div>
+    </div>
+  );
+}
+
 function extractGbiPurpose(info?: string | null) {
   const guidanceBullets = info
     ?.replaceAll("\\n", "\n")
@@ -1191,8 +1246,8 @@ function PredictedSelectionSummary({
   const selectedChoices = choices.filter((choice) => choice.selected);
   const optionLabel = choices.length === 1 ? "option" : "options";
   const meaning = selectedChoices.length > 0
-    ? `The applicant's Predicted assessment states that the project plans to include ${formatChoiceList(selectedChoices)}. Review these stated measures against the GBI requirements before verification.`
-    : "The applicant has not selected any of the available measures for this item in the Predicted assessment. Review the project information against the GBI requirements before verification.";
+    ? `The applicant's Predicted assessment states that the project plans to include ${formatChoiceList(selectedChoices)}. Use these stated measures as the read-only baseline for Actual review.`
+    : "The applicant has not selected any of the available measures for this item in the Predicted assessment. Use the project information and evidence when making the Actual review decision.";
 
   if (compact) {
     return (

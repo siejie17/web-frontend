@@ -101,10 +101,10 @@ export default function AdministrationShell({ children, allowedRoles }: { childr
   return (
     <div className="min-h-screen bg-[#f3f5f0] text-[#1e2621]">
       <aside className="fixed inset-y-0 left-0 z-40 hidden w-70 lg:block">{sidebar}</aside>
-      {mobileOpen && <div className="fixed inset-0 z-50 lg:hidden"><button aria-label="Close menu" className="absolute inset-0 bg-black/30" onClick={() => setMobileOpen(false)} /><aside className="relative h-full w-72">{sidebar}</aside></div>}
+      {mobileOpen && <div className="fixed inset-0 z-50 lg:hidden"><button aria-label="Close menu" className="absolute inset-0 bg-black/30" onClick={() => setMobileOpen(false)} /><aside className="relative h-full w-[min(18rem,calc(100vw-2.5rem))]">{sidebar}</aside></div>}
       <div className="lg:pl-70">
-        <header className="sticky top-0 z-30 flex h-17 items-center justify-between border-b border-[#e4e7df] bg-white/88 px-5 backdrop-blur-xl lg:px-10">
-          <button className="rounded-lg p-2 text-[#3e6b52] lg:hidden" onClick={() => setMobileOpen(!mobileOpen)}>{mobileOpen ? <X /> : <Menu />}</button>
+        <header className="sticky top-0 z-30 flex h-16 items-center justify-between border-b border-[#e4e7df] bg-white/88 px-3 backdrop-blur-xl sm:px-5 lg:h-17 lg:px-10">
+          <button aria-label="Open administration menu" aria-expanded={mobileOpen} className="rounded-lg p-2 text-[#3e6b52] lg:hidden" onClick={() => setMobileOpen(!mobileOpen)}>{mobileOpen ? <X /> : <Menu />}</button>
           <div className="hidden items-center gap-3 sm:flex">
             <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[#78837b]">Green building administration</p>
             <span className="h-4 w-px bg-[#dfe4dc]" />
@@ -116,7 +116,7 @@ export default function AdministrationShell({ children, allowedRoles }: { childr
             <ArrowUpRight size={17} />
           </Link>
         </header>
-        <main className="mx-auto max-w-360 px-5 py-7 sm:px-8 lg:px-10 lg:py-10">{children}</main>
+        <main className="mx-auto max-w-360 px-4 py-5 sm:px-8 sm:py-7 lg:px-10 lg:py-10">{children}</main>
       </div>
       <AIAvatar />
     </div>

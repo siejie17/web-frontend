@@ -3,7 +3,6 @@
 import { useState, useRef, useCallback, useEffect } from "react";
 import { Loader2, Check, MessageSquareText } from "lucide-react";
 import { useRouter } from "next/navigation";
-import Link from "next/link";
 import ProjectHeader from "@/components/project/ProjectHeader";
 import ProjectDetailTabs from "@/components/tabs/ProjectDetailsTabs";
 import { BackButton } from "@/components/ui/BackButton";
@@ -30,9 +29,6 @@ export default function ProjectPageWrapper({
   const [activeTab, setActiveTab] = useState<"details" | "cost" | "gbi" | "chat">(
     "details",
   );
-  const assessmentStatus = selectedProject?.projectData?.assessment_status;
-  const projectRetired = assessmentStatus === "requires_changes";
-
   const handleActualRatingChange = (rating: number) => {
     setActualRating(rating);
   };
@@ -85,7 +81,7 @@ export default function ProjectPageWrapper({
         onActualRatingChange={handleActualRatingChange}
         onUnsavedChange={setDirty}
         submitRef={submitRef}
-        readOnly={isShared || projectRetired}
+        readOnly={isShared}
         isProjectOwner={!isShared}
       />
 
@@ -215,49 +211,31 @@ function ReviewerFeedback({ project }: { project?: Record<string, unknown> }) {
   const remarks = typeof project?.review_remarks === "string" ? project.review_remarks.trim() : "";
   const status = typeof project?.assessment_status === "string" ? project.assessment_status : "submitted";
   const reviewedAt = typeof project?.reviewed_at === "string" ? project.reviewed_at : null;
-  const statusLabel = ["submitted", "pending_verification"].includes(status)
-    ? "Awaiting Verification"
-    : status === "requires_changes"
-      ? "Changes Requested"
-      : status.replaceAll("_", " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
-  const requiresChanges = status === "requires_changes";
-  const verified = status === "verified";
   const certified = status === "certified";
-  const pending = ["submitted", "pending_verification"].includes(status);
-  if (!remarks && !requiresChanges && !verified && !certified && !pending) return null;
+  const statusLabel = certified ? "Certified" : "Actual Review";
   const reviewedDate = reviewedAt
     ? new Intl.DateTimeFormat("en-MY", { dateStyle: "medium", timeStyle: "short" }).format(new Date(reviewedAt.replace(" ", "T")))
     : null;
 
   return (
-    <section className={`mb-6 rounded-3xl border p-5 shadow-[0_8px_24px_rgba(30,38,33,0.04)] sm:p-6 ${requiresChanges ? "border-[#ead9bd] bg-[#fffaf0]" : "border-[#d9e5dc] bg-[#f7faf7]"}`} aria-labelledby="reviewer-feedback-title">
+    <section className="mb-6 rounded-3xl border border-[#d9e5dc] bg-[#f7faf7] p-5 shadow-[0_8px_24px_rgba(30,38,33,0.04)] sm:p-6" aria-labelledby="reviewer-feedback-title">
       <div className="flex items-start gap-3.5">
-        <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${requiresChanges ? "bg-[#f6ead5] text-[#9a6a32]" : "bg-[#e7f1e9] text-[#3e6b52]"}`}>
+        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#e7f1e9] text-[#3e6b52]">
           <MessageSquareText size={18} />
         </span>
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <h2 id="reviewer-feedback-title" className="text-sm font-bold text-[#27332c]">
-              {requiresChanges ? "Changes requested for prediction" : verified ? "Prediction verified" : certified ? "Actual assessment certified" : "Prediction awaiting verification"}
+              {certified ? "Actual assessment certified" : "Evidence and Actual assessment review"}
             </h2>
-            <span className={`rounded-full px-2.5 py-1 text-[10px] font-semibold ${requiresChanges ? "bg-[#f3e4ca] text-[#8a6420]" : "bg-[#e5efe7] text-[#356247]"}`}>{statusLabel}</span>
+            <span className="rounded-full bg-[#e5efe7] px-2.5 py-1 text-[10px] font-semibold text-[#356247]">{statusLabel}</span>
           </div>
           <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-[#59675e]">
-            {requiresChanges
-              ? remarks || "The administrator requires a revised prediction."
-              : verified
-              ? "The administrator approved the Predicted assessment. You may proceed with construction and submit evidence for each Actual item."
-              : certified
-                ? "The administrator completed certification of the Actual assessment."
-                : "The Predicted assessment is waiting for an administrator decision. Construction evidence remains locked until it is verified."}
+            {certified
+              ? "The administrator completed certification of the Actual assessment."
+              : "Your Predicted assessment is the saved planning baseline. Upload supporting evidence for the measures implemented in your project; Actual marks are awarded by the reviewer."}
           </p>
-          {remarks && !requiresChanges && <p className="mt-2 whitespace-pre-wrap text-xs leading-5 text-[#6d796f]"><span className="font-semibold">Admin remarks:</span> {remarks}</p>}
-          {requiresChanges && (
-            <div className="mt-4">
-              <p className="text-xs leading-5 text-[#765b2d]">This project version is read-only. Create a new project and apply the reviewer’s remarks to the revised prediction.</p>
-              <Link href="/assessments/new" className="mt-3 inline-flex rounded-xl bg-[#8a6420] px-4 py-2.5 text-xs font-semibold text-white transition hover:bg-[#725219]">Create new project</Link>
-            </div>
-          )}
+          {remarks && <p className="mt-2 whitespace-pre-wrap text-xs leading-5 text-[#6d796f]"><span className="font-semibold">Reviewer remarks:</span> {remarks}</p>}
           {reviewedDate && <p className="mt-3 text-[10.5px] text-[#849089]">Reviewed {reviewedDate}</p>}
         </div>
       </div>
