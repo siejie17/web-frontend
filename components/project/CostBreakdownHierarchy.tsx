@@ -322,6 +322,7 @@ export default function CostBreakdownHierarchy({
   mode = "comparison",
   projectDetails,
   readOnly = false,
+  onTotalActualChange,
 }: {
   /** The "as loaded" tree — source of truth for diffing. Only its leaf values for the active
    *  mode's field are compared. */
@@ -369,6 +370,8 @@ export default function CostBreakdownHierarchy({
   projectDetails?: PdfProjectDetails;
   /** When true, all cost inputs are rendered as read-only display values. */
   readOnly?: boolean;
+  /** Fires with the live "Total actual cost" (incl. cert recompute + unsaved edits) so a parent header can mirror it. */
+  onTotalActualChange?: (total: number) => void;
 }) {
   const isAssessment = mode === "assessment";
   const editField = isAssessment ? "cost" : "actual_cost";
@@ -483,6 +486,10 @@ export default function CostBreakdownHierarchy({
       0,
     );
   }, [localTree, effectiveBaseline, changedNodes, editField]);
+
+  useEffect(() => {
+    onTotalActualChange?.(totalLive);
+  }, [totalLive, onTotalActualChange]);
 
   const hasBudget = projectBudget !== null && projectBudget !== undefined;
   const budgetComparison = isAssessment ? totalLive : totalBudgeted;
@@ -934,7 +941,7 @@ export default function CostBreakdownHierarchy({
 
   return (
     <>
-      <div className="mb-4">
+      <div className="mx-auto mb-4 w-full max-w-275">
         {/* ---------------- Statement / summary card ---------------- */}
         {isAssessment ? (
           <section className="relative mb-6 overflow-hidden rounded-3xl border border-[#E4E1D8] bg-[#FDFDFC] p-5 shadow-[0_1px_2px_rgba(30,38,33,0.04)] sm:p-8">
@@ -945,7 +952,7 @@ export default function CostBreakdownHierarchy({
               }}
             />
             <div className="relative flex flex-wrap items-start justify-between gap-5">
-              <div>
+              <div className="min-w-0">
                 <div
                   className="text-[11px] uppercase tracking-[0.14em] text-[#8A938C]"
                   style={{ fontFamily: "var(--font-mono)" }}
@@ -953,7 +960,7 @@ export default function CostBreakdownHierarchy({
                   Total predicted cost
                 </div>
                 <div className="mt-1.5 flex flex-wrap items-baseline gap-x-3 gap-y-1">
-                  <span className="font-serif text-[28px] font-semibold leading-none tabular-nums text-[#2C4A3A] sm:text-[34px] md:text-[42px]">
+                  <span className="font-serif text-[26px] font-semibold leading-none tabular-nums text-[#2C4A3A] xs:text-[28px] sm:text-[34px] md:text-[42px]">
                     {formatMoney(totalLive)}
                   </span>
                 </div>
@@ -964,7 +971,7 @@ export default function CostBreakdownHierarchy({
 
               {/* Budget stamp */}
               <div
-                className="flex shrink-0 -rotate-2 items-center gap-2 rounded-lg border-2 border-dashed px-3.5 py-2"
+                className="flex shrink-0 -rotate-2 items-center gap-2 rounded-lg border-2 border-dashed px-3 py-1.5 sm:px-3.5 sm:py-2"
                 style={{
                   borderColor: TONE[budgetTone].solid,
                   color: TONE[budgetTone].text,
@@ -978,7 +985,7 @@ export default function CostBreakdownHierarchy({
                   <ShieldCheck size={15} />
                 )}
                 <span
-                  className="text-[11.5px] font-bold uppercase tracking-[0.06em]"
+                  className="text-[11px] font-bold uppercase tracking-[0.06em] sm:text-[11.5px]"
                   style={{ fontFamily: "var(--font-mono)" }}
                 >
                   {!hasBudget
@@ -1018,7 +1025,7 @@ export default function CostBreakdownHierarchy({
             />
 
             <div className="relative flex flex-wrap items-start justify-between gap-5">
-              <div>
+              <div className="min-w-0">
                 <div
                   className="text-[11px] uppercase tracking-[0.14em] text-[#8A938C]"
                   style={{ fontFamily: "var(--font-mono)" }}
@@ -1027,7 +1034,7 @@ export default function CostBreakdownHierarchy({
                 </div>
                 <div className="mt-1.5 flex flex-wrap items-baseline gap-x-3 gap-y-1">
                   <span
-                    className="font-serif text-[28px] font-semibold leading-none tabular-nums sm:text-[34px] md:text-[42px]"
+                    className="font-serif text-[26px] font-semibold leading-none tabular-nums xs:text-[28px] sm:text-[34px] md:text-[42px]"
                     style={{ color: TONE[actualTone].text }}
                   >
                     {formatMoney(totalLive)}
@@ -1048,7 +1055,7 @@ export default function CostBreakdownHierarchy({
 
               {/* Budget stamp — reads like an audit seal, tone mirrors budget status */}
               <div
-                className="flex shrink-0 -rotate-2 items-center gap-2 rounded-lg border-2 border-dashed px-3.5 py-2"
+                className="flex shrink-0 -rotate-2 items-center gap-2 rounded-lg border-2 border-dashed px-3 py-1.5 sm:px-3.5 sm:py-2"
                 style={{
                   borderColor: TONE[budgetTone].solid,
                   color: TONE[budgetTone].text,
@@ -1062,7 +1069,7 @@ export default function CostBreakdownHierarchy({
                   <ShieldCheck size={15} />
                 )}
                 <span
-                  className="text-[11.5px] font-bold uppercase tracking-[0.06em]"
+                  className="text-[11px] font-bold uppercase tracking-[0.06em] sm:text-[11.5px]"
                   style={{ fontFamily: "var(--font-mono)" }}
                 >
                   {!hasBudget
@@ -1083,7 +1090,7 @@ export default function CostBreakdownHierarchy({
             />
 
             {/* ---------------- Figures row ---------------- */}
-            <div className="relative mt-6 grid grid-cols-3 gap-x-3 gap-y-3 border-t border-dashed border-[#E4E1D8] pt-4">
+            <div className="relative mt-6 grid grid-cols-2 gap-x-3 gap-y-3 border-t border-dashed border-[#E4E1D8] pt-4">
               {/*<Figure label="Budgeted" value={formatMoney(totalBudgeted)} />*/}
               <Figure label="Predicted" value={formatMoney(totalBudgeted)} />
               <Figure
@@ -1103,7 +1110,7 @@ export default function CostBreakdownHierarchy({
                 <button
                   type="button"
                   onClick={addMode ? handleExitAddMode : handleEnterAddMode}
-                  className="flex w-full items-center justify-center gap-1.5 rounded-full border bg-white px-4 py-2.5 text-[12.5px] font-semibold shadow-[0_1px_2px_rgba(30,38,33,0.04)] transition-colors"
+                  className="flex w-full items-center justify-center gap-1.5 rounded-full border bg-white px-4 py-3 text-[12.5px] font-semibold shadow-[0_1px_2px_rgba(30,38,33,0.04)] transition-colors sm:py-2.5"
                   style={{
                     borderColor: addMode
                       ? TONE.neutral.border
@@ -1139,7 +1146,7 @@ export default function CostBreakdownHierarchy({
               <button
                 type="button"
                 onClick={addMode ? handleExitAddMode : handleEnterAddMode}
-                className="flex flex-1 basis-0 items-center justify-center gap-1.5 rounded-full border bg-white px-4 py-2.5 text-[12.5px] font-semibold shadow-[0_1px_2px_rgba(30,38,33,0.04)] transition-colors"
+                className="flex flex-1 basis-0 items-center justify-center gap-1.5 rounded-full border bg-white px-4 py-3 text-[12.5px] font-semibold shadow-[0_1px_2px_rgba(30,38,33,0.04)] transition-colors sm:py-2.5"
                 style={{
                   borderColor: addMode ? TONE.neutral.border : TONE.good.border,
                   color: addMode ? TONE.neutral.text : TONE.good.text,
@@ -1170,7 +1177,7 @@ export default function CostBreakdownHierarchy({
                 onClick={
                   deleteMode ? handleExitDeleteMode : handleEnterDeleteMode
                 }
-                className="flex flex-1 basis-0 items-center justify-center gap-1.5 rounded-full border bg-white px-4 py-2.5 text-[12.5px] font-semibold shadow-[0_1px_2px_rgba(30,38,33,0.04)] transition-colors"
+                className="flex flex-1 basis-0 items-center justify-center gap-1.5 rounded-full border bg-white px-4 py-3 text-[12.5px] font-semibold shadow-[0_1px_2px_rgba(30,38,33,0.04)] transition-colors sm:py-2.5"
                 style={{
                   borderColor: deleteMode
                     ? TONE.neutral.border
@@ -1199,7 +1206,7 @@ export default function CostBreakdownHierarchy({
           </div>
         )}
 
-        <div className=" bg-[#FDFDFC] p-2 sm:p-3">
+        <div className="overflow-x-auto rounded-2xl bg-[#FDFDFC] p-2 sm:p-3 md:p-4">
           <CostBreakdownTree
             key={treeKey}
             data={localTree ?? treeData}
@@ -1353,14 +1360,14 @@ export default function CostBreakdownHierarchy({
       {/* ---------------- Delete Confirm Modal ---------------- */}
       {showDeleteConfirmModal && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-sm"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4 backdrop-blur-sm"
           onClick={() => {
             setShowDeleteConfirmModal(false);
             setDeletingNodeId(null);
           }}
         >
           <div
-            className="mx-4 w-full max-w-sm rounded-3xl border border-[#E4E1D8] bg-white p-6 shadow-[0_24px_48px_rgba(30,38,33,0.12)] sm:p-8"
+            className="w-full max-w-sm rounded-3xl border border-[#E4E1D8] bg-white p-6 shadow-[0_24px_48px_rgba(30,38,33,0.12)] sm:p-8"
             onClick={(e) => e.stopPropagation()}
           >
             <h3 className="mb-2 text-lg font-semibold text-[#1E2621]">
@@ -1373,21 +1380,21 @@ export default function CostBreakdownHierarchy({
               </span>{" "}
               and all its sub-items. This cannot be undone.
             </p>
-            <div className="flex gap-3">
+            <div className="flex flex-col-reverse gap-3 xs:flex-row">
               <button
                 type="button"
                 onClick={() => {
                   setShowDeleteConfirmModal(false);
                   setDeletingNodeId(null);
                 }}
-                className="flex flex-1 items-center justify-center rounded-2xl border border-[#E4E1D8] bg-white px-4 py-2.5 text-[13px] font-medium text-[#5B655F] transition-colors hover:bg-[#FBFAF7]"
+                className="flex flex-1 items-center justify-center rounded-2xl border border-[#E4E1D8] bg-white px-4 py-3 text-[13px] font-medium text-[#5B655F] transition-colors hover:bg-[#FBFAF7] sm:py-2.5"
               >
                 Cancel
               </button>
               <button
                 type="button"
                 onClick={handleDeleteConfirm}
-                className="flex flex-1 items-center justify-center gap-1.5 rounded-2xl bg-[#B0453A] px-4 py-2.5 text-[13px] font-semibold text-white shadow-sm transition-colors hover:bg-[#963B31]"
+                className="flex flex-1 items-center justify-center gap-1.5 rounded-2xl bg-[#B0453A] px-4 py-3 text-[13px] font-semibold text-white shadow-sm transition-colors hover:bg-[#963B31] sm:py-2.5"
               >
                 <Trash2 size={14} />
                 Delete
@@ -1482,8 +1489,8 @@ function LegendDot({
       <span
         className={
           line
-            ? "inline-block h-3 w-0.5 rounded-full"
-            : "inline-block h-2 w-2 rounded-full"
+            ? "inline-block h-3 w-0.5 shrink-0 rounded-full"
+            : "inline-block h-2 w-2 shrink-0 rounded-full"
         }
         style={{ backgroundColor: color }}
       />
@@ -1602,11 +1609,11 @@ function SplitNodeModal({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-sm"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4 backdrop-blur-sm"
       onClick={handleClose}
     >
       <div
-        className="mx-4 w-full max-w-md rounded-3xl border border-[#E4E1D8] bg-white p-6 shadow-[0_24px_48px_rgba(30,38,33,0.12)] sm:p-8"
+        className="w-full max-w-md rounded-3xl border border-[#E4E1D8] bg-white p-6 shadow-[0_24px_48px_rgba(30,38,33,0.12)] sm:p-8"
         onClick={(e) => e.stopPropagation()}
       >
         <h3 className="mb-5 text-lg font-semibold text-[#1E2621]">
@@ -1630,7 +1637,7 @@ function SplitNodeModal({
                 setChildNameError("");
               }}
               placeholder="e.g. Basic Piling"
-              className={`w-full rounded-xl border px-3.5 py-2.5 text-[13.5px] text-[#1E2621] placeholder:text-[#ADA695] focus:outline-none focus:ring-2 ${
+              className={`w-full rounded-xl border px-3.5 py-3 text-base text-[#1E2621] placeholder:text-[#ADA695] focus:outline-none focus:ring-2 sm:py-2.5 sm:text-[13.5px] ${
                 childNameError
                   ? "border-[#B0453A] focus:border-[#B0453A] focus:ring-[#B0453A]/20"
                   : "border-[#E4E1D8] focus:border-[#3E6B52] focus:ring-[#3E6B52]/20"
@@ -1664,7 +1671,7 @@ function SplitNodeModal({
                   setRawDigits((prev) => prev + e.key);
                 }
               }}
-              className={`w-full rounded-xl border px-3.5 py-2.5 text-[13.5px] text-[#1E2621] placeholder:text-[#ADA695] focus:outline-none focus:ring-2 ${
+              className={`w-full rounded-xl border px-3.5 py-3 text-base text-[#1E2621] placeholder:text-[#ADA695] focus:outline-none focus:ring-2 sm:py-2.5 sm:text-[13.5px] ${
                 costError
                   ? "border-[#B0453A] focus:border-[#B0453A] focus:ring-[#B0453A]/20"
                   : "border-[#E4E1D8] focus:border-[#3E6B52] focus:ring-[#3E6B52]/20"
@@ -1683,18 +1690,18 @@ function SplitNodeModal({
           sub-item you add here is extra.
         </p>
 
-        <div className="mt-6 flex gap-3">
+        <div className="mt-6 flex flex-col-reverse gap-3 xs:flex-row">
           <button
             type="button"
             onClick={handleClose}
-            className="flex-1 rounded-xl border border-[#E4E1D8] bg-white px-4 py-2.5 text-[13px] font-medium text-[#5B655F] transition-colors hover:border-[#C9D3CC] hover:text-[#2C4A3A]"
+            className="flex-1 rounded-xl border border-[#E4E1D8] bg-white px-4 py-3 text-[13px] font-medium text-[#5B655F] transition-colors hover:border-[#C9D3CC] hover:text-[#2C4A3A] sm:py-2.5"
           >
             Cancel
           </button>
           <button
             type="button"
             onClick={handleSubmit}
-            className="flex-1 rounded-xl bg-[#3E6B52] px-4 py-2.5 text-[13px] font-semibold text-white transition-colors hover:bg-[#325A44]"
+            className="flex-1 rounded-xl bg-[#3E6B52] px-4 py-3 text-[13px] font-semibold text-white transition-colors hover:bg-[#325A44] sm:py-2.5"
           >
             Add sub-item
           </button>
@@ -1818,11 +1825,11 @@ function AddCategoryModal({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-sm"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4 backdrop-blur-sm"
       onClick={handleClose}
     >
       <div
-        className="mx-4 w-full max-w-md rounded-3xl border border-[#E4E1D8] bg-white p-6 shadow-[0_24px_48px_rgba(30,38,33,0.12)] sm:p-8"
+        className="w-full max-w-md rounded-3xl border border-[#E4E1D8] bg-white p-6 shadow-[0_24px_48px_rgba(30,38,33,0.12)] sm:p-8"
         onClick={(e) => e.stopPropagation()}
       >
         <h3 className="mb-5 text-lg font-semibold text-[#1E2621]">
@@ -1838,7 +1845,7 @@ function AddCategoryModal({
               <button
                 type="button"
                 onClick={() => setCategoryType("Customise")}
-                className={`flex-1 rounded-lg px-3.5 py-2 text-[12.5px] font-medium transition-all ${
+                className={`flex-1 rounded-lg px-3.5 py-2.5 text-[12.5px] font-medium transition-all sm:py-2 ${
                   categoryType === "Customise"
                     ? "bg-white text-[#1E2621] shadow-[0_1px_3px_rgba(30,38,33,0.08)]"
                     : "text-[#8A938C] hover:text-[#5B655F]"
@@ -1850,7 +1857,7 @@ function AddCategoryModal({
                 type="button"
                 disabled={existingNames.has("others")}
                 onClick={() => setCategoryType("Others")}
-                className={`flex-1 rounded-lg px-3.5 py-2 text-[12.5px] font-medium transition-all ${
+                className={`flex-1 rounded-lg px-3.5 py-2.5 text-[12.5px] font-medium transition-all sm:py-2 ${
                   categoryType === "Others"
                     ? "bg-white text-[#1E2621] shadow-[0_1px_3px_rgba(30,38,33,0.08)]"
                     : existingNames.has("others")
@@ -1882,7 +1889,7 @@ function AddCategoryModal({
               }}
               disabled={categoryType === "Others"}
               placeholder="e.g. Mechanical & Electrical"
-              className={`w-full rounded-xl border px-3.5 py-2.5 text-[13.5px] text-[#1E2621] placeholder:text-[#ADA695] focus:outline-none focus:ring-2 disabled:cursor-not-allowed disabled:bg-[#F6F6F2] disabled:text-[#8A938C] ${
+              className={`w-full rounded-xl border px-3.5 py-3 text-base text-[#1E2621] placeholder:text-[#ADA695] focus:outline-none focus:ring-2 disabled:cursor-not-allowed disabled:bg-[#F6F6F2] disabled:text-[#8A938C] sm:py-2.5 sm:text-[13.5px] ${
                 categoryNameError
                   ? "border-[#B0453A] focus:border-[#B0453A] focus:ring-[#B0453A]/20"
                   : "border-[#E4E1D8] focus:border-[#3E6B52] focus:ring-[#3E6B52]/20"
@@ -1904,7 +1911,7 @@ function AddCategoryModal({
               value={childName}
               onChange={(e) => setChildName(e.target.value)}
               placeholder="Add a sub-item, or leave blank to assign the cost to this category"
-              className={`w-full rounded-xl border px-3.5 py-2.5 text-[13.5px] text-[#1E2621] placeholder:text-[#ADA695] focus:outline-none focus:ring-2 ${
+              className={`w-full rounded-xl border px-3.5 py-3 text-base text-[#1E2621] placeholder:text-[#ADA695] focus:outline-none focus:ring-2 sm:py-2.5 sm:text-[13.5px] ${
                 childNameError
                   ? "border-[#B0453A] focus:border-[#B0453A] focus:ring-[#B0453A]/20"
                   : "border-[#E4E1D8] focus:border-[#3E6B52] focus:ring-[#3E6B52]/20"
@@ -1938,7 +1945,7 @@ function AddCategoryModal({
                   setRawDigits((prev) => prev + e.key);
                 }
               }}
-              className={`w-full rounded-xl border px-3.5 py-2.5 text-[13.5px] text-[#1E2621] placeholder:text-[#ADA695] focus:outline-none focus:ring-2 ${
+              className={`w-full rounded-xl border px-3.5 py-3 text-base text-[#1E2621] placeholder:text-[#ADA695] focus:outline-none focus:ring-2 sm:py-2.5 sm:text-[13.5px] ${
                 costError
                   ? "border-[#B0453A] focus:border-[#B0453A] focus:ring-[#B0453A]/20"
                   : "border-[#E4E1D8] focus:border-[#3E6B52] focus:ring-[#3E6B52]/20"
@@ -1952,18 +1959,18 @@ function AddCategoryModal({
           </div>
         </div>
 
-        <div className="mt-6 flex gap-3">
+        <div className="mt-6 flex flex-col-reverse gap-3 xs:flex-row">
           <button
             type="button"
             onClick={handleClose}
-            className="flex-1 rounded-xl border border-[#E4E1D8] bg-white px-4 py-2.5 text-[13px] font-medium text-[#5B655F] transition-colors hover:border-[#C9D3CC] hover:text-[#2C4A3A]"
+            className="flex-1 rounded-xl border border-[#E4E1D8] bg-white px-4 py-3 text-[13px] font-medium text-[#5B655F] transition-colors hover:border-[#C9D3CC] hover:text-[#2C4A3A] sm:py-2.5"
           >
             Cancel
           </button>
           <button
             type="button"
             onClick={handleSubmit}
-            className="flex-1 rounded-xl bg-[#3E6B52] px-4 py-2.5 text-[13px] font-semibold text-white transition-colors hover:bg-[#325A44]"
+            className="flex-1 rounded-xl bg-[#3E6B52] px-4 py-3 text-[13px] font-semibold text-white transition-colors hover:bg-[#325A44] sm:py-2.5"
           >
             Add
           </button>
@@ -2053,11 +2060,11 @@ function AddActualCostChildModal({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-sm"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4 backdrop-blur-sm"
       onClick={handleClose}
     >
       <div
-        className="mx-4 w-full max-w-md rounded-3xl border border-[#E4E1D8] bg-white p-6 shadow-[0_24px_48px_rgba(30,38,33,0.12)] sm:p-8"
+        className="w-full max-w-md rounded-3xl border border-[#E4E1D8] bg-white p-6 shadow-[0_24px_48px_rgba(30,38,33,0.12)] sm:p-8"
         onClick={(e) => e.stopPropagation()}
       >
         <h3 className="mb-5 text-lg font-semibold text-[#1E2621]">
@@ -2081,7 +2088,7 @@ function AddActualCostChildModal({
                 setChildNameError("");
               }}
               placeholder="e.g. Extra foundation works"
-              className={`w-full rounded-xl border px-3.5 py-2.5 text-[13.5px] text-[#1E2621] placeholder:text-[#ADA695] focus:outline-none focus:ring-2 ${
+              className={`w-full rounded-xl border px-3.5 py-3 text-base text-[#1E2621] placeholder:text-[#ADA695] focus:outline-none focus:ring-2 sm:py-2.5 sm:text-[13.5px] ${
                 childNameError
                   ? "border-[#B0453A] focus:border-[#B0453A] focus:ring-[#B0453A]/20"
                   : "border-[#E4E1D8] focus:border-[#3E6B52] focus:ring-[#3E6B52]/20"
@@ -2115,7 +2122,7 @@ function AddActualCostChildModal({
                   setRawDigits((prev) => prev + e.key);
                 }
               }}
-              className={`w-full rounded-xl border px-3.5 py-2.5 text-[13.5px] text-[#1E2621] placeholder:text-[#ADA695] focus:outline-none focus:ring-2 ${
+              className={`w-full rounded-xl border px-3.5 py-3 text-base text-[#1E2621] placeholder:text-[#ADA695] focus:outline-none focus:ring-2 sm:py-2.5 sm:text-[13.5px] ${
                 costError
                   ? "border-[#B0453A] focus:border-[#B0453A] focus:ring-[#B0453A]/20"
                   : "border-[#E4E1D8] focus:border-[#3E6B52] focus:ring-[#3E6B52]/20"
@@ -2136,18 +2143,18 @@ function AddActualCostChildModal({
           </p>
         )}
 
-        <div className="mt-6 flex gap-3">
+        <div className="mt-6 flex flex-col-reverse gap-3 xs:flex-row">
           <button
             type="button"
             onClick={handleClose}
-            className="flex-1 rounded-xl border border-[#E4E1D8] bg-white px-4 py-2.5 text-[13px] font-medium text-[#5B655F] transition-colors hover:border-[#C9D3CC] hover:text-[#2C4A3A]"
+            className="flex-1 rounded-xl border border-[#E4E1D8] bg-white px-4 py-3 text-[13px] font-medium text-[#5B655F] transition-colors hover:border-[#C9D3CC] hover:text-[#2C4A3A] sm:py-2.5"
           >
             Cancel
           </button>
           <button
             type="button"
             onClick={handleSubmit}
-            className="flex-1 rounded-xl bg-[#3E6B52] px-4 py-2.5 text-[13px] font-semibold text-white transition-colors hover:bg-[#325A44]"
+            className="flex-1 rounded-xl bg-[#3E6B52] px-4 py-3 text-[13px] font-semibold text-white transition-colors hover:bg-[#325A44] sm:py-2.5"
           >
             Add item
           </button>

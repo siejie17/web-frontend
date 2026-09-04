@@ -32,6 +32,7 @@ export default function ProjectPageWrapper({
   );
   const assessmentStatus = selectedProject?.projectData?.assessment_status;
   const projectRetired = assessmentStatus === "requires_changes";
+  const [actualCost, setActualCost] = useState<number | null>(null);
 
   const handleActualRatingChange = (rating: number) => {
     setActualRating(rating);
@@ -71,6 +72,7 @@ export default function ProjectPageWrapper({
         project={project}
         selectedProject={selectedProject}
         liveActualRating={actualRating}
+        liveActualCost={actualCost}
         activeTab={activeTab}
       />
       <ReviewerFeedback project={selectedProject?.projectData} />
@@ -87,6 +89,7 @@ export default function ProjectPageWrapper({
         submitRef={submitRef}
         readOnly={isShared || projectRetired}
         isProjectOwner={!isShared}
+        onActualCostChange={setActualCost}
       />
 
       {/* Loading overlay — blocks interaction while submitting */}

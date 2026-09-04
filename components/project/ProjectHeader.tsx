@@ -245,6 +245,7 @@ interface ProjectHeaderProps {
   };
   selectedProject: any;
   liveActualRating?: number | null;
+  liveActualCost?: number | null;
   activeTab?: "details" | "cost" | "gbi" | "chat";
 }
 
@@ -254,6 +255,7 @@ export default function ProjectHeader({
   project,
   selectedProject,
   liveActualRating,
+  liveActualCost,
   activeTab = "details",
 }: ProjectHeaderProps) {
   const [showModal, setShowModal] = useState(false);
@@ -281,7 +283,12 @@ export default function ProjectHeader({
   const predictedCost = hasCostBreakdown
     ? sumPredictedCost(costBreakdown)
     : null;
-  const actualCost = hasCostBreakdown ? sumActualCost(costBreakdown) : null;
+  const actualCost =
+    liveActualCost != null
+      ? liveActualCost
+      : hasCostBreakdown
+        ? sumActualCost(costBreakdown)
+        : null;
   const costDiff =
     predictedCost != null && actualCost != null
       ? actualCost - predictedCost
@@ -333,11 +340,6 @@ export default function ProjectHeader({
               Predicted {predicted ?? "—"} pts
             </p>
           </div>
-          <DeltaChip
-            value={marksDiff}
-            favorable={marksFavorable}
-            label={marksDeltaLabel}
-          />
         </div>
         <div className="mt-4">
           <GbiTrack predicted={predicted} actual={rating} />
@@ -663,50 +665,6 @@ function DetailsComparisonPanel({
           </div>
         </div>
       )}
-    </div>
-  );
-}
-
-function MiniComparison({
-  icon,
-  eyebrow,
-  value,
-  sub,
-  deltaValue,
-  favorable,
-  deltaLabel,
-  children,
-}: {
-  icon: React.ReactNode;
-  eyebrow: string;
-  value: string;
-  sub: string;
-  deltaValue: number | null;
-  favorable: boolean | null;
-  deltaLabel: string;
-  children?: React.ReactNode;
-}) {
-  return (
-    <div className="flex flex-col rounded-2xl border border-[#E4E1D8] bg-[#FBFAF7] px-4 py-3.5">
-      <div className="flex items-center gap-1.5 text-[10.5px] font-semibold uppercase tracking-widest text-[#8A938C]">
-        {icon}
-        {eyebrow}
-      </div>
-      <p
-        className="mt-1.5 text-[19px] font-semibold leading-tight text-[#1E2621]"
-        style={{ fontFamily: "var(--font-display)" }}
-      >
-        {value}
-      </p>
-      <p className="text-[11.5px] text-[#5B655F]">{sub}</p>
-      <div className="mt-2">
-        <DeltaChip
-          value={deltaValue}
-          favorable={favorable}
-          label={deltaLabel}
-        />
-      </div>
-      {children && <div className="mt-3">{children}</div>}
     </div>
   );
 }

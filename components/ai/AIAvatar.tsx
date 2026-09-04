@@ -19,7 +19,7 @@ function UserAvatar({ name, profilePic }: { name: string; profilePic?: string })
   if (profilePic) {
     return (
       <img
-        src={`data:image/jpeg;base64,${profilePic}`}
+        src={`${profilePic}`}
         alt={name}
         className="h-7 w-7 rounded-full object-cover ring-2 ring-white"
       />

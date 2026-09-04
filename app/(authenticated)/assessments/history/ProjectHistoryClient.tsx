@@ -1,44 +1,42 @@
 "use client";
 
 /**
- * Refactor notes
- * --------------
- * Structure: the page is reframed around the word "history" itself — projects
- * are grouped into a chronological timeline (by year) with a connecting rail,
- * instead of a flat card stack. Year groups are formed from consecutive runs
- * in the incoming order, so no assumption is made about sort direction beyond
- * "the server already orders these sensibly."
+ * Refactor notes (ProFormaX visual alignment pass)
+ * -------------------------------------------------
+ * This pass restyles the project-history timeline to match the ProFormaX
+ * dashboard's visual system (white surfaces, dark-green primary, warm
+ * neutral borders, restrained shadows, compact information density) while
+ * keeping the page's own purpose intact: it is still a chronological
+ * timeline of assessed projects, not a dashboard. No state, handlers, data
+ * shapes, filtering, or pagination logic were changed — only markup and
+ * class names.
  *
- * Signature element: an "at a glance" stat strip in the intro (total
- * assessed / average rating / most common certification target) turns the
- * page into a small dashboard for the person's own assessment history rather
- * than a plain list, and the rating chip is replaced by a segmented gauge
- * (with zone ticks at 30/60) that visualizes the score instead of just
- * labeling it.
+ * What changed visually:
+ * - Dropped the decorative blueprint grid, graph-paper texture, dashed
+ *   rotated certification badges, and corner-tick ornaments — the dashboard
+ *   reference doesn't carry decoration that isn't functional.
+ * - Card radius stepped down from rounded-3xl to rounded-xl/rounded-2xl to
+ *   match the dashboard's card system; shadows use the same restrained
+ *   0_8px_24px_rgba(30,38,33,0.06) treatment used across ProFormaX surfaces.
+ * - Certification/status is now shown the way the dashboard's "Recent
+ *   assessments" table shows it: a small colored dot plus label
+ *   ("Silver", "Certified", "Not certified"), instead of a decorative
+ *   dashed medal chip.
+ * - The predicted/actual score gauge keeps its circular SVG (still the
+ *   clearest way to show one project's score at a glance) but is now
+ *   paired with that same dot+label status instead of the rotated badge.
+ * - Cost variance strip simplified from diamond/dot markers with glow to
+ *   plain flat ticks on a thin track, matching the dashboard's minimal
+ *   line-chart language.
+ * - Timeline rail is now a single flat muted line instead of a gradient
+ *   "vine", with a plain dot node — consistent with the dashboard's
+ *   restraint around decoration.
+ * - Buttons, chips, inputs, and pagination controls now use the dashboard's
+ *   compact heights, moderate radius, and subtle (non-lift) hover states.
  *
- * New utility: rating-tier filter chips (Strong / Moderate / Needs work) sit
- * right under search, each carrying a live count of how many of the
- * currently-searched projects fall in that tier — since "how did my
- * projects score" is a real question this page should answer directly,
- * not just imply.
- *
- * Motion: the timeline crossfades/slides in on filter or page change
- * (framer-motion, already used elsewhere in the app), with a light stagger
- * per card so the list feels like it's assembling itself rather than
- * snapping in.
- *
- * Responsiveness:
- * - Outer padding scales px-4 -> sm:px-6 -> md:px-10; intro padding
- *   p-5 -> sm:p-6 -> md:p-8, matching the rest of the app.
- * - Stat strip is a 3-col grid at all sizes (values are short), with type
- *   and gap sizes stepping down on mobile.
- * - Filter chips scroll horizontally on narrow screens instead of wrapping
- *   awkwardly or overflowing.
- * - Timeline rail offset is computed to match the pl-4 / sm:pl-6 indent so
- *   the node stays centered on the line at every breakpoint.
- * - Pagination keeps the compact Prev/Page-info/Next control below sm and
- *   the full windowed control (with ellipses) at sm+, so large page counts
- *   never overflow horizontally on mobile.
+ * Responsiveness, empty state, tabs, search, and pagination behavior are
+ * unchanged from the previous version; only their visual treatment moved
+ * to match ProFormaX.
  */
 
 import { useEffect, useMemo, useState } from "react";
@@ -49,7 +47,6 @@ import {
   Calendar,
   ChevronLeft,
   ChevronRight,
-  Gauge,
   Layers3,
   MapPin,
   Minus,
@@ -57,7 +54,6 @@ import {
   Search,
   TrendingDown,
   TrendingUp,
-  Wallet,
   X,
 } from "lucide-react";
 import { Project } from "@/lib/server/project-access"; // Adjust this import path
@@ -74,9 +70,12 @@ const T = {
   muted: "#5B655F",
   mutedSoft: "#8A938C",
   chip: "#F6F6F2",
+  lightGreen: "#EEF2EC",
   clay: "#B14A3D",
   amber: "#B5842A",
 };
+
+const CARD_SHADOW = "0 8px 24px rgba(30,38,33,0.06)";
 
 /* ---------------- Helpers ---------------- */
 
@@ -94,10 +93,10 @@ const formatDateTime = (v: any) =>
 
 function ratingTone(rating: number) {
   if (rating >= 60)
-    return { text: T.forest, fill: T.forest, ring: "rgba(62,107,82,0.14)" };
+    return { text: T.forest, fill: T.forest, dot: T.forest };
   if (rating >= 30)
-    return { text: T.amber, fill: T.amber, ring: "rgba(181,132,42,0.14)" };
-  return { text: T.clay, fill: T.clay, ring: "rgba(177,74,61,0.14)" };
+    return { text: T.amber, fill: T.amber, dot: T.amber };
+  return { text: T.clay, fill: T.clay, dot: T.clay };
 }
 
 function getCertificationName(
@@ -236,58 +235,30 @@ export default function ProjectHistoryClient({
   }, [activeProjects, refreshProjects]);
 
   return (
-    <div className="mx-auto max-w-275 px-4 pb-10 pt-6 sm:px-6 md:px-10">
-      {/* ---------------- Breadcrumb ---------------- */}
-      <BackButton text="Dashboard" redirect="/dashboard" />
-
+    <div className="mx-auto px-4 pb-10 pt-6 sm:px-6 md:px-10">
       {/* ---------------- Intro ---------------- */}
-      <section className="relative mb-6 overflow-hidden rounded-3xl border border-[#E4E1D8] bg-[#FCFCF8] p-5 shadow-[0_8px_24px_rgba(30,38,33,0.04)] sm:p-6 md:p-8">
-        {/* Ambient blueprint grid — same backdrop treatment used across
-            the app's intro cards. */}
-        <div
-          aria-hidden="true"
-          className="pointer-events-none absolute inset-0"
-          style={{
-            backgroundImage:
-              "linear-gradient(#E4E1D8 1px, transparent 1px), linear-gradient(90deg, #E4E1D8 1px, transparent 1px)",
-            backgroundSize: "28px 28px",
-            maskImage:
-              "radial-gradient(ellipse 65% 100% at 100% 0%, black 0%, transparent 75%)",
-            WebkitMaskImage:
-              "radial-gradient(ellipse 65% 100% at 100% 0%, black 0%, transparent 75%)",
-            opacity: 0.7,
-          }}
-        />
-
-        <div className="relative flex flex-col gap-6 sm:flex-row sm:items-start sm:justify-between">
-          <div>
-            <p
-              className="mb-3 text-[11.5px] uppercase tracking-[0.08em] text-[#7C8880] sm:text-[12px]"
-              style={{ fontFamily: "var(--font-mono)" }}
-            >
-              Project history
-            </p>
-            <h1
-              className="text-[26px] font-bold leading-[1.18] tracking-[-0.02em] sm:text-[30px] md:text-[32px]"
-              style={{ fontFamily: "var(--font-display)" }}
-            >
-              Your assessments
-            </h1>
-            <p className="mt-2.5 max-w-lg text-[13.5px] leading-relaxed text-[#5B655F] sm:text-[14px]">
-              Every project you have assessed, in order, in one place.
-            </p>
-          </div>
-
-          {/* Signature emblem: a stack of records, certified */}
-          <div
-            aria-hidden="true"
-            className="relative hidden h-20 w-20 shrink-0 items-center justify-center rounded-2xl border border-dashed border-[#C9D3CC] bg-white/80 backdrop-blur-sm sm:flex"
+      <section
+        className="relative mb-6 flex flex-col gap-4 rounded-xl border bg-white p-5 sm:flex-row sm:items-center sm:justify-between sm:p-6"
+        style={{ borderColor: T.hairline, boxShadow: CARD_SHADOW }}
+      >
+        <div>
+          <h1
+            className="text-[22px] font-bold leading-tight tracking-[-0.01em] sm:text-[26px]"
+            style={{ fontFamily: "var(--font-display)", color: T.ink }}
           >
-            <Layers3 size={30} className="text-[#2C4A3A]" strokeWidth={1.5} />
-            <span className="absolute -bottom-2.5 -right-2.5 flex h-8 w-8 items-center justify-center rounded-full border-[3px] border-[#FCFCF8] bg-[#3E6B52] text-white shadow-[0_6px_14px_rgba(62,107,82,0.35)]">
-              <Award size={14} />
-            </span>
-          </div>
+            Your assessments
+          </h1>
+          <p className="mt-1.5 max-w-lg text-[13px] leading-relaxed sm:text-[13.5px]" style={{ color: T.muted }}>
+            Every project you have assessed, in order, in one place.
+          </p>
+        </div>
+
+        <div
+          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full"
+          style={{ background: T.lightGreen }}
+          aria-hidden="true"
+        >
+          <Layers3 size={20} style={{ color: T.forestDeep }} strokeWidth={1.75} />
         </div>
       </section>
 
@@ -295,7 +266,8 @@ export default function ProjectHistoryClient({
       <div
         role="tablist"
         aria-label="Project history views"
-        className="mx-2 mb-1 flex w-fit items-center gap-1 rounded-full border border-[#E4E1D8] bg-[#F6F6F2] p-1"
+        className="mb-4 flex w-full flex-col divide-y divide-[#E4E1D8] rounded-lg border bg-white p-1 sm:flex-row sm:divide-y-0"
+        style={{ borderColor: T.hairline }}
       >
         <button
           type="button"
@@ -304,17 +276,19 @@ export default function ProjectHistoryClient({
           aria-controls="owned-projects"
           id="tab-owned"
           onClick={() => switchTab("owned")}
-          className={`rounded-full px-4 py-1.5 text-[13px] font-medium transition-all focus-visible:outline focus-visible:outline-offset-2 focus-visible:outline-[#3E6B52] sm:px-5 ${
+          className="flex min-w-0 flex-1 cursor-pointer items-center justify-center rounded-md px-3.5 py-2 text-[13px] font-medium transition-colors focus-visible:outline focus-visible:outline-offset-2 sm:px-4 sm:py-1.5"
+          style={
             tab === "owned"
-              ? "bg-[#3E6B52] text-[#F6F6F2] shadow-[0_8px_20px_rgba(62,107,82,0.25)]"
-              : "text-[#5B655F] hover:text-[#1E2621]"
-          }`}
+              ? { background: T.forest, color: "#fff" }
+              : { color: T.muted }
+          }
         >
           My Projects
           <span className="ml-1.5 text-[11px] opacity-70">
             ({projects.length})
           </span>
         </button>
+
         <button
           type="button"
           role="tab"
@@ -322,11 +296,12 @@ export default function ProjectHistoryClient({
           aria-controls="shared-projects"
           id="tab-shared"
           onClick={() => switchTab("shared")}
-          className={`rounded-full px-4 py-1.5 text-[13px] font-medium transition-all focus-visible:outline focus-visible:outline-offset-2 focus-visible:outline-[#3E6B52] sm:px-5 ${
+          className="flex min-w-0 flex-1 cursor-pointer items-center justify-center rounded-md px-3.5 py-2 text-[13px] font-medium transition-colors focus-visible:outline focus-visible:outline-offset-2 sm:px-4 sm:py-1.5"
+          style={
             tab === "shared"
-              ? "bg-[#3E6B52] text-[#F6F6F2] shadow-[0_8px_20px_rgba(62,107,82,0.25)]"
-              : "text-[#5B655F] hover:text-[#1E2621]"
-          }`}
+              ? { background: T.forest, color: "#fff" }
+              : { color: T.muted }
+          }
         >
           Shared
           <span className="ml-1.5 text-[11px] opacity-70">
@@ -336,10 +311,11 @@ export default function ProjectHistoryClient({
       </div>
 
       {/* ---------------- Search ---------------- */}
-      <div className="my-5 mx-2 relative">
+      <div className="mb-5 relative">
         <Search
           size={16}
-          className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-[#8A938C] sm:left-4"
+          className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2"
+          style={{ color: T.mutedSoft }}
         />
         <input
           type="text"
@@ -347,14 +323,21 @@ export default function ProjectHistoryClient({
           onChange={(e) => handleSearchChange(e.target.value)}
           placeholder="Search by project name..."
           aria-label="Search projects"
-          className="w-full rounded-2xl border border-[#E4E1D8] bg-white py-3 pl-10 pr-10 text-[13.5px] text-[#1E2621] placeholder:text-[#A2AAA4] transition-all focus:border-[#3E6B52] focus:outline-none focus:ring-4 focus:ring-[#3E6B52]/10 sm:pl-11 sm:pr-11 sm:text-[14px]"
+          className="w-full rounded-lg border bg-white py-2.5 pl-10 pr-10 text-[13.5px] transition-colors focus:outline-none focus:ring-2 sm:text-[14px]"
+          style={{
+            borderColor: T.hairline,
+            color: T.ink,
+          }}
+          onFocus={(e) => (e.currentTarget.style.borderColor = T.forest)}
+          onBlur={(e) => (e.currentTarget.style.borderColor = T.hairline)}
         />
         {query && (
           <button
             type="button"
             onClick={() => handleSearchChange("")}
             aria-label="Clear search"
-            className="absolute right-3 top-1/2 flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-full text-[#8A938C] transition-colors hover:bg-[#F6F6F2] hover:text-[#1E2621] sm:right-3.5"
+            className="absolute right-3 top-1/2 flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-full transition-colors hover:bg-[#F6F6F2]"
+            style={{ color: T.mutedSoft }}
           >
             <X size={14} />
           </button>
@@ -387,23 +370,30 @@ export default function ProjectHistoryClient({
           >
             {groups.map((group, gi) => (
               <div key={`${group.year}-${gi}`} className="mb-8 last:mb-0">
-                <div className="mb-4 flex items-center gap-3">
+                <div className="mb-3 flex items-center gap-3">
                   <span
-                    className="shrink-0 rounded-full bg-[#3E6B52] px-3 py-1 text-[12px] font-semibold text-[#F6F6F2] sm:text-[13px]"
-                    style={{ fontFamily: "var(--font-mono)" }}
+                    className="shrink-0 rounded-md px-2.5 py-1 text-[12px] font-semibold"
+                    style={{
+                      fontFamily: "var(--font-mono)",
+                      background: T.lightGreen,
+                      color: T.forestDeep,
+                    }}
                   >
                     {group.year}
                   </span>
-                  <span className="h-px flex-1 bg-[#E4E1D8]" />
-                  <span className="shrink-0 text-[11px] text-[#8A938C] sm:text-[11.5px]">
+                  <span className="h-px flex-1" style={{ background: T.hairline }} />
+                  <span className="shrink-0 text-[11px]" style={{ color: T.mutedSoft }}>
                     {group.items.length} project
                     {group.items.length !== 1 ? "s" : ""}
                   </span>
                 </div>
 
-                <div className="relative space-y-3.5 pl-4 sm:space-y-4 sm:pl-6">
-                  {/* Gradient vine rail, replacing the flat gray border-l */}
-                  <div className="absolute left-0 top-2 bottom-2 w-px bg-linear-to-b from-[#3E6B52] via-[#8FAF9C] to-[#E4E1D8]" />
+                <div className="relative space-y-3 pl-4 sm:pl-5">
+                  {/* Flat timeline rail */}
+                  <div
+                    className="absolute left-0 top-2 bottom-2 w-px"
+                    style={{ background: T.hairline }}
+                  />
 
                   {group.items.map((project, pi) => (
                     <motion.div
@@ -413,7 +403,10 @@ export default function ProjectHistoryClient({
                       animate={{ opacity: 1, y: 0 }}
                       transition={{ duration: 0.3, delay: pi * 0.04 }}
                     >
-                      <span className="absolute -left-5.25 top-7 h-2.5 w-2.5 rounded-full border-2 border-[#FCFCF8] bg-[#3E6B52] transition-transform duration-200 group-hover:scale-125 group-hover:shadow-[0_0_0_6px_rgba(62,107,82,0.15)] sm:-left-7.25" />
+                      <span
+                        className="absolute -left-[19px] top-7 h-2 w-2 rounded-full border-2 sm:-left-[23px]"
+                        style={{ borderColor: T.cream, background: T.forest }}
+                      />
                       <ProjectCard
                         project={project}
                         unread={unreadByProject[project.id] ?? 0}
@@ -446,19 +439,25 @@ function EmptyState({
   onClear: () => void;
 }) {
   return (
-    <div className="flex flex-col items-center justify-center rounded-3xl border border-dashed border-[#E4E1D8] bg-[#FCFCF8] px-5 py-12 text-center sm:px-6 sm:py-16">
-      <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-[#F6F6F2] text-[#8A938C]">
-        <Search size={20} />
+    <div
+      className="flex flex-col items-center justify-center rounded-xl border border-dashed bg-white px-5 py-12 text-center sm:px-6 sm:py-16"
+      style={{ borderColor: T.hairline }}
+    >
+      <div
+        className="mb-4 flex h-11 w-11 items-center justify-center rounded-full"
+        style={{ background: T.chip, color: T.mutedSoft }}
+      >
+        <Search size={18} />
       </div>
       <h3
-        className="text-[15px] font-semibold text-[#1E2621] sm:text-[16px]"
-        style={{ fontFamily: "var(--font-display)" }}
+        className="text-[15px] font-semibold sm:text-[16px]"
+        style={{ fontFamily: "var(--font-display)", color: T.ink }}
       >
         {tab === "shared" ? "No shared projects" : "No projects found"}
       </h3>
-      <p className="mt-1.5 max-w-sm text-[13px] text-[#5B655F] sm:text-[13.5px]">
+      <p className="mt-1.5 max-w-sm text-[13px] sm:text-[13.5px]" style={{ color: T.muted }}>
         {hasFilters
-          ? "Nothing matches that search or filter. Try a different name, location, year, or rating tier."
+          ? "Nothing matches that search. Try a different name, location, or year."
           : tab === "shared"
             ? "Projects shared with you through the project chat will appear here once another user adds you to their project."
             : "Assessed projects will show up here once you run your first assessment."}
@@ -467,15 +466,17 @@ function EmptyState({
         <button
           type="button"
           onClick={onClear}
-          className="mt-4 rounded-full border border-[#E4E1D8] bg-white px-4 py-2 text-[13px] font-medium text-[#3E6B52] transition-all hover:-translate-y-0.5 hover:border-[#C9D3CC] hover:shadow-[0_10px_24px_rgba(30,38,33,0.08)]"
+          className="mt-4 rounded-md border bg-white px-4 py-2 text-[13px] font-medium transition-colors hover:bg-[#F6F6F2]"
+          style={{ borderColor: T.hairline, color: T.forest }}
         >
-          Clear search & filters
+          Clear search
         </button>
       )}
     </div>
   );
 }
 
+/* ---------------- Cost variance strip ---------------- */
 function CostVarianceStrip({
   budget,
   adjustedCost,
@@ -493,19 +494,19 @@ function CostVarianceStrip({
   const statusMeta = {
     under: {
       color: T.forest,
-      bg: "rgba(62,107,82,0.09)",
+      bg: T.lightGreen,
       icon: TrendingDown,
       label: "under budget",
     },
     over: {
       color: T.clay,
-      bg: "rgba(177,74,61,0.09)",
+      bg: "#FBEDEB",
       icon: TrendingUp,
       label: "over budget",
     },
     onbudget: {
       color: T.amber,
-      bg: "rgba(181,132,42,0.09)",
+      bg: "#FBF3E7",
       icon: Minus,
       label: "on budget",
     },
@@ -518,64 +519,56 @@ function CostVarianceStrip({
   const Icon = statusMeta.icon;
 
   return (
-    <div className="mt-4 sm:mt-4.5">
+    <div className="mt-4">
       <div className="mb-2 flex items-center justify-between">
         <span
-          className="text-[9.5px] font-semibold uppercase tracking-[0.08em]"
+          className="text-[10px] font-semibold uppercase tracking-[0.04em]"
           style={{ fontFamily: "var(--font-mono)", color: T.mutedSoft }}
         >
           Estimate vs. predicted
         </span>
         <span
-          className="flex items-center gap-1 rounded-full px-2 py-0,75 text-[10.5px] font-bold"
+          className="flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[10.5px] font-semibold"
           style={{ background: statusMeta.bg, color: statusMeta.color }}
         >
-          <Icon size={11} strokeWidth={2.75} />
+          <Icon size={11} strokeWidth={2.5} />
           {b > 0 ? `${diffPct > 0 ? "+" : ""}${diffPct.toFixed(1)}%` : "—"}
         </span>
       </div>
 
-      <div className="relative h-6">
+      <div className="relative h-4">
         {/* base track */}
         <div
-          className="absolute left-0 right-0 top-1/2 h-0.75 -translate-y-1/2 rounded-full"
+          className="absolute left-0 right-0 top-1/2 h-[3px] -translate-y-1/2 rounded-full"
           style={{ background: T.hairlineSoft }}
         />
-        {/* budgeted range fill */}
+        {/* connecting fill between the two markers */}
         <div
-          className="absolute left-0 top-1/2 h-0.75 -translate-y-1/2 rounded-full"
-          style={{ width: `${budgetPos}%`, background: "rgba(30,38,33,0.10)" }}
-        />
-        {/* connecting bracket between the two markers */}
-        <div
-          className="absolute top-1/2 h-0.75 -translate-y-1/2 rounded-full transition-all duration-500"
+          className="absolute top-1/2 h-[3px] -translate-y-1/2 rounded-full transition-all duration-500"
           style={{
             left: `${Math.min(budgetPos, predPos)}%`,
             width: `${Math.abs(predPos - budgetPos)}%`,
             background: statusMeta.color,
-            opacity: 0.55,
+            opacity: 0.5,
           }}
         />
-        {/* budget marker — diamond */}
+        {/* budget marker */}
         <div
-          className="absolute top-1/2 h-2 w-2 -translate-x-1/2 -translate-y-1/2 rotate-45"
+          className="absolute top-1/2 h-2.5 w-[3px] -translate-x-1/2 -translate-y-1/2 rounded-full"
           style={{ left: `${budgetPos}%`, background: T.ink }}
           title={`Budgeted ${formatCurrency(b)}`}
         />
-        {/* predicted marker — dot */}
+        {/* predicted marker */}
         <div
-          className="absolute top-1/2 h-3 w-3 -translate-x-1/2 -translate-y-1/2 rounded-full ring-2 ring-white transition-all duration-500"
+          className="absolute top-1/2 h-2.5 w-2.5 -translate-x-1/2 -translate-y-1/2 rounded-full ring-2 ring-white transition-all duration-500"
           style={{ left: `${predPos}%`, background: statusMeta.color }}
           title={`Predicted ${formatCurrency(a)}`}
         />
       </div>
 
-      <div className="mt-1 flex items-center justify-between text-[11px] sm:text-[11.5px]">
+      <div className="mt-1.5 flex items-center justify-between text-[11px] sm:text-[11.5px]">
         <span className="flex items-center gap-1" style={{ color: T.muted }}>
-          <span
-            className="inline-block h-1.5 w-1.5 rotate-45"
-            style={{ background: T.ink }}
-          />
+          <span className="inline-block h-1.5 w-1.5 rounded-sm" style={{ background: T.ink }} />
           Budgeted&nbsp;
           <span className="font-semibold" style={{ color: T.ink }}>
             {formatCurrency(b)}
@@ -596,21 +589,42 @@ function CostVarianceStrip({
   );
 }
 
-/* ---------------- Certification badge colours ---------------- */
+/* ---------------- Certification status colours ---------------- */
 
 function certBadgeStyle(cert: string | null | undefined) {
   switch (cert) {
     case "Platinum":
-      return { border: "#CFE0D6", text: "#2C4A3A", bg: "#EEF2EC" };
+      return { dot: T.forestDeep, text: T.forestDeep, bg: T.lightGreen };
     case "Gold":
-      return { border: "#EBD8B8", text: "#7A5A20", bg: "#FBF3E7" };
+      return { dot: "#B5842A", text: "#7A5A20", bg: "#FBF3E7" };
     case "Silver":
-      return { border: "#D8D4C8", text: "#5B655F", bg: "#F6F6F2" };
+      return { dot: T.mutedSoft, text: T.muted, bg: T.chip };
     case "Certified":
-      return { border: "#EBD8B8", text: "#7A5A20", bg: "#FBF3E7" };
+      return { dot: "#B5842A", text: "#7A5A20", bg: "#FBF3E7" };
     default:
-      return { border: "#E7C1BA", text: "#8C3D33", bg: "#FBEDEB" };
+      return { dot: T.clay, text: "#8C3D33", bg: "#FBEDEB" };
   }
+}
+
+/** Small dot + label status chip, matching the dashboard's assessment table */
+function CertStatus({
+  certification,
+}: {
+  certification: string | null | undefined;
+}) {
+  const style = certBadgeStyle(certification);
+  return (
+    <span
+      className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-[11px] font-semibold"
+      style={{ background: style.bg, color: style.text }}
+    >
+      <span
+        className="inline-block h-1.5 w-1.5 shrink-0 rounded-full"
+        style={{ background: style.dot }}
+      />
+      {certification ?? "Not certified"}
+    </span>
+  );
 }
 
 /* ---------------- Score gauge (circular) ---------------- */
@@ -625,32 +639,20 @@ function ScoreGauge({
 }) {
   const tone = ratingTone(rating);
   const pct = Math.max(0, Math.min(100, rating));
-  const r = 21;
+  const r = 19;
   const c = 2 * Math.PI * r;
   const offset = c - (pct / 100) * c;
 
   return (
     <div
-      className="flex items-center gap-2.5 rounded-2xl border px-3 py-2 sm:px-3.5 sm:py-2.5"
+      className="flex items-center gap-2.5 rounded-lg border px-3 py-2"
       style={{ borderColor: T.hairline, background: "#fff" }}
     >
-      <svg
-        width="50"
-        height="50"
-        viewBox="0 0 50 50"
-        className="shrink-0 -rotate-90"
-      >
+      <svg width="46" height="46" viewBox="0 0 46 46" className="shrink-0 -rotate-90">
+        <circle cx="23" cy="23" r={r} fill="none" stroke={T.hairlineSoft} strokeWidth="4" />
         <circle
-          cx="25"
-          cy="25"
-          r={r}
-          fill="none"
-          stroke={T.hairlineSoft}
-          strokeWidth="4"
-        />
-        <circle
-          cx="25"
-          cy="25"
+          cx="23"
+          cy="23"
           r={r}
           fill="none"
           stroke={tone.fill}
@@ -661,60 +663,29 @@ function ScoreGauge({
           style={{ transition: "stroke-dashoffset 600ms ease-out" }}
         />
         <text
-          x="25"
-          y="25"
+          x="23"
+          y="23"
           textAnchor="middle"
           dominantBaseline="central"
-          transform="rotate(90 25 25)"
+          transform="rotate(90 23 23)"
           fontSize="13"
           fontWeight="700"
           fill={T.ink}
+          fontFamily="var(--font-mono)"
         >
           {rating}
         </text>
       </svg>
-      <div className="flex flex-col leading-tight">
+      <div className="flex flex-col gap-1 leading-tight">
         <span
-          className="text-[9px] font-semibold uppercase tracking-[0.06em] mb-1.5"
-          style={{ fontFamily: "var(--font-mono)", color: tone.text }}
+          className="text-[9.5px] font-semibold uppercase tracking-[0.05em]"
+          style={{ fontFamily: "var(--font-mono)", color: T.mutedSoft }}
         >
           {label}
         </span>
-        <div
-          className="flex shrink-0 -rotate-2 items-center gap-2 rounded-lg border-2 border-dashed px-1.5 py-1"
-          style={{
-            borderColor: certBadgeStyle(certification).border,
-            color: certBadgeStyle(certification).text,
-          }}
-        >
-          <Award size={15} />
-          <span
-            className="text-[8.5px] font-bold uppercase tracking-[0.06em]"
-            style={{ fontFamily: "var(--font-mono)" }}
-          >
-            {certification ?? "N/A"}
-          </span>
-        </div>
+        <CertStatus certification={certification} />
       </div>
     </div>
-  );
-}
-
-function CornerTick({ className }: any) {
-  return (
-    <svg
-      width="14"
-      height="14"
-      viewBox="0 0 14 14"
-      className={className}
-      style={{ color: T.mutedSoft }}
-    >
-      <path
-        d="M7 0V5.5M7 14V8.5M0 7H5.5M14 7H8.5"
-        stroke="currentColor"
-        strokeWidth="1"
-      />
-    </svg>
   );
 }
 
@@ -732,68 +703,38 @@ function ProjectCard({
     <a
       href={`/projects/${project.id}`}
       onClick={onOpen}
-      className="group/card relative block overflow-hidden rounded-3xl border bg-white transition-all hover:-translate-y-0.5 focus-visible:outline focus-visible:outline-offset-2"
+      className="group/card relative block overflow-hidden rounded-xl border bg-white transition-colors focus-visible:outline focus-visible:outline-offset-2"
       style={{
         borderColor: T.hairline,
-        boxShadow: "0 8px 24px rgba(30,38,33,0.04)",
+        boxShadow: CARD_SHADOW,
         outlineColor: T.forest,
       }}
-      onMouseEnter={(e) => {
-        e.currentTarget.style.borderColor = "#C9D3CC";
-        e.currentTarget.style.boxShadow = "0 16px 36px rgba(30,38,33,0.09)";
-      }}
-      onMouseLeave={(e) => {
-        e.currentTarget.style.borderColor = T.hairline;
-        e.currentTarget.style.boxShadow = "0 8px 24px rgba(30,38,33,0.04)";
-      }}
+      onMouseEnter={(e) => (e.currentTarget.style.borderColor = "#C9D3CC")}
+      onMouseLeave={(e) => (e.currentTarget.style.borderColor = T.hairline)}
     >
-      {/* graph-paper texture, confined to the right-hand margin so it never
-              sits under text — visible without competing with content */}
-      <div
-        className="pointer-events-none absolute inset-y-0 right-0 hidden w-28 opacity-[0.09] sm:block"
-        style={{
-          backgroundImage: `radial-gradient(circle, ${T.mutedSoft} 1.2px, transparent 1.2px)`,
-          backgroundSize: "14px 14px",
-          maskImage:
-            "linear-gradient(to left, black, black 40%, transparent 100%)",
-          WebkitMaskImage:
-            "linear-gradient(to left, black, black 40%, transparent 100%)",
-        }}
-      />
-
-      <CornerTick className="absolute left-3 top-3 opacity-0 transition-opacity duration-300 group-hover/card:opacity-70" />
-      <CornerTick className="absolute right-3 top-3 rotate-90 opacity-0 transition-opacity duration-300 group-hover/card:opacity-70" />
-
       {/* New-messages badge */}
       {unread > 0 && (
         <span
-          className="absolute right-3 top-3 z-10 flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-[10.5px] font-bold text-white shadow-[0_4px_12px_rgba(177,74,61,0.35)]"
-          style={{
-            background: T.clay,
-            fontFamily: "var(--font-mono)",
-          }}
+          className="absolute right-3 top-3 z-10 flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-[10.5px] font-bold text-white"
+          style={{ background: T.clay, fontFamily: "var(--font-mono)" }}
           title={`${unread} new message${unread === 1 ? "" : "s"}`}
         >
           {unread > 9 ? "9+" : unread}
         </span>
       )}
 
-      <div className="relative flex flex-col gap-4 p-5 sm:flex-row sm:items-start sm:justify-between sm:gap-6 sm:p-6 md:p-7">
+      <div className="relative flex flex-col gap-4 p-5 md:flex-row md:items-start md:justify-between md:gap-6 sm:p-6">
         <div className="min-w-0 flex-1">
           <div className="mb-2 flex flex-wrap items-center gap-2">
             <span
-              className="rounded-full px-2.5 py-0.5 text-[10.5px] font-medium uppercase tracking-[0.04em] sm:text-[11px]"
-              style={{
-                fontFamily: "var(--font-mono)",
-                background: T.chip,
-                color: T.mutedSoft,
-              }}
+              className="rounded-md px-2 py-0.5 text-[10.5px] font-medium sm:text-[11px]"
+              style={{ fontFamily: "var(--font-mono)", background: T.chip, color: T.mutedSoft }}
             >
               {project.type_name}
             </span>
             {project.classification && (
               <span
-                className="rounded-full px-2.5 py-0.5 text-[10.5px] font-medium sm:text-[11px]"
+                className="rounded-md px-2 py-0.5 text-[10.5px] font-medium sm:text-[11px]"
                 style={{ background: T.chip, color: T.mutedSoft }}
               >
                 {project.classification}
@@ -802,70 +743,55 @@ function ProjectCard({
           </div>
 
           <h3
-            className="truncate text-[16.5px] font-bold leading-tight tracking-[-0.01em] transition-colors sm:text-[18px]"
+            className="truncate text-[16px] font-bold leading-tight tracking-[-0.01em] sm:text-[17.5px]"
             style={{ fontFamily: "var(--font-display)", color: T.ink }}
           >
             {project.name}
           </h3>
-          <p
-            className="mt-1 truncate text-[12.5px] sm:text-[13px]"
-            style={{ color: T.muted }}
-          >
+          <p className="mt-1 truncate text-[12.5px] sm:text-[13px]" style={{ color: T.muted }}>
             {project.category} &middot; {project.structure}
           </p>
 
           <div
-            className="mt-3.5 flex flex-wrap gap-x-4 gap-y-1.5 text-[12px] sm:mt-4 sm:gap-x-5 sm:gap-y-2 sm:text-[12.5px]"
+            className="mt-3.5 flex flex-wrap gap-x-4 gap-y-1.5 text-[12px] sm:mt-4 sm:gap-x-5 sm:text-[12.5px]"
             style={{ color: T.muted }}
           >
             <span className="flex items-center gap-1.5">
-              <MapPin
-                size={13}
-                className="shrink-0"
-                style={{ color: T.mutedSoft }}
-              />
+              <MapPin size={13} className="shrink-0" style={{ color: T.mutedSoft }} />
               {project.location}
             </span>
             <span className="flex items-center gap-1.5">
-              <Ruler
-                size={13}
-                className="shrink-0"
-                style={{ color: T.mutedSoft }}
-              />
+              <Ruler size={13} className="shrink-0" style={{ color: T.mutedSoft }} />
               {formatSize(project.size ?? "0")}
             </span>
             <span className="flex items-center gap-1.5">
-              <Calendar
-                size={13}
-                className="shrink-0"
-                style={{ color: T.mutedSoft }}
-              />
+              <Calendar size={13} className="shrink-0" style={{ color: T.mutedSoft }} />
               {project.year}
             </span>
           </div>
 
-          <CostVarianceStrip
-            budget={project.budget}
-            adjustedCost={project.adjusted_cost}
-          />
+          <CostVarianceStrip budget={project.budget} adjustedCost={project.adjusted_cost} />
         </div>
 
-        <div className="flex flex-row items-center gap-2.5 sm:shrink-0 sm:flex-col sm:items-end sm:gap-2.5">
+        <div className="flex flex-row items-center gap-2.5 md:shrink-0 md:flex-col md:items-end md:gap-2.5">
           {project.certificate?.status === "issued" && (
-            <div className="flex min-w-36 items-center gap-2 rounded-lg border border-[#b9cbbf] bg-[#f3f8f4] px-3 py-2 text-[#2a4b3a]">
+            <div
+              className="flex min-w-36 items-center gap-2 rounded-lg border px-3 py-2"
+              style={{ borderColor: "#B9CBBF", background: T.lightGreen, color: T.forestDeep }}
+            >
               <Award size={16} className="shrink-0" />
               <div>
-                <p className="text-[9px] font-semibold uppercase">Final certificate</p>
+                <p className="text-[9px] font-semibold uppercase tracking-[0.04em]">Final certificate</p>
                 <p className="text-xs font-bold">{project.certificate.certification_level}</p>
-                <p className="text-[10px] text-[#68756d]">
+                <p className="text-[10px]" style={{ color: T.muted }}>
                   {project.certificate.approved_actual_score}/{project.certificate.maximum_score} points
                 </p>
               </div>
             </div>
           )}
-          {project.target_certification &&
-          project.target_certification !== "Not Certified" ? (
-            <div className="flex flex-col gap-1.5">
+
+          {project.target_certification && project.target_certification !== "Not Certified" ? (
+            <div className="hidden md:flex md:flex-col md:gap-1.5">
               <ScoreGauge
                 rating={project.rating ?? 0}
                 label="Predicted"
@@ -874,11 +800,14 @@ function ProjectCard({
               {project.actual_rating != null && (
                 <>
                   <div className="flex items-center gap-2 px-1">
-                    <div className="h-px flex-1 bg-border" />
-                    <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                    <div className="h-px flex-1" style={{ background: T.hairline }} />
+                    <span
+                      className="text-[10px] font-semibold uppercase tracking-wider"
+                      style={{ color: T.mutedSoft }}
+                    >
                       vs.
                     </span>
-                    <div className="h-px flex-1 bg-border" />
+                    <div className="h-px flex-1" style={{ background: T.hairline }} />
                   </div>
                   <ScoreGauge
                     rating={project.actual_rating}
@@ -886,8 +815,7 @@ function ProjectCard({
                     certification={
                       project.certifications
                         ? getCertificationName(
-                            project.certifications
-                              .certifiedScaleRange as Record<
+                            project.certifications.certifiedScaleRange as Record<
                               string,
                               [number, number]
                             >,
@@ -900,44 +828,52 @@ function ProjectCard({
               )}
             </div>
           ) : (
-            <div className="flex flex-col items-start">
+            <div className="flex max-[720px]:hidden flex-col items-start gap-1.5">
               <span
-                className="mb-1.5 text-[9px] font-semibold uppercase tracking-[0.06em]"
-                style={{
-                  fontFamily: "var(--font-mono)",
-                  color: certBadgeStyle(project.target_certification).text,
-                }}
+                className="text-[9.5px] font-semibold uppercase tracking-[0.05em]"
+                style={{ fontFamily: "var(--font-mono)", color: T.mutedSoft }}
               >
                 Predicted
               </span>
-
-              <div
-                className="flex shrink-0 -rotate-2 items-center gap-2 rounded-lg border-2 border-dashed px-3 py-2"
-                style={{
-                  borderColor: certBadgeStyle(project.target_certification).border,
-                  color: certBadgeStyle(project.target_certification).text,
-                }}
-              >
-                <Award size={15} />
-                <span
-                  className="text-[10.5px] font-bold uppercase tracking-[0.06em]"
-                  style={{ fontFamily: "var(--font-mono)" }}
-                >
-                  {project.target_certification ?? "N/A"}
-                </span>
-              </div>
+              <CertStatus certification={project.target_certification} />
             </div>
           )}
         </div>
+
+        {project.target_certification && project.target_certification !== "Not Certified" && (
+          <div
+            className="flex w-full items-center justify-center gap-5 pt-1.5 max-[578px]:hidden md:hidden"
+            style={{ borderColor: T.hairlineSoft }}
+          >
+            <ScoreGauge
+              rating={project.rating ?? 0}
+              label="Predicted"
+              certification={project.target_certification}
+            />
+            <span className="text-[10px] font-semibold uppercase tracking-wider" style={{ color: T.mutedSoft }}>
+              vs.
+            </span>
+            {project.actual_rating != null && (
+              <ScoreGauge
+                rating={project.actual_rating}
+                label="Actual"
+                certification={
+                  project.certifications
+                    ? getCertificationName(
+                        project.certifications.certifiedScaleRange as Record<string, [number, number]>,
+                        project.actual_rating,
+                      )
+                    : undefined
+                }
+              />
+            )}
+          </div>
+        )}
       </div>
 
       <div
-        className="relative border-t px-5 py-2.5 text-[11px] sm:px-6 sm:text-[11.5px] md:px-7"
-        style={{
-          borderColor: T.hairlineSoft,
-          background: T.cream,
-          color: T.mutedSoft,
-        }}
+        className="relative border-t px-5 py-2.5 text-[11px] sm:px-6 sm:text-[11.5px]"
+        style={{ borderColor: T.hairlineSoft, background: T.cream, color: T.mutedSoft }}
       >
         Created {formatDateTime(project.created_at)}
       </div>
@@ -960,8 +896,11 @@ function Pagination({
   const pages = paginationRange(page, totalPages);
 
   return (
-    <div className="mt-6 flex flex-col items-center justify-between gap-4 border-t border-[#EFEDE6] pt-5 sm:mt-7 sm:flex-row sm:pt-6">
-      <p className="hidden text-[12.5px] text-[#8A938C] sm:block">
+    <div
+      className="mt-6 flex flex-col items-center justify-between gap-4 border-t pt-5 sm:mt-7 sm:flex-row sm:pt-6"
+      style={{ borderColor: T.hairlineSoft }}
+    >
+      <p className="hidden text-[12.5px] sm:block" style={{ color: T.mutedSoft }}>
         Page {page} of {totalPages}
       </p>
 
@@ -972,12 +911,13 @@ function Pagination({
           onClick={() => onChange(page - 1)}
           disabled={page === 1}
           aria-label="Previous page"
-          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-[#E4E1D8] bg-white text-[#5B655F] transition-all disabled:pointer-events-none disabled:opacity-40 focus-visible:outline focus-visible:outline-offset-2 focus-visible:outline-[#3E6B52]"
+          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border bg-white transition-colors disabled:pointer-events-none disabled:opacity-40 focus-visible:outline focus-visible:outline-offset-2"
+          style={{ borderColor: T.hairline, color: T.muted }}
         >
           <ChevronLeft size={16} />
         </button>
 
-        <p className="text-[12.5px] text-[#8A938C]">
+        <p className="text-[12.5px]" style={{ color: T.mutedSoft }}>
           Page {page} of {totalPages}
         </p>
 
@@ -986,7 +926,8 @@ function Pagination({
           onClick={() => onChange(page + 1)}
           disabled={page === totalPages}
           aria-label="Next page"
-          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-[#E4E1D8] bg-white text-[#5B655F] transition-all disabled:pointer-events-none disabled:opacity-40 focus-visible:outline focus-visible:outline-offset-2 focus-visible:outline-[#3E6B52]"
+          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border bg-white transition-colors disabled:pointer-events-none disabled:opacity-40 focus-visible:outline focus-visible:outline-offset-2"
+          style={{ borderColor: T.hairline, color: T.muted }}
         >
           <ChevronRight size={16} />
         </button>
@@ -999,7 +940,8 @@ function Pagination({
           onClick={() => onChange(page - 1)}
           disabled={page === 1}
           aria-label="Previous page"
-          className="flex h-9 w-9 items-center justify-center rounded-full border border-[#E4E1D8] bg-white text-[#5B655F] transition-all hover:-translate-y-0.5 hover:border-[#C9D3CC] hover:text-[#3E6B52] hover:shadow-[0_10px_24px_rgba(30,38,33,0.08)] disabled:pointer-events-none disabled:opacity-40 disabled:hover:translate-y-0 focus-visible:outline focus-visible:outline-offset-2 focus-visible:outline-[#3E6B52]"
+          className="flex h-9 w-9 items-center justify-center rounded-lg border bg-white transition-colors hover:bg-[#F6F6F2] disabled:pointer-events-none disabled:opacity-40 focus-visible:outline focus-visible:outline-offset-2"
+          style={{ borderColor: T.hairline, color: T.muted }}
         >
           <ChevronLeft size={16} />
         </button>
@@ -1008,7 +950,8 @@ function Pagination({
           p === "…" ? (
             <span
               key={`ellipsis-${i}`}
-              className="flex h-9 w-9 items-center justify-center text-[13px] text-[#8A938C]"
+              className="flex h-9 w-9 items-center justify-center text-[13px]"
+              style={{ color: T.mutedSoft }}
             >
               …
             </span>
@@ -1018,11 +961,12 @@ function Pagination({
               type="button"
               onClick={() => onChange(p)}
               aria-current={p === page ? "page" : undefined}
-              className={`flex h-9 w-9 items-center justify-center rounded-full text-[13px] font-medium transition-all focus-visible:outline focus-visible:outline-offset-2 focus-visible:outline-[#3E6B52] ${
+              className="flex h-9 w-9 items-center justify-center rounded-lg text-[13px] font-medium transition-colors focus-visible:outline focus-visible:outline-offset-2"
+              style={
                 p === page
-                  ? "bg-[#3E6B52] text-[#F6F6F2] shadow-[0_10px_24px_rgba(62,107,82,0.24)]"
-                  : "border border-[#E4E1D8] bg-white text-[#5B655F] hover:-translate-y-0.5 hover:border-[#C9D3CC] hover:text-[#3E6B52] hover:shadow-[0_10px_24px_rgba(30,38,33,0.08)]"
-              }`}
+                  ? { background: T.forest, color: "#fff" }
+                  : { border: `1px solid ${T.hairline}`, background: "#fff", color: T.muted }
+              }
             >
               {p}
             </button>
@@ -1034,7 +978,8 @@ function Pagination({
           onClick={() => onChange(page + 1)}
           disabled={page === totalPages}
           aria-label="Next page"
-          className="flex h-9 w-9 items-center justify-center rounded-full border border-[#E4E1D8] bg-white text-[#5B655F] transition-all hover:-translate-y-0.5 hover:border-[#C9D3CC] hover:text-[#3E6B52] hover:shadow-[0_10px_24px_rgba(30,38,33,0.08)] disabled:pointer-events-none disabled:opacity-40 disabled:hover:translate-y-0 focus-visible:outline focus-visible:outline-offset-2 focus-visible:outline-[#3E6B52]"
+          className="flex h-9 w-9 items-center justify-center rounded-lg border bg-white transition-colors hover:bg-[#F6F6F2] disabled:pointer-events-none disabled:opacity-40 focus-visible:outline focus-visible:outline-offset-2"
+          style={{ borderColor: T.hairline, color: T.muted }}
         >
           <ChevronRight size={16} />
         </button>

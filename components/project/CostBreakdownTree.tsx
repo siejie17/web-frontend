@@ -34,21 +34,12 @@ export type CostNode = {
 
 export type CostBreakdown = Record<string, CostNode>;
 
-/**
- * "assessment" â€” a single editable cost column. Used when the tree itself IS the thing being
- *   authored (e.g. the initial assessment predicted-cost breakdown). Edits write to `cost`.
- * "comparison" â€” the original behavior: a static "Budgeted" column (`cost`) next to an editable
- *   "Actual" column (`actual_cost`). Used once a predicted breakdown already exists and the user
- *   is logging real spend against it.
- */
 export type CostBreakdownMode = "assessment" | "comparison";
 
-/** Which leaf field on CostNode the tree is currently reading/writing, derived from `mode`. */
 type EditableField = "cost" | "actual_cost";
 
 /* ---------------- Money helpers ---------------- */
 
-/** Always render currency to exactly 2 decimals â€” RM18.66 must never collapse to RM19. */
 export function formatMoney(value: number): string {
     const safe = Number.isFinite(value) ? value : 0;
     return `RM ${safe.toLocaleString("en-MY", {
@@ -57,14 +48,12 @@ export function formatMoney(value: number): string {
     })}`;
 }
 
-/** Keep only digits, collapse leading zeroes, and ensure we always have at least one digit. */
 function normalizeCents(raw: string | undefined): string {
     const digits = (raw ?? "").replace(/\D/g, "");
     if (!digits) return "0";
     return digits.replace(/^0+(?=\d)/, "") || "0";
 }
 
-/** Banking-style read view of a raw edit string: every digit typed shifts the amount one cent. */
 export function formatWithCommas(raw: string | undefined): string {
     const normalized = normalizeCents(raw);
     const padded = normalized.padStart(3, "0");
@@ -74,70 +63,72 @@ export function formatWithCommas(raw: string | undefined): string {
     return `${wholeFormatted}.${cents}`;
 }
 
-/** Turn the banked cents string into a real number for math. */
 function parseEdit(raw: string | undefined): number {
     return Number(normalizeCents(raw)) / 100;
 }
 
-/** Percentage parse: allow digits + a single decimal, clamp 0–100, round to 1 decimal place. */
 function normalizePct(raw: string | undefined): number {
     const cleaned = (raw ?? "").replace(/[^\d.]/g, "");
     const firstDot = cleaned.indexOf(".");
     const sanitized =
-        firstDot === -1 ? cleaned : cleaned.slice(0, firstDot + 1) + cleaned.slice(firstDot + 1).replace(/\./g, "");
+        firstDot === -1
+            ? cleaned
+            : cleaned.slice(0, firstDot + 1) +
+              cleaned.slice(firstDot + 1).replace(/\./g, "");
+
     const v = parseFloat(sanitized);
     if (isNaN(v)) return 0;
+
     return Math.max(0, Math.min(100, Math.round(v * 10) / 10));
 }
 
-/** Format a percentage at most 1 decimal place: 5 → "5", 5.5 → "5.5". */
 function formatPct(v: number): string {
     if (!Number.isFinite(v)) return "0";
     return Number.isInteger(v) ? String(v) : String(Math.round(v * 10) / 10);
 }
 
-/** Sum of leaf predicted costs under (and including) this node. */
 function sumPredictedCost(node: CostNode): number {
     if (!node.children) return node.cost ?? 0;
+
     return Object.values(node.children).reduce(
         (sum, child) => sum + sumPredictedCost(child),
-        0
+        0,
     );
 }
 
-/** Read-only drift percentage for parent/certification nodes: (actual - predicted) / predicted. */
 function driftPct(predicted: number, actual: number): number {
     if (!predicted || predicted === 0) return 0;
     return Math.round(((actual - predicted) / predicted) * 1000) / 10;
 }
 
-/* ---------------- Percentage-drift helper (comparison mode) ---------------- */
+/* ---------------- Percentage-drift helper ---------------- */
 
 export type PctDirection = "up" | "down";
 
-export type PctOverride = { pct: number; direction: PctDirection };
+export type PctOverride = {
+    pct: number;
+    direction: PctDirection;
+};
 
-/**
- * Actual derived from predicted cost via a rising/dropping percentage, e.g. predicted 1000,
- * pct 5, direction "up" → 1050. Used for existing leaves whose predicted cost is > 0.
- */
 export function computePctActual(
     cost: number,
     pct: number,
-    direction: PctDirection
+    direction: PctDirection,
 ): number {
     const safeCost = Number.isFinite(cost) ? cost : 0;
     const safePct = Number.isFinite(pct) ? pct : 0;
-    const factor = 1 + (direction === "down" ? -1 : 1) * (safePct / 100);
+    const factor =
+        1 + (direction === "down" ? -1 : 1) * (safePct / 100);
+
     return Math.round(safeCost * factor * 100) / 100;
 }
 
-/** The effective pct/direction for a node: an unsaved override wins, else the node's stored value. */
 export function effectivePct(
     node: CostNode,
-    overrides?: Record<number, PctOverride>
+    overrides?: Record<number, PctOverride>,
 ): PctOverride {
     const override = overrides?.[node.id];
+
     return {
         pct: override?.pct ?? node.actual_pct ?? 0,
         direction: override?.direction ?? node.actual_direction ?? "up",
@@ -146,50 +137,64 @@ export function effectivePct(
 
 /* ---------------- Helpers ---------------- */
 
-/** Walk the tree once to seed edit state (as strings, so partial typing like "18." isn't lost).
- *  Which field seeds the edits depends on the active mode's editable field. */
-function collectInitialEdits(data: CostBreakdown, field: EditableField): Record<number, string> {
+function collectInitialEdits(
+    data: CostBreakdown,
+    field: EditableField,
+): Record<number, string> {
     const edits: Record<number, string> = {};
+
     const visit = (node: CostNode) => {
         if (node.children) {
             Object.values(node.children).forEach(visit);
         } else {
             const raw = field === "cost" ? node.cost : node.actual_cost;
-            edits[node.id] = raw !== undefined && raw !== null ? String(Math.round(Number(raw) * 100)) : "0";
+
+            edits[node.id] =
+                raw !== undefined && raw !== null
+                    ? String(Math.round(Number(raw) * 100))
+                    : "0";
         }
     };
+
     Object.values(data).forEach(visit);
+
     return edits;
 }
 
-/** A parent's live value is always the sum of its children's edited leaf values â€” never stored directly. */
 function computeFieldSum(
     node: CostNode,
     edits: Record<number, string>,
     field: EditableField,
-    pctOverrides?: Record<number, PctOverride>
+    pctOverrides?: Record<number, PctOverride>,
 ): number {
     if (node.children) {
         return Object.values(node.children).reduce(
-            (sum, child) => sum + computeFieldSum(child, edits, field, pctOverrides),
-            0
+            (sum, child) =>
+                sum + computeFieldSum(child, edits, field, pctOverrides),
+            0,
         );
     }
+
     if (node.is_certification === 1) {
         return node[field] ?? 0;
     }
+
     if (field === "actual_cost" && (node.cost ?? 0) > 0) {
         const { pct, direction } = effectivePct(node, pctOverrides);
+
         return computePctActual(node.cost, pct, direction);
     }
+
     return parseEdit(edits[node.id]);
 }
 
-/** Total number of leaf line items under (and including, if it's a leaf itself) this node â€”
- *  used to word the delete-confirm prompt ("delete this and 3 items?"). */
 function countLeaves(node: CostNode): number {
     if (!node.children) return 1;
-    return Object.values(node.children).reduce((sum, child) => sum + countLeaves(child), 0);
+
+    return Object.values(node.children).reduce(
+        (sum, child) => sum + countLeaves(child),
+        0,
+    );
 }
 
 function sumTop(
@@ -197,7 +202,7 @@ function sumTop(
     key: "budgeted" | "live",
     edits: Record<number, string>,
     field: EditableField,
-    pctOverrides?: Record<number, PctOverride>
+    pctOverrides?: Record<number, PctOverride>,
 ) {
     return Object.values(data).reduce(
         (sum, node) =>
@@ -205,22 +210,39 @@ function sumTop(
             (key === "budgeted"
                 ? node.cost
                 : computeFieldSum(node, edits, field, pctOverrides)),
-        0
+        0,
     );
 }
 
-/* Fixed column widths shared by the header and every row so figures never drift out of line.
-   Predicted/Budgeted collapses away entirely below sm â€” see the row's mobile caption instead. */
-export const COL_BUDGET = "w-28 sm:w-36 md:w-40";
-export const COL_ACTUAL = "w-28 sm:w-36 md:w-40";
-export const COL_PCT = "w-20 sm:w-24 md:w-28";
+/*
+ * Responsive column widths.
+ *
+ * Mobile:
+ *   Predicted + Δ% collapse into the description area/caption.
+ *   Actual remains compact enough to preserve readable Element content.
+ *
+ * Tablet:
+ *   Slightly narrower fixed numeric columns prevent the Element column
+ *   from becoming unnecessarily cramped.
+ *
+ * Laptop/Desktop:
+ *   Restore the original visual proportions.
+ */
+export const COL_BUDGET =
+    "w-28 sm:w-32 md:w-36 lg:w-40";
 
-/* Width of one connector-rail cell â€” also doubles as the per-depth indent step. */
+export const COL_ACTUAL =
+    "w-28 sm:w-32 md:w-36 lg:w-40";
+
+export const COL_PCT =
+    "w-20 sm:w-20 md:w-24 lg:w-28";
+
+const COL_ACTION =
+    "w-14 sm:w-17.5";
+
 const RAIL_W = 18;
 
-/* Each nesting level gets its own badge hue so depth reads at a glance without heavy row tinting;
-   the row surface itself stays quiet (paper/white) so the tree lines carry the structure. */
-export const LEVEL_STYLES = [
+const LEVEL_STYLES = [
     {
         border: "border-transparent",
         bg: "bg-white",
@@ -228,7 +250,7 @@ export const LEVEL_STYLES = [
         badgeBg: "bg-[#2C4A3A]",
         badgeText: "text-white",
         amount: "text-[#2C4A3A]",
-    }, // level 0 â€” deep forest
+    },
     {
         border: "border-transparent",
         bg: "bg-white",
@@ -236,7 +258,7 @@ export const LEVEL_STYLES = [
         badgeBg: "bg-[#4E7290]",
         badgeText: "text-white",
         amount: "text-[#3B5A73]",
-    }, // level 1 â€” slate blue
+    },
     {
         border: "border-transparent",
         bg: "bg-white",
@@ -244,12 +266,10 @@ export const LEVEL_STYLES = [
         badgeBg: "bg-[#8F7757]",
         badgeText: "text-white",
         amount: "text-[#71603F]",
-    }, // level 2+ â€” warm taupe
+    },
 ];
 
-/* Certification rows are the one row type that earns a full accent treatment â€” the tree's
-   single spent "signature" moment, everything else stays disciplined. */
-export const CERT_STYLE = {
+const CERT_STYLE = {
     border: "border-[#B8862E]",
     bg: "bg-[#FBF3DE]",
     hoverBg: "hover:bg-[#F7E9C4]",
@@ -282,41 +302,21 @@ export default function CostBreakdownTree({
     onPctChangeAction,
 }: {
     data: CostBreakdown;
-    /** Optional: fires on every leaf edit (with a clean, parsed number), e.g. to persist to the server.
-     *  Fires for whichever field is active in the current mode (`cost` in assessment, `actual_cost` in comparison). */
     onActualCostChangeAction?: (nodeId: number, value: number) => void;
-    /** Set true when a parent screen renders its own summary cards (e.g. CostBreakdownHierarchy). */
     hideTotals?: boolean;
-    /** "assessment" = single editable cost column. "comparison" (default) = Budgeted + editable Actual. */
     mode?: CostBreakdownMode;
-    /** When true, every row exposes hover affordances to add a child item, rename itself, or be
-     *  deleted, and a "add top-level cost code" control appears under the tree. Structural editing
-     *  only makes sense while a breakdown is still being authored, so this is normally tied to
-     *  `mode === "assessment"`. */
     editable?: boolean;
-    /** Requests a new child be added under `parentId` (or as a new top-level item when `parentId` is null). */
     onAddChildAction?: (parentId: number | null) => void;
-    /** Requests the node with this id (and everything under it) be removed. Confirmation happens in this component. */
     onDeleteNodeAction?: (nodeId: number) => void;
-    /** Fires as the user types a node's name. */
     onDescriptionChangeAction?: (nodeId: number, value: string) => void;
-    /** When true, eligible leaf nodes show a "+" icon for splitting, and an
-     *  "Add Other Category" button appears below the tree. */
     addMode?: boolean;
     deleteMode?: boolean;
-    /** Called when the user clicks "+" on a leaf node that can be split. */
     onSplitLeafAction?: (nodeId: number) => void;
-    /** Called when the user clicks the trash icon on a row while in delete mode. */
     onDeleteLeafAction?: (nodeId: number) => void;
-    /** Called when the user clicks "Add Other Category" at the bottom of the tree. */
     onAddRootCategoryAction?: () => void;
     toolbarActions?: ReactNode;
-    /** When true, all cost inputs are rendered as read-only display values. */
     readOnly?: boolean;
-    /** Unsaved percentage/direction overrides per leaf id (comparison mode). Overrides node.actual_pct/actual_direction. */
     pctOverrides?: Record<number, PctOverride>;
-    /** Fires when the user changes a percentage-driven leaf's pct or direction (comparison mode).
-     *  Passes the newly computed actual so the parent can track/submit it. */
     onPctChangeAction?: (
         nodeId: number,
         pct: number,
@@ -324,83 +324,122 @@ export default function CostBreakdownTree({
         computedActual: number,
     ) => void;
 }) {
-    const field: EditableField = mode === "assessment" ? "cost" : "actual_cost";
+    const field: EditableField =
+        mode === "assessment" ? "cost" : "actual_cost";
 
-    const [edits, setEdits] = useState<Record<number, string>>(() => collectInitialEdits(data, field));
-    const [expanded, setExpanded] = useState<Set<number>>(() => new Set());
+    const [edits, setEdits] = useState<Record<number, string>>(
+        () => collectInitialEdits(data, field),
+    );
+
+    const [expanded, setExpanded] = useState<Set<number>>(
+        () => new Set(),
+    );
+
     const [focusedId, setFocusedId] = useState<number | null>(null);
-    // Row currently showing the inline "delete this?" confirm bar in place of its normal actions.
-    const [confirmingDeleteId, setConfirmingDeleteId] = useState<number | null>(null);
 
-    const totalBudgeted = useMemo(() => sumTop(data, "budgeted", edits, field), [data, edits, field]);
+    const [confirmingDeleteId, setConfirmingDeleteId] =
+        useState<number | null>(null);
+
+    const totalBudgeted = useMemo(
+        () => sumTop(data, "budgeted", edits, field),
+        [data, edits, field],
+    );
+
     const totalLive = useMemo(
         () => sumTop(data, "live", edits, field, pctOverrides),
         [data, edits, field, pctOverrides],
     );
+
     const variance = totalLive - totalBudgeted;
     const isOverBudget = variance > 0;
 
-    const allTopIds = useMemo(() => Object.values(data).map((n) => n.id), [data]);
-  const allExpanded = allTopIds.length > 0 && allTopIds.every((id) => expanded.has(id));
+    const allTopIds = useMemo(
+        () => Object.values(data).map((n) => n.id),
+        [data],
+    );
 
-  useEffect(() => {
-      setEdits((prev) => {
-          const next = { ...prev };
+    const allExpanded =
+        allTopIds.length > 0 &&
+        allTopIds.every((id) => expanded.has(id));
 
-          const visit = (node: CostNode) => {
-              if (node.children) {
-                  Object.values(node.children).forEach(visit);
-              } else {
-                  if (!(node.id in next)) {
-                      const raw =
-                          field === "cost"
-                              ? node.cost
-                              : node.actual_cost;
+    useEffect(() => {
+        setEdits((prev) => {
+            const next = { ...prev };
 
-                      next[node.id] =
-                          raw !== undefined && raw !== null
-                              ? String(Math.round(Number(raw) * 100))
-                              : "0";
-                  }
-              }
-          };
+            const visit = (node: CostNode) => {
+                if (node.children) {
+                    Object.values(node.children).forEach(visit);
+                } else if (!(node.id in next)) {
+                    const raw =
+                        field === "cost"
+                            ? node.cost
+                            : node.actual_cost;
 
-          Object.values(data).forEach(visit);
+                    next[node.id] =
+                        raw !== undefined && raw !== null
+                            ? String(Math.round(Number(raw) * 100))
+                            : "0";
+                }
+            };
 
-          return next;
-      });
-  }, [data, field]);
+            Object.values(data).forEach(visit);
+
+            return next;
+        });
+    }, [data, field]);
 
     const toggleAll = () => {
-        setExpanded(allExpanded ? new Set() : new Set(allTopIds));
+        setExpanded(
+            allExpanded ? new Set() : new Set(allTopIds),
+        );
     };
 
     const toggleNode = (id: number) => {
         setExpanded((prev) => {
             const next = new Set(prev);
-            next.has(id) ? next.delete(id) : next.add(id);
+
+            next.has(id)
+                ? next.delete(id)
+                : next.add(id);
+
             return next;
         });
     };
 
     const handleLeafChange = (id: number, raw: string) => {
         const normalized = normalizeCents(raw);
-        setEdits((prev) => ({ ...prev, [id]: normalized }));
-        onActualCostChangeAction?.(id, parseEdit(normalized));
+
+        setEdits((prev) => ({
+            ...prev,
+            [id]: normalized,
+        }));
+
+        onActualCostChangeAction?.(
+            id,
+            parseEdit(normalized),
+        );
     };
 
-    const handleLeafFocus = (id: number) => setFocusedId(id);
+    const handleLeafFocus = (id: number) => {
+        setFocusedId(id);
+    };
 
-    /** Snap the field back to a clean bank-input string once the user leaves it. */
     const handleLeafBlur = (id: number) => {
         setFocusedId(null);
-        setEdits((prev) => ({ ...prev, [id]: normalizeCents(prev[id]) }));
+
+        setEdits((prev) => ({
+            ...prev,
+            [id]: normalizeCents(prev[id]),
+        }));
     };
 
-    // Adding a node instantly expands its new (would-be) parent so the freshly created row is visible,
-    // and clears any lingering delete-confirm state so the two flows never fight for the same row.
     const handleAddChild = (parentId: number | null) => {
-        if (parentId !== null) setExpanded((prev) => new Set(prev).add(parentId));
+        if (parentId !== null) {
+            setExpanded((prev) =>
+                new Set(prev).add(parentId),
+            );
+        }
+
         setConfirmingDeleteId(null);
         onAddChildAction?.(parentId);
     };
@@ -409,9 +448,9 @@ export default function CostBreakdownTree({
     const topEntries = Object.entries(data);
 
     return (
-        <div>
+        <div className="min-w-0 w-full">
             {/* ---------------- Toolbar ---------------- */}
-            <div className="mb-4 flex flex-wrap items-center justify-between gap-2 px-1">
+            <div className="mb-4 flex min-w-0 flex-col gap-2 px-1 sm:flex-row sm:items-center sm:justify-between">
                 <span
                     className="text-[10.5px] font-semibold uppercase tracking-[0.18em] text-[#9A9186]"
                     style={{ fontFamily: "var(--font-mono)" }}
@@ -419,38 +458,80 @@ export default function CostBreakdownTree({
                     Cost Ledger
                 </span>
 
-                <div className="flex items-center gap-2">
+                <div className="flex min-w-0 flex-wrap items-center gap-2 sm:justify-end">
                     {toolbarActions}
+
                     <button
                         type="button"
                         onClick={toggleAll}
-                        className="flex shrink-0 items-center gap-1.5 rounded-full border border-[#E4E1D8] bg-white px-3 py-1.5 text-[12px] font-medium text-[#5B655F] transition-colors hover:border-[#BFD6C8] hover:text-[#2C4A3A] focus-visible:outline focus-visible:outline-offset-2 focus-visible:outline-[#2C4A3A]"
+                        className="flex min-h-9 shrink-0 items-center gap-1.5 rounded-full border border-[#E4E1D8] bg-white px-3 py-1.5 text-[12px] font-medium text-[#5B655F] transition-colors hover:border-[#BFD6C8] hover:text-[#2C4A3A] focus-visible:outline focus-visible:outline-offset-2 focus-visible:outline-[#2C4A3A]"
                     >
-                        {allExpanded ? <ChevronsDownUp size={13} /> : <ChevronsUpDown size={13} />}
-                        {allExpanded ? "Collapse all" : "Expand all"}
+                        {allExpanded ? (
+                            <ChevronsDownUp size={13} />
+                        ) : (
+                            <ChevronsUpDown size={13} />
+                        )}
+                        {allExpanded
+                            ? "Collapse all"
+                            : "Expand all"}
                     </button>
                 </div>
             </div>
 
             {/* ---------------- Totals ---------------- */}
             {!hideTotals && (
-                <div className={`mb-5 grid grid-cols-1 gap-3 ${isAssessment ? "sm:grid-cols-1" : "sm:grid-cols-3"}`}>
+                <div
+                    className={`mb-5 grid min-w-0 grid-cols-1 gap-3 ${
+                        isAssessment
+                            ? "sm:grid-cols-1"
+                            : "sm:grid-cols-3"
+                    }`}
+                >
                     {isAssessment ? (
-                        <TotalCard icon={CircleDollarSign} label="Total predicted cost" value={formatMoney(totalLive)} highlighted />
+                        <TotalCard
+                            icon={CircleDollarSign}
+                            label="Total predicted cost"
+                            value={formatMoney(totalLive)}
+                            highlighted
+                        />
                     ) : (
                         <>
-                            <TotalCard icon={Wallet} label="Total budgeted cost" value={formatMoney(totalBudgeted)} />
+                            <TotalCard
+                                icon={Wallet}
+                                label="Total budgeted cost"
+                                value={formatMoney(totalBudgeted)}
+                            />
+
                             <TotalCard
                                 icon={CircleDollarSign}
                                 label="Total actual cost"
                                 value={formatMoney(totalLive)}
                                 highlighted
                             />
+
                             <TotalCard
-                                icon={variance === 0 ? Minus : isOverBudget ? TrendingUp : TrendingDown}
-                                label={isOverBudget ? "Over budget by" : "Under budget by"}
-                                value={formatMoney(Math.abs(variance))}
-                                tone={variance === 0 ? "neutral" : isOverBudget ? "over" : "under"}
+                                icon={
+                                    variance === 0
+                                        ? Minus
+                                        : isOverBudget
+                                          ? TrendingUp
+                                          : TrendingDown
+                                }
+                                label={
+                                    isOverBudget
+                                        ? "Over budget by"
+                                        : "Under budget by"
+                                }
+                                value={formatMoney(
+                                    Math.abs(variance),
+                                )}
+                                tone={
+                                    variance === 0
+                                        ? "neutral"
+                                        : isOverBudget
+                                          ? "over"
+                                          : "under"
+                                }
                             />
                         </>
                     )}
@@ -458,10 +539,8 @@ export default function CostBreakdownTree({
             )}
 
             {/* ---------------- Tree ---------------- */}
-            <div className="overflow-hidden rounded-2xl border border-[#E4E1D8] bg-white shadow-[0_1px_2px_rgba(30,38,33,0.03)]">
-                <div className="flex items-stretch">
-                    {/* Ledger-binder margin â€” a quiet signature touch, hidden on the smallest screens
-                        where every pixel of width matters more than the flourish. */}
+            <div className="min-w-0 overflow-hidden rounded-2xl border border-[#E4E1D8] bg-white shadow-[0_1px_2px_rgba(30,38,33,0.03)]">
+                <div className="flex min-w-0 items-stretch">
                     <div
                         className="hidden w-3 shrink-0 border-r border-[#EFEDE6] sm:block"
                         style={{
@@ -473,11 +552,13 @@ export default function CostBreakdownTree({
                     />
 
                     <div className="min-w-0 flex-1">
-                        {/* Table header â€” sits inside the same bordered box as the rows, sharing its corners */}
-                        <div className="flex items-center border-b border-[#EFEDE6] bg-[#FBFAF7]">
+                        {/* Header */}
+                        <div className="flex min-w-0 items-center border-b border-[#EFEDE6] bg-[#FBFAF7]">
                             <span
-                                className="flex flex-1 items-center justify-center py-2.5 text-center text-[10.5px] font-semibold uppercase tracking-widest text-[#8A938C]"
-                                style={{ fontFamily: "var(--font-mono)" }}
+                                className="flex min-w-0 flex-1 items-center justify-center py-2.5 px-2 text-center text-[10.5px] font-semibold uppercase tracking-widest text-[#8A938C]"
+                                style={{
+                                    fontFamily: "var(--font-mono)",
+                                }}
                             >
                                 Element
                             </span>
@@ -485,7 +566,9 @@ export default function CostBreakdownTree({
                             {!isAssessment && (
                                 <span
                                     className={`${COL_BUDGET} hidden shrink-0 items-center justify-center border-l border-[#EFEDE6] py-2.5 text-center text-[10.5px] font-semibold uppercase tracking-widest text-[#8A938C] sm:flex`}
-                                    style={{ fontFamily: "var(--font-mono)" }}
+                                    style={{
+                                        fontFamily: "var(--font-mono)",
+                                    }}
                                 >
                                     Predicted
                                 </span>
@@ -494,68 +577,112 @@ export default function CostBreakdownTree({
                             {!isAssessment && (
                                 <span
                                     className={`${COL_PCT} hidden shrink-0 items-center justify-center border-l border-[#EFEDE6] py-2.5 text-center text-[10.5px] font-semibold uppercase tracking-widest text-[#8A938C] sm:flex`}
-                                    style={{ fontFamily: "var(--font-mono)" }}
+                                    style={{
+                                        fontFamily: "var(--font-mono)",
+                                    }}
                                 >
                                     Δ%
                                 </span>
                             )}
 
                             <span
-                                className={`${COL_ACTUAL} flex shrink-0 items-center justify-center border-l border-[#EFEDE6] py-2.5 text-center text-[10.5px] font-semibold uppercase tracking-widest text-[#8A938C]`}
-                                style={{ fontFamily: "var(--font-mono)" }}
+                                className={`${COL_ACTUAL} flex shrink-0 items-center justify-center border-l border-[#EFEDE6] py-2.5 px-1.5 text-center text-[10.5px] font-semibold uppercase tracking-widest text-[#8A938C] sm:px-2`}
+                                style={{
+                                    fontFamily: "var(--font-mono)",
+                                }}
                             >
-                                {isAssessment ? "Cost" : "Actual"}
+                                {isAssessment
+                                    ? "Cost"
+                                    : "Actual"}
                             </span>
 
-                            {(editable || addMode || deleteMode) && (
+                            {(editable ||
+                                addMode ||
+                                deleteMode) && (
                                 <span
-                                    className="flex w-17.5 shrink-0 items-center justify-center border-l border-[#EFEDE6] py-2.5 text-center text-[10.5px] font-semibold uppercase tracking-widest text-[#8A938C]"
-                                    style={{ fontFamily: "var(--font-mono)" }}
+                                    className={`${COL_ACTION} flex shrink-0 items-center justify-center border-l border-[#EFEDE6] py-2.5 text-center text-[10.5px] font-semibold uppercase tracking-widest text-[#8A938C]`}
+                                    style={{
+                                        fontFamily: "var(--font-mono)",
+                                    }}
                                 >
                                     Action
                                 </span>
                             )}
                         </div>
 
-                        {topEntries.map(([key, node], i) => (
-                            <CostRow
-                                key={node.id}
-                                rowKey={key}
-                                node={node}
-                                depth={0}
-                                ancestorContinues={[]}
-                                isLastChild={i === topEntries.length - 1}
-                                edits={edits}
-                                expanded={expanded}
-                                focusedId={focusedId}
-                                mode={mode}
-                                field={field}
-                                editable={editable}
-                                addMode={addMode}
-                                deleteMode={deleteMode}
-                                confirmingDeleteId={confirmingDeleteId}
-                                onToggle={toggleNode}
-                                onLeafChange={handleLeafChange}
-                                onLeafFocus={handleLeafFocus}
-                                onLeafBlur={handleLeafBlur}
-                                onAddChildAction={handleAddChild}
-                                onRequestDelete={setConfirmingDeleteId}
-                                onDeleteNodeAction={onDeleteNodeAction}
-                                onDescriptionChangeAction={onDescriptionChangeAction}
-                                onSplitLeafAction={onSplitLeafAction}
-                                onDeleteLeafAction={onDeleteLeafAction}
-                                isLast={i === topEntries.length - 1}
-                                readOnly={readOnly}
-                                pctOverrides={pctOverrides}
-                                onPctChangeAction={onPctChangeAction}
-                            />
-                        ))}
+                        {topEntries.map(
+                            ([key, node], i) => (
+                                <CostRow
+                                    key={node.id}
+                                    rowKey={key}
+                                    node={node}
+                                    depth={0}
+                                    ancestorContinues={[]}
+                                    isLastChild={
+                                        i ===
+                                        topEntries.length - 1
+                                    }
+                                    edits={edits}
+                                    expanded={expanded}
+                                    focusedId={focusedId}
+                                    mode={mode}
+                                    field={field}
+                                    editable={editable}
+                                    addMode={addMode}
+                                    deleteMode={deleteMode}
+                                    confirmingDeleteId={
+                                        confirmingDeleteId
+                                    }
+                                    onToggle={toggleNode}
+                                    onLeafChange={
+                                        handleLeafChange
+                                    }
+                                    onLeafFocus={
+                                        handleLeafFocus
+                                    }
+                                    onLeafBlur={
+                                        handleLeafBlur
+                                    }
+                                    onAddChildAction={
+                                        handleAddChild
+                                    }
+                                    onRequestDelete={
+                                        setConfirmingDeleteId
+                                    }
+                                    onDeleteNodeAction={
+                                        onDeleteNodeAction
+                                    }
+                                    onDescriptionChangeAction={
+                                        onDescriptionChangeAction
+                                    }
+                                    onSplitLeafAction={
+                                        onSplitLeafAction
+                                    }
+                                    onDeleteLeafAction={
+                                        onDeleteLeafAction
+                                    }
+                                    isLast={
+                                        i ===
+                                        topEntries.length - 1
+                                    }
+                                    readOnly={readOnly}
+                                    pctOverrides={
+                                        pctOverrides
+                                    }
+                                    onPctChangeAction={
+                                        onPctChangeAction
+                                    }
+                                />
+                            ),
+                        )}
 
                         {addMode ? (
                             <button
                                 type="button"
-                                onClick={onAddRootCategoryAction}
-                                className="flex w-full items-center justify-center gap-1.5 border-t border-dashed border-[#E4E1D8] bg-[#FBFAF7] py-3 text-[12.5px] font-medium text-[#5B655F] transition-colors hover:bg-[#EEF2EC] hover:text-[#2C4A3A] focus-visible:outline focus-visible:-outline-offset-2 focus-visible:outline-[#2C4A3A]"
+                                onClick={
+                                    onAddRootCategoryAction
+                                }
+                                className="flex min-h-11 w-full items-center justify-center gap-1.5 border-t border-dashed border-[#E4E1D8] bg-[#FBFAF7] px-3 py-3 text-center text-[12.5px] font-medium text-[#5B655F] transition-colors hover:bg-[#EEF2EC] hover:text-[#2C4A3A] focus-visible:outline focus-visible:-outline-offset-2 focus-visible:outline-[#2C4A3A]"
                             >
                                 <Plus size={13} />
                                 Add Other Category
@@ -563,8 +690,10 @@ export default function CostBreakdownTree({
                         ) : editable ? (
                             <button
                                 type="button"
-                                onClick={() => handleAddChild(null)}
-                                className="flex w-full items-center justify-center gap-1.5 border-t border-dashed border-[#E4E1D8] bg-[#FBFAF7] py-3 text-[12.5px] font-medium text-[#5B655F] transition-colors hover:bg-[#EEF2EC] hover:text-[#2C4A3A] focus-visible:outline focus-visible:-outline-offset-2 focus-visible:outline-[#2C4A3A]"
+                                onClick={() =>
+                                    handleAddChild(null)
+                                }
+                                className="flex min-h-11 w-full items-center justify-center gap-1.5 border-t border-dashed border-[#E4E1D8] bg-[#FBFAF7] px-3 py-3 text-center text-[12.5px] font-medium text-[#5B655F] transition-colors hover:bg-[#EEF2EC] hover:text-[#2C4A3A] focus-visible:outline focus-visible:-outline-offset-2 focus-visible:outline-[#2C4A3A]"
                             >
                                 <Plus size={13} />
                                 Add top-level cost code
@@ -579,11 +708,21 @@ export default function CostBreakdownTree({
 
 /* ---------------- Certification badge ---------------- */
 
-function CertificationBadge({ label }: { label?: string }) {
+function CertificationBadge({
+    label,
+}: {
+    label?: string;
+}) {
     return (
-        <span className="flex shrink-0 items-center gap-1 rounded-full border border-[#D9B968] bg-white/70 px-2 py-0.5 text-[10px] font-medium text-[#8A6420] shadow-[0_1px_1px_rgba(138,100,32,0.08)]">
-            <Award size={10.5} />
-            {label ?? "Certification"}
+        <span className="flex max-w-full min-w-0 shrink items-center gap-1 rounded-full border border-[#D9B968] bg-white/70 px-2 py-0.5 text-[10px] font-medium text-[#8A6420] shadow-[0_1px_1px_rgba(138,100,32,0.08)]">
+            <Award
+                size={10.5}
+                className="shrink-0"
+            />
+
+            <span className="min-w-0 truncate">
+                {label ?? "Certification"}
+            </span>
         </span>
     );
 }
@@ -623,10 +762,7 @@ function CostRow({
     rowKey: string;
     node: CostNode;
     depth: number;
-    /** For each ancestor level above this row, whether that ancestor had further siblings after it
-     *  (i.e. whether the rail's vertical guide should keep running through this row). */
     ancestorContinues: boolean[];
-    /** Whether this row is the last child among its own siblings â€” shapes its own elbow. */
     isLastChild: boolean;
     edits: Record<number, string>;
     expanded: Set<number>;
@@ -644,7 +780,10 @@ function CostRow({
     onAddChildAction: (parentId: number | null) => void;
     onRequestDelete: (id: number | null) => void;
     onDeleteNodeAction?: (nodeId: number) => void;
-    onDescriptionChangeAction?: (nodeId: number, value: string) => void;
+    onDescriptionChangeAction?: (
+        nodeId: number,
+        value: string,
+    ) => void;
     onSplitLeafAction?: (nodeId: number) => void;
     onDeleteLeafAction?: (nodeId: number) => void;
     isLast: boolean;
@@ -659,211 +798,404 @@ function CostRow({
 }) {
     const hasChildren = !!node.children;
     const isOpen = expanded.has(node.id);
-    const liveValue = computeFieldSum(node, edits, field, pctOverrides);
-    const entries = node.children ? Object.entries(node.children) : [];
-    const isConfirmingDelete = confirmingDeleteId === node.id;
+
+    const liveValue = computeFieldSum(
+        node,
+        edits,
+        field,
+        pctOverrides,
+    );
+
+    const entries = node.children
+        ? Object.entries(node.children)
+        : [];
+
+    const isConfirmingDelete =
+        confirmingDeleteId === node.id;
 
     const isCert = node.is_certification === 1;
-    const style = isCert ? CERT_STYLE : hasChildren ? LEVEL_STYLES[depth % LEVEL_STYLES.length] : null;
+
+    const style = isCert
+        ? CERT_STYLE
+        : hasChildren
+          ? LEVEL_STYLES[
+                depth % LEVEL_STYLES.length
+            ]
+          : null;
 
     const isAssessment = mode === "assessment";
-    // In comparison mode an existing leaf with predicted cost > 0 is percentage-driven.
+
     const isPctLeaf =
-        mode === "comparison" && !hasChildren && !isCert && (node.cost ?? 0) > 0;
-    const isLeafNode = !hasChildren && !isCert;
+        mode === "comparison" &&
+        !hasChildren &&
+        !isCert &&
+        (node.cost ?? 0) > 0;
+
+    const isLeafNode =
+        !hasChildren && !isCert;
+
     const pctCfg = isPctLeaf
         ? effectivePct(node, pctOverrides)
-        : { pct: 0, direction: "up" as PctDirection };
+        : {
+              pct: 0,
+              direction: "up" as PctDirection,
+          };
+
     const computedActual = isPctLeaf
-        ? computePctActual(node.cost, pctCfg.pct, pctCfg.direction)
+        ? computePctActual(
+              node.cost,
+              pctCfg.pct,
+              pctCfg.direction,
+          )
         : null;
-    // Δ% cell display value + direction for every node: leaves show their (editable) pct;
-    // parents & certification rows show the read-only drift of actual vs predicted.
+
     const displayPct = isLeafNode
         ? pctCfg.pct
-        : driftPct(isCert ? node.cost : sumPredictedCost(node), liveValue);
-    const displayDir: PctDirection = isLeafNode
-        ? pctCfg.direction
-        : displayPct < 0
-            ? "down"
-            : "up";
-    const divider = "border-l border-[#EFEDE6]";
-    const childAncestorContinues = [...ancestorContinues, !isLastChild];
+        : driftPct(
+              isCert
+                  ? node.cost
+                  : sumPredictedCost(node),
+              liveValue,
+          );
+
+    const displayDir: PctDirection =
+        isLeafNode
+            ? pctCfg.direction
+            : displayPct < 0
+              ? "down"
+              : "up";
+
+    const divider =
+        "border-l border-[#EFEDE6]";
+
+    const childAncestorContinues = [
+        ...ancestorContinues,
+        !isLastChild,
+    ];
 
     return (
-        <div className={!isLast || isOpen ? "border-b border-[#EFEDE6]" : ""}>
+        <div
+            className={
+                !isLast || isOpen
+                    ? "border-b border-[#EFEDE6]"
+                    : ""
+            }
+        >
             <div
-                role={hasChildren ? "button" : undefined}
-                tabIndex={hasChildren ? 0 : undefined}
-                onClick={() => hasChildren && onToggle(node.id)}
+                role={
+                    hasChildren ? "button" : undefined
+                }
+                tabIndex={
+                    hasChildren ? 0 : undefined
+                }
+                onClick={() =>
+                    hasChildren &&
+                    onToggle(node.id)
+                }
                 onKeyDown={(e) => {
-                    if (hasChildren && (e.key === "Enter" || e.key === " ")) onToggle(node.id);
+                    if (
+                        hasChildren &&
+                        (e.key === "Enter" ||
+                            e.key === " ")
+                    ) {
+                        onToggle(node.id);
+                    }
                 }}
-                className={`group flex items-stretch border-l-[3px] transition-colors ${
-                    hasChildren ? "cursor-pointer focus-visible:outline focus-visible:-outline-offset-2 focus-visible:outline-[#2C4A3A]" : ""
-                } ${style ? `${style.border} ${style.bg} ${style.hoverBg}` : "border-transparent bg-white hover:bg-[#FBFAF7]"}`}
+                className={`group flex min-w-0 items-stretch border-l-[3px] transition-colors ${
+                    hasChildren
+                        ? "cursor-pointer focus-visible:outline focus-visible:-outline-offset-2 focus-visible:outline-[#2C4A3A]"
+                        : ""
+                } ${
+                    style
+                        ? `${style.border} ${style.bg} ${style.hoverBg}`
+                        : "border-transparent bg-white hover:bg-[#FBFAF7]"
+                }`}
             >
                 {/* ---- Connector rail ---- */}
                 {depth > 0 && (
-                    <div className="flex shrink-0 items-stretch" aria-hidden>
-                        {ancestorContinues.map((cont, i) => (
-                            <span key={i} className="relative shrink-0" style={{ width: RAIL_W * 1.8 }}>
-                                {cont && (
+                    <div
+                        className="flex shrink-0 items-stretch"
+                        aria-hidden
+                    >
+                        {ancestorContinues.map(
+                            (cont, i) => (
+                                <span
+                                    key={i}
+                                    className="relative shrink-0"
+                                    style={{
+                                        width:
+                                            typeof window !==
+                                            "undefined"
+                                                ? undefined
+                                                : RAIL_W *
+                                                  1.8,
+                                    }}
+                                >
                                     <span
-                                        className="absolute left-1/2 top-0 h-full w-px -translate-x-1/2"
-                                        // style={{ backgroundColor: RAIL_LINE }}
+                                        className={`absolute left-1/2 top-0 h-full w-px -translate-x-1/2 ${
+                                            cont
+                                                ? ""
+                                                : "hidden"
+                                        }`}
+                                        style={{
+                                            backgroundColor:
+                                                RAIL_LINE,
+                                        }}
                                     />
-                                )}
-                            </span>
-                        ))}
-                        <span className="relative shrink-0" style={{ width: RAIL_W * 0.5 }}>
+                                </span>
+                            ),
+                        )}
+
+                        <span className="relative w-[9px] shrink-0 sm:w-[10px]">
                             <span
                                 className="absolute left-1/2 top-0 h-1/2 w-px -translate-x-1/2"
-                                style={{ backgroundColor: RAIL_LINE }}
+                                style={{
+                                    backgroundColor:
+                                        RAIL_LINE,
+                                }}
                             />
+
                             {!isLastChild && (
                                 <span
                                     className="absolute left-1/2 top-1/2 h-1/2 w-px -translate-x-1/2"
-                                    style={{ backgroundColor: RAIL_LINE }}
+                                    style={{
+                                        backgroundColor:
+                                            RAIL_LINE,
+                                    }}
                                 />
                             )}
+
                             <span
-                                className="absolute left-1/2 top-1/2 h-px -translate-y-1/2"
-                                style={{ width: RAIL_W / 2, backgroundColor: RAIL_LINE }}
+                                className="absolute left-1/2 top-1/2 h-px w-[9px] -translate-y-1/2 sm:w-[10px]"
+                                style={{
+                                    backgroundColor:
+                                        RAIL_LINE,
+                                }}
                             />
                         </span>
                     </div>
                 )}
 
                 {/* ---- Element column ---- */}
-                <div className={`flex min-w-0 flex-1 items-center gap-2.5 py-3 pr-3 ${depth === 0 ? "pl-3" : "pl-2"}`}>
+                <div
+                    className={`flex min-w-0 flex-1 items-center gap-1.5 py-2.5 pr-2 sm:gap-2.5 sm:py-3 sm:pr-3 ${
+                        depth === 0
+                            ? "pl-2.5 sm:pl-3"
+                            : "pl-1.5 sm:pl-2"
+                    }`}
+                >
                     <span className="flex w-4 shrink-0 items-center justify-center text-[#8A938C]">
                         {hasChildren && (
                             <ChevronRight
                                 size={14}
                                 strokeWidth={2.25}
-                                className={`transition-transform duration-200 ${isOpen ? "rotate-90" : ""}`}
+                                className={`transition-transform duration-200 ${
+                                    isOpen
+                                        ? "rotate-90"
+                                        : ""
+                                }`}
                             />
                         )}
                     </span>
 
                     <span
-                        className={`flex h-6 min-w-10 shrink-0 items-center justify-center rounded-full px-2 text-[10px] font-semibold shadow-[inset_0_0_0_1px_rgba(0,0,0,0.04)] ${
-                            style ? `${style.badgeBg} ${style.badgeText}` : "bg-[#F1EFE7] text-[#8A8074]"
+                        className={`flex h-6 min-w-9 max-w-[4.5rem] shrink-0 items-center justify-center rounded-full px-1.5 text-[10px] font-semibold shadow-[inset_0_0_0_1px_rgba(0,0,0,0.04)] sm:min-w-10 sm:max-w-none sm:px-2 ${
+                            style
+                                ? `${style.badgeBg} ${style.badgeText}`
+                                : "bg-[#F1EFE7] text-[#8A8074]"
                         }`}
-                        style={{ fontFamily: "var(--font-mono)", letterSpacing: "0.01em" }}
+                        style={{
+                            fontFamily:
+                                "var(--font-mono)",
+                            letterSpacing: "0.01em",
+                        }}
                     >
-                        {rowKey}
+                        <span className="truncate">
+                            {rowKey}
+                        </span>
                     </span>
 
                     <div className="flex min-w-0 flex-1 flex-col justify-center">
-                        <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                          {editable ? (
+                        <div className="flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-1 sm:gap-x-2">
+                            {editable ? (
                                 <input
                                     type="text"
-                                    value={node.description}
+                                    value={
+                                        node.description
+                                    }
                                     placeholder="Untitled cost item"
-                                    onClick={(e) => e.stopPropagation()}
-                                    onChange={(e) => onDescriptionChangeAction?.(node.id, e.target.value)}
-                                    className={`min-w-27.5 flex-1 truncate rounded-lg border border-transparent bg-transparent px-1.5 py-1 text-[13.5px] tracking-[0.005em] text-[#1E2621] transition-colors hover:border-[#E4E1D8] focus:border-[#2C4A3A] focus:bg-white focus:outline-none ${
-                                        hasChildren ? "font-semibold" : "font-medium"
+                                    onClick={(e) =>
+                                        e.stopPropagation()
+                                    }
+                                    onChange={(e) =>
+                                        onDescriptionChangeAction?.(
+                                            node.id,
+                                            e.target.value,
+                                        )
+                                    }
+                                    className={`min-w-0 flex-1 rounded-lg border border-transparent bg-transparent px-1.5 py-1 text-[13.5px] leading-5 tracking-[0.005em] text-[#1E2621] transition-colors hover:border-[#E4E1D8] focus:border-[#2C4A3A] focus:bg-white focus:outline-none ${
+                                        hasChildren
+                                            ? "font-semibold"
+                                            : "font-medium"
                                     }`}
                                 />
                             ) : (
                                 <span
-                                    className={`min-w-0 truncate text-[13.5px] tracking-[0.005em] text-[#1E2621] ${
-                                        hasChildren ? "font-semibold" : "font-medium"
+                                    className={`min-w-0 flex-1 text-[13.5px] leading-5 tracking-[0.005em] text-[#1E2621] ${
+                                        hasChildren
+                                            ? "font-semibold"
+                                            : "font-medium"
                                     }`}
+                                    title={
+                                        node.description
+                                    }
                                 >
-                                    {node.description}
+                                    <span className="line-clamp-2 sm:line-clamp-1">
+                                        {
+                                            node.description
+                                        }
+                                    </span>
                                 </span>
                             )}
-                          {isCert && mode == "assessment" && (
-                              <span className="flex shrink-0 items-center gap-1 rounded-full border border-[#D9B968] bg-white/70 px-2 py-0.5 text-[10px] font-medium text-[#8A6420] shadow-[0_1px_1px_rgba(138,100,32,0.08)]">
-                                  <Award size={10.5} />
-                                  {node.certificationLabel ?? "Certification"}
-                              </span>
-                          )}
+
+                            {isCert &&
+                                mode ===
+                                    "assessment" && (
+                                    <CertificationBadge
+                                        label={
+                                            node.certificationLabel
+                                        }
+                                    />
+                                )}
                         </div>
 
-                        {/* Mobile-only: Predicted collapses out of its own column below sm, so it
-                            rides along as a caption instead of disappearing entirely. */}
+                        {/* Mobile predicted caption */}
                         {!isAssessment && (
                             <span
-                                className="mt-0.5 truncate text-[10.5px] font-medium text-[#9A9186] sm:hidden"
-                                style={{ fontFamily: "var(--font-mono)" }}
+                                className="mt-0.5 min-w-0 truncate text-[10.5px] font-medium text-[#9A9186] sm:hidden"
+                                style={{
+                                    fontFamily:
+                                        "var(--font-mono)",
+                                }}
                             >
-                                Predicted {formatMoney(node.cost)}
+                                Predicted{" "}
+                                {formatMoney(
+                                    node.cost,
+                                )}
                             </span>
                         )}
                     </div>
                 </div>
 
                 {isConfirmingDelete ? (
-                    /* Inline delete confirm â€” spans the remaining columns, replacing amounts + actions. */
+                    /* ---- Inline delete confirmation ---- */
                     <span
-                        className={`flex shrink-0 items-center gap-2 ${divider} bg-[#FDFBF9] px-3 sm:px-4`}
-                        onClick={(e) => e.stopPropagation()}
+                        className={`flex min-w-0 flex-1 items-center justify-end gap-1.5 ${divider} bg-[#FDFBF9] px-2 sm:flex-none sm:gap-2 sm:px-4`}
+                        onClick={(e) =>
+                            e.stopPropagation()
+                        }
                     >
-                        <span className="hidden text-[12px] font-medium text-[#8C3D33] sm:inline">
-                            Delete{hasChildren ? ` this + ${countLeaves(node)} items` : ""}?
+                        <span className="hidden min-w-0 truncate text-[12px] font-medium text-[#8C3D33] sm:inline">
+                            Delete
+                            {hasChildren
+                                ? ` this + ${countLeaves(node)} items`
+                                : ""}
+                            ?
                         </span>
-                        <span className="text-[12px] font-medium text-[#8C3D33] sm:hidden">Delete?</span>
+
+                        <span className="text-[12px] font-medium text-[#8C3D33] sm:hidden">
+                            Delete?
+                        </span>
+
                         <button
                             type="button"
                             title="Confirm delete"
                             onClick={() => {
-                                onDeleteNodeAction?.(node.id);
+                                onDeleteNodeAction?.(
+                                    node.id,
+                                );
                                 onRequestDelete(null);
                             }}
-                            className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[#B0453A] text-white shadow-sm transition-colors hover:bg-[#963B31]"
+                            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#B0453A] text-white shadow-sm transition-colors hover:bg-[#963B31] sm:h-7 sm:w-7"
                         >
                             <Check size={13} />
                         </button>
+
                         <button
                             type="button"
                             title="Cancel"
-                            onClick={() => onRequestDelete(null)}
-                            className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-[#E4E1D8] bg-white text-[#5B655F] transition-colors hover:border-[#C9D3CC]"
+                            onClick={() =>
+                                onRequestDelete(null)
+                            }
+                            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-[#E4E1D8] bg-white text-[#5B655F] transition-colors hover:border-[#C9D3CC] sm:h-7 sm:w-7"
                         >
                             <X size={13} />
                         </button>
                     </span>
                 ) : (
                     <>
-                        {/* ---- Predicted / Budgeted column ---- */}
+                        {/* ---- Predicted / Budgeted ---- */}
                         {!isAssessment && (
                             <span
-                                className={`${COL_BUDGET} ${divider} hidden shrink-0 flex-col items-end justify-center gap-1 py-3 pr-3 sm:flex`}
+                                className={`${COL_BUDGET} ${divider} hidden shrink-0 flex-col items-end justify-center gap-1 py-3 pr-3 sm:flex md:pr-3`}
                             >
                                 <span
-                                    className={`text-[13px] tabular-nums ${style ? `font-semibold ${style.amount}` : "text-[#7C8880]"}`}
-                                    style={{ fontFamily: "var(--font-mono)", letterSpacing: "0.01em" }}
+                                    className={`max-w-full truncate text-[13px] tabular-nums ${
+                                        style
+                                            ? `font-semibold ${style.amount}`
+                                            : "text-[#7C8880]"
+                                    }`}
+                                    style={{
+                                        fontFamily:
+                                            "var(--font-mono)",
+                                        letterSpacing:
+                                            "0.01em",
+                                    }}
+                                    title={formatMoney(
+                                        node.cost,
+                                    )}
                                 >
-                                    {formatMoney(node.cost)}
+                                    {formatMoney(
+                                        node.cost,
+                                    )}
                                 </span>
-                                {isCert && <CertificationBadge label={node.certificationLabel} />}
+
+                                {isCert && (
+                                    <CertificationBadge
+                                        label={
+                                            node.certificationLabel
+                                        }
+                                    />
+                                )}
                             </span>
                         )}
 
-                        {/* ---- Δ% column (rising/dropping control, comparison mode) ---- */}
+                        {/* ---- Δ% ---- */}
                         {!isAssessment && (
                             <span
                                 className={`${COL_PCT} ${divider} hidden shrink-0 items-center justify-center py-2.5 sm:flex`}
-                                onClick={(e) => e.stopPropagation()}
+                                onClick={(e) =>
+                                    e.stopPropagation()
+                                }
                             >
-                                {isLeafNode && !readOnly ? (
+                                {isLeafNode &&
+                                !readOnly ? (
                                     <span className="flex items-center gap-1">
                                         <button
                                             type="button"
                                             title={
-                                                pctCfg.direction === "up"
+                                                pctCfg.direction ===
+                                                "up"
                                                     ? "Rising (actual above predicted)"
                                                     : "Dropping (actual below predicted)"
                                             }
                                             onClick={() => {
                                                 const nextDir: PctDirection =
-                                                    pctCfg.direction === "up" ? "down" : "up";
+                                                    pctCfg.direction ===
+                                                    "up"
+                                                        ? "down"
+                                                        : "up";
+
                                                 onPctChangeAction?.(
                                                     node.id,
                                                     pctCfg.pct,
@@ -871,30 +1203,52 @@ function CostRow({
                                                     computePctActual(
                                                         node.cost,
                                                         pctCfg.pct,
-                                                        nextDir
-                                                    )
+                                                        nextDir,
+                                                    ),
                                                 );
                                             }}
-                                            className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full transition-colors ${
-                                                pctCfg.direction === "up"
+                                            className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full transition-colors sm:h-6 sm:w-6 ${
+                                                pctCfg.direction ===
+                                                "up"
                                                     ? "bg-[#3E6B52] text-white"
                                                     : "bg-[#B0453A] text-white"
                                             }`}
                                         >
-                                            {pctCfg.direction === "up" ? (
-                                                <TrendingUp size={12} strokeWidth={2.5} />
+                                            {pctCfg.direction ===
+                                            "up" ? (
+                                                <TrendingUp
+                                                    size={12}
+                                                    strokeWidth={
+                                                        2.5
+                                                    }
+                                                />
                                             ) : (
-                                                <TrendingDown size={12} strokeWidth={2.5} />
+                                                <TrendingDown
+                                                    size={12}
+                                                    strokeWidth={
+                                                        2.5
+                                                    }
+                                                />
                                             )}
                                         </button>
-<span className="flex items-center rounded-lg border border-[#D6D1C3] bg-[#FCFBF8] px-1.5 py-1">
+
+                                        <span className="flex items-center rounded-lg border border-[#D6D1C3] bg-[#FCFBF8] px-1.5 py-1">
                                             <input
                                                 type="text"
                                                 inputMode="decimal"
                                                 placeholder="0"
-                                                value={formatPct(pctCfg.pct)}
-                                                onChange={(e) => {
-                                                    const v = normalizePct(e.target.value);
+                                                value={formatPct(
+                                                    pctCfg.pct,
+                                                )}
+                                                onChange={(
+                                                    e,
+                                                ) => {
+                                                    const v =
+                                                        normalizePct(
+                                                            e.target
+                                                                .value,
+                                                        );
+
                                                     onPctChangeAction?.(
                                                         node.id,
                                                         v,
@@ -902,125 +1256,282 @@ function CostRow({
                                                         computePctActual(
                                                             node.cost,
                                                             v,
-                                                            pctCfg.direction
-                                                        )
+                                                            pctCfg.direction,
+                                                        ),
                                                     );
                                                 }}
-                                                className="w-10 bg-transparent text-right text-[11.5px] font-medium tabular-nums text-[#1E2621] focus:outline-none pr-1.5"
-                                                style={{ fontFamily: "var(--font-mono)" }}
+                                                className="w-10 bg-transparent pr-1.5 text-right text-[11.5px] font-medium tabular-nums text-[#1E2621] focus:outline-none"
+                                                style={{
+                                                    fontFamily:
+                                                        "var(--font-mono)",
+                                                }}
                                             />
-                                            <span className="text-[10px] font-semibold text-[#8A938C]">%</span>
+
+                                            <span className="text-[10px] font-semibold text-[#8A938C]">
+                                                %
+                                            </span>
                                         </span>
                                     </span>
                                 ) : (
-                                    <span className="flex items-center gap-1.5" title={formatPct(displayPct) + "% vs predicted"}>
+                                    <span
+                                        className="flex items-center gap-1.5"
+                                        title={
+                                            formatPct(
+                                                displayPct,
+                                            ) +
+                                            "% vs predicted"
+                                        }
+                                    >
                                         <span
                                             className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full ${
-                                                displayDir === "up"
+                                                displayDir ===
+                                                "up"
                                                     ? "bg-[#3E6B52]/12 text-[#3E6B52]"
                                                     : "bg-[#B0453A]/12 text-[#B0453A]"
                                             }`}
                                         >
-                                            {displayDir === "up" ? (
-                                                <TrendingUp size={11} strokeWidth={2.5} />
+                                            {displayDir ===
+                                            "up" ? (
+                                                <TrendingUp
+                                                    size={11}
+                                                    strokeWidth={
+                                                        2.5
+                                                    }
+                                                />
                                             ) : (
-                                                <TrendingDown size={11} strokeWidth={2.5} />
+                                                <TrendingDown
+                                                    size={11}
+                                                    strokeWidth={
+                                                        2.5
+                                                    }
+                                                />
                                             )}
                                         </span>
+
                                         <span
                                             className="text-[11.5px] font-semibold tabular-nums"
-                                            style={{ fontFamily: "var(--font-mono)" }}
+                                            style={{
+                                                fontFamily:
+                                                    "var(--font-mono)",
+                                            }}
                                         >
-                                            {formatPct(displayPct)}%
+                                            {formatPct(
+                                                displayPct,
+                                            )}
+                                            %
                                         </span>
                                     </span>
                                 )}
                             </span>
                         )}
 
-                        {/* ---- Cost / Actual column ---- */}
+                        {/* ---- Actual / Cost ---- */}
                         <span
-                            className={`${COL_ACTUAL} ${divider} flex shrink-0 items-center py-2.5 pl-2 pr-2.5 sm:pl-3 sm:pr-3`}
-                            onClick={(e) => e.stopPropagation()}
+                            className={`${COL_ACTUAL} ${divider} flex shrink-0 items-center py-2 pl-1.5 pr-1.5 sm:py-2.5 sm:pl-3 sm:pr-3`}
+                            onClick={(e) =>
+                                e.stopPropagation()
+                            }
                         >
-                          {(hasChildren || isCert) ? (
-                                <span className="flex w-full flex-col items-end gap-1">
+                            {hasChildren || isCert ? (
+                                <span className="flex w-full min-w-0 flex-col items-end gap-1">
                                     <span
-                                        className="w-full text-right text-[13px] font-semibold tabular-nums text-[#2C4A3A]"
-                                        style={{ fontFamily: "var(--font-mono)", letterSpacing: "0.01em" }}
-                                        title="Sum of child items â€” not directly editable"
+                                        className="w-full truncate text-right text-[12.5px] font-semibold tabular-nums text-[#2C4A3A] sm:text-[13px]"
+                                        style={{
+                                            fontFamily:
+                                                "var(--font-mono)",
+                                            letterSpacing:
+                                                "0.01em",
+                                        }}
+                                        title={formatMoney(
+                                            liveValue,
+                                        )}
                                     >
-                                        {formatMoney(liveValue)}
+                                        {formatMoney(
+                                            liveValue,
+                                        )}
                                     </span>
-                                    {isCert && !isAssessment && (
-                                        <CertificationBadge label={node.actualCertificationLabel ?? node.certificationLabel} />
-                                    )}
+
+                                    {isCert &&
+                                        !isAssessment && (
+                                            <CertificationBadge
+                                                label={
+                                                    node.actualCertificationLabel ??
+                                                    node.certificationLabel
+                                                }
+                                            />
+                                        )}
                                 </span>
                             ) : isPctLeaf ? (
                                 <span
-                                    className="w-full text-right text-[13px] font-semibold tabular-nums text-[#1E2621]"
-                                    style={{ fontFamily: "var(--font-mono)", letterSpacing: "0.01em" }}
-                                    title="Derived from predicted cost and the Δ% control"
+                                    className="w-full truncate text-right text-[12.5px] font-semibold tabular-nums text-[#1E2621] sm:text-[13px]"
+                                    style={{
+                                        fontFamily:
+                                            "var(--font-mono)",
+                                        letterSpacing:
+                                            "0.01em",
+                                    }}
+                                    title={formatMoney(
+                                        computedActual!,
+                                    )}
                                 >
-                                    {formatMoney(computedActual!)}
+                                    {formatMoney(
+                                        computedActual!,
+                                    )}
                                 </span>
                             ) : readOnly ? (
                                 <span
-                                    className="w-full text-right text-[13px] font-semibold tabular-nums text-[#1E2621]"
-                                    style={{ fontFamily: "var(--font-mono)", letterSpacing: "0.01em" }}
+                                    className="w-full truncate text-right text-[12.5px] font-semibold tabular-nums text-[#1E2621] sm:text-[13px]"
+                                    style={{
+                                        fontFamily:
+                                            "var(--font-mono)",
+                                        letterSpacing:
+                                            "0.01em",
+                                    }}
+                                    title={formatMoney(
+                                        parseEdit(
+                                            edits[node.id],
+                                        ),
+                                    )}
                                 >
-                                    {formatMoney(parseEdit(edits[node.id]))}
+                                    {formatMoney(
+                                        parseEdit(
+                                            edits[node.id],
+                                        ),
+                                    )}
                                 </span>
                             ) : (
-                                <div className="relative w-full">
+                                <div className="relative w-full min-w-0">
                                     <span
-                                        className="pointer-events-none absolute inset-y-0 left-1.5 flex items-center text-[10.5px] font-medium text-[#ADA695]"
-                                        style={{ fontFamily: "var(--font-mono)" }}
+                                        className="pointer-events-none absolute inset-y-0 left-1 flex items-center text-[9.5px] font-medium text-[#ADA695] sm:left-1.5 sm:text-[10.5px]"
+                                        style={{
+                                            fontFamily:
+                                                "var(--font-mono)",
+                                        }}
                                     >
                                         RM
                                     </span>
+
                                     <input
                                         type="text"
                                         inputMode="decimal"
                                         placeholder="0.00"
-                                        value={formatWithCommas(edits[node.id])}
+                                        value={formatWithCommas(
+                                            edits[node.id],
+                                        )}
                                         onChange={(e) => {
-                                            const input = e.currentTarget;
-                                            onLeafChange(node.id, e.target.value);
-                                            const end = formatWithCommas(e.target.value).length;
-                                            requestAnimationFrame(() => {
-                                                input?.setSelectionRange(end, end);
-                                            });
+                                            const input =
+                                                e.currentTarget;
+
+                                            onLeafChange(
+                                                node.id,
+                                                e.target.value,
+                                            );
+
+                                            const end =
+                                                formatWithCommas(
+                                                    e.target
+                                                        .value,
+                                                ).length;
+
+                                            requestAnimationFrame(
+                                                () => {
+                                                    input?.setSelectionRange(
+                                                        end,
+                                                        end,
+                                                    );
+                                                },
+                                            );
                                         }}
                                         onFocus={(e) => {
-                                            const input = e.currentTarget;
-                                            onLeafFocus(node.id);
-                                            const end = formatWithCommas(e.target.value).length;
-                                            requestAnimationFrame(() => {
-                                                input?.setSelectionRange(end, end);
-                                            });
+                                            const input =
+                                                e.currentTarget;
+
+                                            onLeafFocus(
+                                                node.id,
+                                            );
+
+                                            const end =
+                                                formatWithCommas(
+                                                    e.target
+                                                        .value,
+                                                ).length;
+
+                                            requestAnimationFrame(
+                                                () => {
+                                                    input?.setSelectionRange(
+                                                        end,
+                                                        end,
+                                                    );
+                                                },
+                                            );
                                         }}
                                         onKeyDown={(e) => {
-                                            if (e.metaKey || e.ctrlKey || e.altKey) return;
-                                            if (e.key === "ArrowLeft" || e.key === "ArrowRight" || e.key === "Home" || e.key === "End") {
+                                            if (
+                                                e.metaKey ||
+                                                e.ctrlKey ||
+                                                e.altKey
+                                            ) {
+                                                return;
+                                            }
+
+                                            if (
+                                                e.key ===
+                                                    "ArrowLeft" ||
+                                                e.key ===
+                                                    "ArrowRight" ||
+                                                e.key === "Home" ||
+                                                e.key === "End"
+                                            ) {
                                                 e.preventDefault();
-                                                const input = e.currentTarget;
-                                                const end = formatWithCommas(input.value).length;
-                                                requestAnimationFrame(() => {
-                                                    input?.setSelectionRange(end, end);
-                                                });
+
+                                                const input =
+                                                    e.currentTarget;
+
+                                                const end =
+                                                    formatWithCommas(
+                                                        input.value,
+                                                    ).length;
+
+                                                requestAnimationFrame(
+                                                    () => {
+                                                        input?.setSelectionRange(
+                                                            end,
+                                                            end,
+                                                        );
+                                                    },
+                                                );
                                             }
                                         }}
                                         onClick={(e) => {
-                                            const input = e.currentTarget;
-                                            const end = formatWithCommas(input.value).length;
-                                            requestAnimationFrame(() => {
-                                                input?.setSelectionRange(end, end);
-                                            });
+                                            const input =
+                                                e.currentTarget;
+
+                                            const end =
+                                                formatWithCommas(
+                                                    input.value,
+                                                ).length;
+
+                                            requestAnimationFrame(
+                                                () => {
+                                                    input?.setSelectionRange(
+                                                        end,
+                                                        end,
+                                                    );
+                                                },
+                                            );
                                         }}
-                                        onBlur={() => onLeafBlur(node.id)}
-                                        className="w-full rounded-lg border border-[#D6D1C3] bg-[#FCFBF8] py-1.5 pl-6 pr-2 text-right text-[13px] tabular-nums text-[#1E2621] shadow-[inset_0_1px_2px_rgba(30,38,33,0.05)] transition-colors hover:border-[#C4CBC4] focus:border-[#2C4A3A] focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#2C4A3A]/15"
-                                        style={{ fontFamily: "var(--font-mono)", letterSpacing: "0.01em" }}
+                                        onBlur={() =>
+                                            onLeafBlur(
+                                                node.id,
+                                            )
+                                        }
+                                        className="w-full min-w-0 rounded-lg border border-[#D6D1C3] bg-[#FCFBF8] py-2 pl-5 pr-1.5 text-right text-[12px] tabular-nums text-[#1E2621] shadow-[inset_0_1px_2px_rgba(30,38,33,0.05)] transition-colors hover:border-[#C4CBC4] focus:border-[#2C4A3A] focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#2C4A3A]/15 sm:py-1.5 sm:pl-6 sm:pr-2 sm:text-[13px]"
+                                        style={{
+                                            fontFamily:
+                                                "var(--font-mono)",
+                                            letterSpacing:
+                                                "0.01em",
+                                        }}
                                     />
                                 </div>
                             )}
@@ -1029,109 +1540,172 @@ function CostRow({
                 )}
 
                 {/* ---- Row actions ---- */}
-                {(addMode || editable || deleteMode) && !isConfirmingDelete && (
-                    <span className={`flex w-17.5 shrink-0 items-center justify-center gap-1 ${divider}`}>
-                        {addMode && mode === "comparison" && !isCert && hasChildren ? (
-                            <button
-                                type="button"
-                                title="Add child actual cost node"
-                                onClick={(e) => {
-                                    e.stopPropagation();
-                                    onSplitLeafAction?.(node.id);
-                                }}
-                                className="flex h-6 w-6 items-center justify-center rounded-full text-sage transition-colors hover:bg-sage-100 hover:text-sage-dark focus-visible:outline focus-visible:outline-offset-2 focus-visible:outline-sage"
-                            >
-                                <Plus size={13} strokeWidth={2.5} />
-                            </button>
-                        ) : addMode && !isCert && !hasChildren && depth < 2 ? (
-                            <button
-                                type="button"
-                                title="Split this item"
-                                onClick={(e) => {
-                                    e.stopPropagation();
-                                    onSplitLeafAction?.(node.id);
-                                }}
-                                className="flex h-6 w-6 items-center justify-center rounded-full text-sage transition-colors hover:bg-sage-100 hover:text-sage-dark focus-visible:outline focus-visible:outline-offset-2 focus-visible:outline-sage"
-                            >
-                                <Plus size={13} strokeWidth={2.5} />
-                            </button>
-                        ) : editable ? (
-                            <>
+                {(addMode ||
+                    editable ||
+                    deleteMode) &&
+                    !isConfirmingDelete && (
+                        <span
+                            className={`${COL_ACTION} ${divider} flex shrink-0 items-center justify-center gap-0.5 sm:gap-1`}
+                        >
+                            {addMode &&
+                            mode === "comparison" &&
+                            !isCert &&
+                            hasChildren ? (
                                 <button
                                     type="button"
-                                    title="Add child item"
+                                    title="Add child actual cost node"
                                     onClick={(e) => {
                                         e.stopPropagation();
-                                        onAddChildAction(node.id);
+                                        onSplitLeafAction?.(
+                                            node.id,
+                                        );
                                     }}
-                                    className="flex h-6 w-6 items-center justify-center rounded-full text-[#8A938C] opacity-0 transition-opacity hover:bg-[#EEF2EC] hover:text-[#2C4A3A] focus-visible:opacity-100 group-hover:opacity-100"
+                                    className="flex h-9 w-9 items-center justify-center rounded-full text-sage transition-colors hover:bg-sage-100 hover:text-sage-dark focus-visible:outline focus-visible:outline-offset-2 focus-visible:outline-sage sm:h-6 sm:w-6"
                                 >
-                                    <Plus size={13} />
+                                    <Plus
+                                        size={13}
+                                        strokeWidth={2.5}
+                                    />
                                 </button>
+                            ) : addMode &&
+                              !isCert &&
+                              !hasChildren &&
+                              depth < 2 ? (
                                 <button
                                     type="button"
-                                    title="Delete"
+                                    title="Split this item"
                                     onClick={(e) => {
                                         e.stopPropagation();
-                                        onRequestDelete(node.id);
+                                        onSplitLeafAction?.(
+                                            node.id,
+                                        );
                                     }}
-                                    className="flex h-6 w-6 items-center justify-center rounded-full text-[#8A938C] opacity-0 transition-opacity hover:bg-[#FBEDEB] hover:text-[#B0453A] focus-visible:opacity-100 group-hover:opacity-100"
+                                    className="flex h-9 w-9 items-center justify-center rounded-full text-sage transition-colors hover:bg-sage-100 hover:text-sage-dark focus-visible:outline focus-visible:outline-offset-2 focus-visible:outline-sage sm:h-6 sm:w-6"
                                 >
-                                    <X size={13} />
+                                    <Plus
+                                        size={13}
+                                        strokeWidth={2.5}
+                                    />
                                 </button>
-                            </>
-                        ) : deleteMode && !isCert ? (
-                            <button
-                                type="button"
-                                title="Delete this item"
-                                onClick={(e) => {
-                                    e.stopPropagation();
-                                    onDeleteLeafAction?.(node.id);
-                                }}
-                                className="flex h-7 w-7 items-center justify-center rounded-full bg-[#FBEDEB] text-[#B0453A] transition-colors hover:bg-[#E7C1BA] hover:text-[#8C3D33]"
-                            >
-                                <Trash2 size={14} />
-                            </button>
-                        ) : null}
-                    </span>
-                )}
+                            ) : editable ? (
+                                <>
+                                    <button
+                                        type="button"
+                                        title="Add child item"
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            onAddChildAction(
+                                                node.id,
+                                            );
+                                        }}
+                                        className="flex h-9 w-9 items-center justify-center rounded-full text-[#8A938C] opacity-100 transition-opacity hover:bg-[#EEF2EC] hover:text-[#2C4A3A] focus-visible:opacity-100 sm:h-6 sm:w-6 sm:opacity-0 sm:group-hover:opacity-100"
+                                    >
+                                        <Plus size={13} />
+                                    </button>
+
+                                    <button
+                                        type="button"
+                                        title="Delete"
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            onRequestDelete(
+                                                node.id,
+                                            );
+                                        }}
+                                        className="flex h-9 w-9 items-center justify-center rounded-full text-[#8A938C] opacity-100 transition-opacity hover:bg-[#FBEDEB] hover:text-[#B0453A] focus-visible:opacity-100 sm:h-6 sm:w-6 sm:opacity-0 sm:group-hover:opacity-100"
+                                    >
+                                        <X size={13} />
+                                    </button>
+                                </>
+                            ) : deleteMode &&
+                              !isCert ? (
+                                <button
+                                    type="button"
+                                    title="Delete this item"
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        onDeleteLeafAction?.(
+                                            node.id,
+                                        );
+                                    }}
+                                    className="flex h-9 w-9 items-center justify-center rounded-full bg-[#FBEDEB] text-[#B0453A] transition-colors hover:bg-[#E7C1BA] hover:text-[#8C3D33] sm:h-7 sm:w-7"
+                                >
+                                    <Trash2 size={14} />
+                                </button>
+                            ) : null}
+                        </span>
+                    )}
             </div>
 
             {hasChildren && isOpen && (
                 <div>
-                    {entries.map(([childKey, child], i) => (
-                        <CostRow
-                            key={child.id}
-                            rowKey={`${rowKey}.${childKey}`}
-                            node={child}
-                            depth={depth + 1}
-                            ancestorContinues={childAncestorContinues}
-                            isLastChild={i === entries.length - 1}
-                            edits={edits}
-                            expanded={expanded}
-                            focusedId={focusedId}
-                            mode={mode}
-                            field={field}
-                            editable={editable}
-                            addMode={addMode}
-                            deleteMode={deleteMode}
-                            confirmingDeleteId={confirmingDeleteId}
-                            onToggle={onToggle}
-                            onLeafChange={onLeafChange}
-                            onLeafFocus={onLeafFocus}
-                            onLeafBlur={onLeafBlur}
-                            onAddChildAction={onAddChildAction}
-                            onRequestDelete={onRequestDelete}
-                            onDeleteNodeAction={onDeleteNodeAction}
-                            onDescriptionChangeAction={onDescriptionChangeAction}
-                            onSplitLeafAction={onSplitLeafAction}
-                            onDeleteLeafAction={onDeleteLeafAction}
-                            isLast={i === entries.length - 1}
-                            readOnly={readOnly}
-                            pctOverrides={pctOverrides}
-                            onPctChangeAction={onPctChangeAction}
-                        />
-                    ))}
+                    {entries.map(
+                        ([childKey, child], i) => (
+                            <CostRow
+                                key={child.id}
+                                rowKey={`${rowKey}.${childKey}`}
+                                node={child}
+                                depth={depth + 1}
+                                ancestorContinues={
+                                    childAncestorContinues
+                                }
+                                isLastChild={
+                                    i ===
+                                    entries.length - 1
+                                }
+                                edits={edits}
+                                expanded={expanded}
+                                focusedId={focusedId}
+                                mode={mode}
+                                field={field}
+                                editable={editable}
+                                addMode={addMode}
+                                deleteMode={deleteMode}
+                                confirmingDeleteId={
+                                    confirmingDeleteId
+                                }
+                                onToggle={onToggle}
+                                onLeafChange={
+                                    onLeafChange
+                                }
+                                onLeafFocus={
+                                    onLeafFocus
+                                }
+                                onLeafBlur={
+                                    onLeafBlur
+                                }
+                                onAddChildAction={
+                                    onAddChildAction
+                                }
+                                onRequestDelete={
+                                    onRequestDelete
+                                }
+                                onDeleteNodeAction={
+                                    onDeleteNodeAction
+                                }
+                                onDescriptionChangeAction={
+                                    onDescriptionChangeAction
+                                }
+                                onSplitLeafAction={
+                                    onSplitLeafAction
+                                }
+                                onDeleteLeafAction={
+                                    onDeleteLeafAction
+                                }
+                                isLast={
+                                    i ===
+                                    entries.length - 1
+                                }
+                                readOnly={readOnly}
+                                pctOverrides={
+                                    pctOverrides
+                                }
+                                onPctChangeAction={
+                                    onPctChangeAction
+                                }
+                            />
+                        ),
+                    )}
                 </div>
             )}
         </div>
@@ -1147,7 +1721,9 @@ function TotalCard({
     highlighted,
     tone,
 }: {
-    icon: React.ComponentType<{ size?: number }>;
+    icon: React.ComponentType<{
+        size?: number;
+    }>;
     label: string;
     value: string;
     highlighted?: boolean;
@@ -1157,36 +1733,49 @@ function TotalCard({
         tone === "over"
             ? "border-[#D9A79E] bg-[#FBEDEB] text-[#8C3D33]"
             : tone === "under"
-            ? "border-[#BFD6C8] bg-[#EEF2EC] text-[#2C4A3A]"
-            : highlighted
-            ? "border-[#BFD6C8] bg-[#EEF2EC] text-[#2C4A3A]"
-            : "border-[#E4E1D8] bg-[#FDFDFC] text-[#1E2621]";
+              ? "border-[#BFD6C8] bg-[#EEF2EC] text-[#2C4A3A]"
+              : highlighted
+                ? "border-[#BFD6C8] bg-[#EEF2EC] text-[#2C4A3A]"
+                : "border-[#E4E1D8] bg-[#FDFDFC] text-[#1E2621]";
 
     const iconToneClasses =
         tone === "over"
             ? "bg-[#B0453A] text-white"
             : tone === "under"
-            ? "bg-[#3E6B52] text-white"
-            : highlighted
-            ? "bg-[#3E6B52] text-white"
-            : "bg-[#EFEDE6] text-[#7C8880]";
+              ? "bg-[#3E6B52] text-white"
+              : highlighted
+                ? "bg-[#3E6B52] text-white"
+                : "bg-[#EFEDE6] text-[#7C8880]";
 
     return (
-        <div className={`rounded-2xl border-2 border-dashed p-4 transition-colors ${toneClasses}`}>
-            <div className="flex items-center gap-2">
-                <span className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full ${iconToneClasses}`}>
+        <div
+            className={`min-w-0 overflow-hidden rounded-2xl border-2 border-dashed p-3.5 transition-colors sm:p-4 ${toneClasses}`}
+        >
+            <div className="flex min-w-0 items-center gap-2">
+                <span
+                    className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full ${iconToneClasses}`}
+                >
                     <Icon size={13} />
                 </span>
+
                 <div
                     className="min-w-0 truncate text-[10.5px] uppercase tracking-widest opacity-70"
-                    style={{ fontFamily: "var(--font-mono)" }}
+                    style={{
+                        fontFamily:
+                            "var(--font-mono)",
+                    }}
+                    title={label}
                 >
                     {label}
                 </div>
             </div>
+
             <div
-                className="mt-2.5 truncate text-[21px] font-semibold tabular-nums sm:text-[23px]"
-                style={{ fontFamily: "var(--font-display)" }}
+                className="mt-2.5 min-w-0 truncate text-[20px] font-semibold tabular-nums sm:text-[23px]"
+                style={{
+                    fontFamily:
+                        "var(--font-display)",
+                }}
                 title={value}
             >
                 {value}

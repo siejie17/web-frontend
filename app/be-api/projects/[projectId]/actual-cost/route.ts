@@ -27,7 +27,7 @@ export async function POST(
                 Authorization: `Bearer ${token}`,
             },
             body: JSON.stringify({
-                project_id: projectId,
+                projectId: projectId,
                 changedNodes: body.changedNodes,
                 newNodes: body.newNodes,
                 deletedNodeIds: body.deletedNodeIds,

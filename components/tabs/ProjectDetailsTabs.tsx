@@ -87,6 +87,8 @@ export default function ProjectDetailTabs({
   submitRef,
   readOnly = false,
   isProjectOwner = false,
+  onChatUnreadChange,
+  onActualCostChange,
 }: {
   selectedProject: any | null;
   activeTab: TabKey;
@@ -96,6 +98,8 @@ export default function ProjectDetailTabs({
   submitRef?: React.MutableRefObject<(() => Promise<void>) | null>;
   readOnly?: boolean;
   isProjectOwner?: boolean;
+  onChatUnreadChange?: (unread: number) => void;
+  onActualCostChange?: (total: number) => void;
 }) {
   const [projectData, setProjectData] = useState<Project | null>(null);
   const [costBreakdownData, setCostBreakdownData] =
@@ -633,6 +637,7 @@ export default function ProjectDetailTabs({
                 value={costBreakdownData}
                 onChangedNodesUpdateAction={handleChangedNodesUpdate}
                 onStructuralChangeAction={handleStructuralChange}
+                onTotalActualChange={onActualCostChange}
                 mode="comparison"
                 hideSubmitBar
                 resetKey={saveCount}

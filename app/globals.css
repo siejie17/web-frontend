@@ -113,6 +113,11 @@
  100% { transform: scale(1.25); opacity: 0; }
 }
 
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #64748b transparent;
+}
+
 /* Blueprint dot-grid background, used behind the brand panel. */
 .bg-blueprint-grid {
   background-image: radial-gradient(circle, rgba(255, 255, 255, 0.12) 1px, transparent 1px);
