@@ -40,7 +40,7 @@ function navigationFor(role?: string) {
 }
 
 export default function AdministrationShell({ children, allowedRoles }: { children: React.ReactNode; allowedRoles: SystemRole[] }) {
-  const { user } = useAuth();
+  const { user, logout } = useAuth();
   const pathname = usePathname();
   const [mobileOpen, setMobileOpen] = useState(false);
   const role = user?.system_role || "user";
@@ -50,9 +50,12 @@ export default function AdministrationShell({ children, allowedRoles }: { childr
   const nav = navigationFor(role);
   const roleLabel = role === "super_admin" ? "SuperAdmin" : role === "facilitator_admin" ? "Facilitator Admin" : "Admin";
 
-  const logout = async () => {
-    await fetch("/be-api/auth/logout", { method: "POST", credentials: "include" }).catch(() => null);
-    window.location.href = "/login";
+  const handleLogout = async () => {
+    try {
+      await logout();
+    } catch (error) {
+      console.error("Logout failed", error);
+    }
   };
 
   const sidebar = (
@@ -90,7 +93,7 @@ export default function AdministrationShell({ children, allowedRoles }: { childr
       </nav>
 
       <div className="space-y-1 border-t border-white/10 px-3 py-2.5">
-        <button onClick={logout} className="flex w-full items-center gap-3 rounded-xl bg-white/6 px-3 py-2.5 text-sm text-white/65 transition hover:bg-white/10 hover:text-white">
+        <button onClick={handleLogout} className="flex w-full items-center gap-3 rounded-xl bg-white/6 px-3 py-2.5 text-sm text-white/65 transition hover:bg-white/10 hover:text-white">
           <LogOut size={16} /> Sign out
         </button>
       </div>
