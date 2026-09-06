@@ -148,6 +148,8 @@ export default function AIAvatar({ showLauncher = true }: { showLauncher?: boole
   const [launcherPos, setLauncherPos] = useState({ x: 28, y: 28 });
   const launcherRef = useRef<HTMLDivElement>(null);
   const dragState = useRef({ active: false, moved: false, sx: 0, sy: 0, px: 0, py: 0 });
+  const openRef = useRef(false);
+  const conversationVersionRef = useRef(0);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -435,7 +437,7 @@ export default function AIAvatar({ showLauncher = true }: { showLauncher?: boole
               style={{
                 transformOrigin: 'bottom right',
                 '--panel-bottom': `${launcherPos.y + 16}px`,
-                '--panel-right': `${launcherPos.x - 244 + 56}px`,
+                '--panel-right': `min(${launcherPos.x}px, calc(100% - 25rem))`,
               } as React.CSSProperties}
               className="fixed inset-x-0 bottom-0 z-50 flex h-[88vh] w-full flex-col overflow-hidden bg-paper shadow-[0_24px_60px_rgba(20,24,21,0.25)] sm:inset-x-auto sm:h-155 sm:max-h-[80vh] sm:w-100 sm:rounded-[28px] sm:ring-1 sm:ring-black/5 sm:bottom-[var(--panel-bottom)] sm:right-[var(--panel-right)]"
             >
