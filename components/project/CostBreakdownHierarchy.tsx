@@ -941,7 +941,7 @@ export default function CostBreakdownHierarchy({
 
   return (
     <>
-      <div className="mx-auto mb-4 w-full max-w-275">
+      <div className="mx-auto mb-4 w-full md:px-4">
         {/* ---------------- Statement / summary card ---------------- */}
         {isAssessment ? (
           <section className="relative mb-6 overflow-hidden rounded-3xl border border-[#E4E1D8] bg-[#FDFDFC] p-5 shadow-[0_1px_2px_rgba(30,38,33,0.04)] sm:p-8">
@@ -1015,32 +1015,32 @@ export default function CostBreakdownHierarchy({
             </div>
           </section>
         ) : (
-          <section className="relative mb-6 overflow-hidden rounded-3xl border border-[#E4E1D8] bg-[#FDFDFC] p-5 shadow-[0_1px_2px_rgba(30,38,33,0.04)] sm:p-8">
+          <section className="relative mb-6 overflow-hidden rounded-2xl border border-[#E4E1D8] bg-[#FDFDFC] p-3 shadow-[0_1px_2px_rgba(30,38,33,0.04)] xs:p-4 sm:rounded-3xl sm:p-6 md:p-7 lg:p-8">
             {/* faint ledger rule in the corner — a quiet nod to the statement/audit feel */}
             <div
-              className="pointer-events-none absolute -right-10 -top-10 h-40 w-40 rounded-full opacity-[0.4]"
+              className="pointer-events-none absolute -right-8 -top-8 h-28 w-28 rounded-full opacity-[0.4] sm:-right-10 sm:-top-10 sm:h-40 sm:w-40"
               style={{
                 background: `radial-gradient(circle, ${TONE.neutral.border}55 0%, transparent 70%)`,
               }}
             />
 
-            <div className="relative flex flex-wrap items-start justify-between gap-5">
+            <div className="relative flex flex-col gap-4 xs:flex-row xs:flex-wrap xs:items-start xs:justify-between xs:gap-5">
               <div className="min-w-0">
                 <div
-                  className="text-[11px] uppercase tracking-[0.14em] text-[#8A938C]"
+                  className="text-[10px] uppercase tracking-[0.14em] text-[#8A938C] xs:text-[11px]"
                   style={{ fontFamily: "var(--font-mono)" }}
                 >
                   Actual cost to date
                 </div>
                 <div className="mt-1.5 flex flex-wrap items-baseline gap-x-3 gap-y-1">
                   <span
-                    className="font-serif text-[26px] font-semibold leading-none tabular-nums xs:text-[28px] sm:text-[34px] md:text-[42px]"
+                    className="font-serif text-[24px] font-semibold leading-none tabular-nums xs:text-[28px] sm:text-[32px] md:text-[38px] lg:text-[42px]"
                     style={{ color: TONE[actualTone].text }}
                   >
                     {formatMoney(totalLive)}
                   </span>
                   <span
-                    className="text-[13px] font-medium"
+                    className="text-[12px] font-medium xs:text-[13px]"
                     style={{
                       color: delta === 0 ? "#8A938C" : TONE[actualTone].text,
                     }}
@@ -1048,28 +1048,28 @@ export default function CostBreakdownHierarchy({
                     {deltaLabel}
                   </span>
                 </div>
-                <div className="mt-1 text-[12.5px] text-[#8A938C]">
+                <div className="mt-1 text-[12px] text-[#8A938C] xs:text-[12.5px]">
                   Predicted {formatMoney(totalBudgeted)}
                 </div>
               </div>
 
               {/* Budget stamp — reads like an audit seal, tone mirrors budget status */}
               <div
-                className="flex shrink-0 -rotate-2 items-center gap-2 rounded-lg border-2 border-dashed px-3 py-1.5 sm:px-3.5 sm:py-2"
+                className="flex w-fit shrink-0 -rotate-2 items-center gap-2 self-start rounded-lg border-2 border-dashed px-3 py-1.5 xs:self-auto sm:px-3.5 sm:py-2"
                 style={{
                   borderColor: TONE[budgetTone].solid,
                   color: TONE[budgetTone].text,
                 }}
               >
                 {!hasBudget ? (
-                  <Wallet size={15} />
+                  <Wallet size={14} className="shrink-0 sm:size-[15px]" />
                 ) : isOverBudget ? (
-                  <TrendingUp size={15} />
+                  <TrendingUp size={14} className="shrink-0 sm:size-[15px]" />
                 ) : (
-                  <ShieldCheck size={15} />
+                  <ShieldCheck size={14} className="shrink-0 sm:size-[15px]" />
                 )}
                 <span
-                  className="text-[11px] font-bold uppercase tracking-[0.06em] sm:text-[11.5px]"
+                  className="whitespace-nowrap text-[10px] font-bold uppercase tracking-[0.06em] xs:text-[11px] sm:text-[11.5px]"
                   style={{ fontFamily: "var(--font-mono)" }}
                 >
                   {!hasBudget
@@ -1090,8 +1090,7 @@ export default function CostBreakdownHierarchy({
             />
 
             {/* ---------------- Figures row ---------------- */}
-            <div className="relative mt-6 grid grid-cols-2 gap-x-3 gap-y-3 border-t border-dashed border-[#E4E1D8] pt-4">
-              {/*<Figure label="Budgeted" value={formatMoney(totalBudgeted)} />*/}
+            <div className="relative mt-5 grid grid-cols-2 gap-x-3 gap-y-3 border-t border-dashed border-[#E4E1D8] pt-4 sm:mt-6 sm:gap-x-6">
               <Figure label="Predicted" value={formatMoney(totalBudgeted)} />
               <Figure
                 label="Budget"
@@ -1206,7 +1205,7 @@ export default function CostBreakdownHierarchy({
           </div>
         )}
 
-        <div className="overflow-x-auto rounded-2xl bg-[#FDFDFC] p-2 sm:p-3 md:p-4">
+        <div className="overflow-x-auto rounded-2xl bg-[#FDFDFC] p-2 sm:py-3 md:p-4">
           <CostBreakdownTree
             key={treeKey}
             data={localTree ?? treeData}
@@ -1415,62 +1414,62 @@ export default function CostBreakdownHierarchy({
  * points, so a glance tells you both "how much" and "compared to what" without reading three
  * separate cards. Only rendered in "comparison" mode.
  */
-function CostGaugeBar({
-  budgeted,
-  predicted,
-  actual,
-  tone,
-  actualLabel = "Actual",
-  isAssessment = false,
-}: {
-  budgeted: number;
-  predicted?: number;
-  actual: number;
-  tone: Tone;
-  actualLabel?: string;
-  isAssessment?: boolean;
-}) {
-  const max = Math.max(budgeted, predicted ?? 0, actual, 1) * 1.08;
-  const pct = (n: number) => Math.min(100, Math.max(0, (n / max) * 100));
-  const showPredictedTick =
-    predicted !== undefined &&
-    predicted > 0 &&
-    predicted !== budgeted &&
-    predicted !== actual;
+ function CostGaugeBar({
+   budgeted,
+   predicted,
+   actual,
+   tone,
+   actualLabel = "Actual",
+   isAssessment = false,
+ }: {
+   budgeted: number;
+   predicted?: number;
+   actual: number;
+   tone: Tone;
+   actualLabel?: string;
+   isAssessment?: boolean;
+ }) {
+   const max = Math.max(budgeted, predicted ?? 0, actual, 1) * 1.08;
+   const pct = (n: number) => Math.min(100, Math.max(0, (n / max) * 100));
+   const showPredictedTick =
+     predicted !== undefined &&
+     predicted > 0 &&
+     predicted !== budgeted &&
+     predicted !== actual;
 
-  return (
-    <div className="relative mt-6">
-      <div className="relative h-2.5 rounded-full bg-[#EFEDE6]">
-        <div
-          className="absolute inset-y-0 left-0 rounded-full transition-[width] duration-300"
-          style={{
-            width: `${pct(actual)}%`,
-            backgroundColor: TONE[tone].solid,
-          }}
-        />
-        {budgeted > 0 && (
-          <div
-            className="absolute top-1/2 h-4 w-0.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-[#1E2621]"
-            style={{ left: `${pct(budgeted)}%` }}
-          />
-        )}
-        {showPredictedTick && (
-          <div
-            className="absolute top-1/2 h-4 w-0.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-[#8A938C]"
-            style={{ left: `${pct(predicted as number)}%` }}
-          />
-        )}
-      </div>
-      <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1">
-        <LegendDot color={TONE[tone].solid} label={actualLabel} />
-        {budgeted > 0 && <LegendDot color="#1E2621" label="Budgeted" line />}
-        {showPredictedTick && (
-          <LegendDot color="#8A938C" label="Predicted" line />
-        )}
-      </div>
-    </div>
-  );
-}
+   return (
+     <div className="relative mt-5 sm:mt-6">
+       <div className="relative h-2 rounded-full bg-[#EFEDE6] sm:h-2.5">
+         <div
+           className="absolute inset-y-0 left-0 rounded-full transition-[width] duration-300"
+           style={{
+             width: `${pct(actual)}%`,
+             backgroundColor: TONE[tone].solid,
+           }}
+         />
+         {budgeted > 0 && (
+           <div
+             className="absolute top-1/2 h-3.5 w-0.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-[#1E2621] sm:h-4"
+             style={{ left: `${pct(budgeted)}%` }}
+           />
+         )}
+         {showPredictedTick && (
+           <div
+             className="absolute top-1/2 h-3.5 w-0.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-[#8A938C] sm:h-4"
+             style={{ left: `${pct(predicted as number)}%` }}
+           />
+         )}
+       </div>
+       <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 xs:gap-x-4">
+         <LegendDot color={TONE[tone].solid} label={actualLabel} />
+         {budgeted > 0 && <LegendDot color="#1E2621" label="Budgeted" line />}
+         {showPredictedTick && (
+           <LegendDot color="#8A938C" label="Predicted" line />
+         )}
+       </div>
+     </div>
+   );
+ }
 
 function LegendDot({
   color,
@@ -1513,13 +1512,13 @@ function Figure({
   return (
     <div className="min-w-0">
       <div
-        className="text-[10.5px] uppercase tracking-[0.08em] text-[#8A938C]"
+        className="text-[10px] uppercase tracking-[0.08em] text-[#8A938C] sm:text-[10.5px]"
         style={{ fontFamily: "var(--font-mono)" }}
       >
         {label}
       </div>
       <div
-        className="mt-0.5 truncate text-[13.5px] font-semibold tabular-nums sm:text-[15px]"
+        className="mt-0.5 truncate text-[13px] font-semibold tabular-nums xs:text-[13.5px] sm:text-[15px]"
         style={{ color: valueColor ?? "#1E2621" }}
         title={value}
       >

@@ -70,7 +70,7 @@ function AttachmentChip({
         type="button"
         onClick={onRemove}
         disabled={progress !== null && progress < 100}
-        className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[#8A938C] transition-colors hover:bg-[#F6F6F2] hover:text-[#B4483C] disabled:cursor-not-allowed disabled:opacity-40"
+        className="flex h-7 w-7 sm:h-6 sm:w-6 shrink-0 items-center justify-center rounded-full text-[#8A938C] transition-colors hover:bg-[#F6F6F2] hover:text-[#B4483C] disabled:cursor-not-allowed disabled:opacity-40"
         aria-label="Remove attachment"
       >
         <X size={14} />
@@ -177,7 +177,7 @@ export function MessageComposer({
   const charCount = text.length;
 
   return (
-    <div className="border-t border-[#EFEDE6] bg-[#FBFAF7] px-4 py-3 sm:px-6">
+    <div className="border-t border-[#EFEDE6] bg-[#FBFAF7] px-3 py-2.5 sm:px-6 sm:py-3">
       <AnimatePresence>{attachment && (
         <div className="mb-2.5">
           <AttachmentChip
@@ -209,7 +209,7 @@ export function MessageComposer({
           <button
             type="button"
             onClick={onCancelReply}
-            className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[#8A938C] transition-colors hover:bg-white hover:text-[#B4483C]"
+            className="flex h-7 w-7 sm:h-6 sm:w-6 shrink-0 items-center justify-center rounded-full text-[#8A938C] transition-colors hover:bg-white hover:text-[#B4483C]"
             aria-label="Cancel reply"
           >
             <X size={14} />
@@ -228,7 +228,7 @@ export function MessageComposer({
           setDragOver(false);
           handleFiles(e.dataTransfer.files);
         }}
-        className={`flex items-end gap-2 rounded-2xl border bg-white p-2 transition-all ${
+        className={`flex items-end gap-1.5 sm:gap-2 rounded-2xl border bg-white p-1.5 sm:p-2 transition-all ${
           dragOver
             ? "border-dashed border-[#3E6B52] ring-2 ring-[#3E6B52]/20"
             : "border-[#E4E1D8] focus-within:border-[#BFD6C8] focus-within:ring-2 focus-within:ring-[#3E6B52]/10"
@@ -245,7 +245,7 @@ export function MessageComposer({
           type="button"
           onClick={() => fileInputRef.current?.click()}
           disabled={uploading}
-          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-[#5B655F] transition-colors hover:bg-[#F1F0EA] hover:text-[#3E6B52] disabled:opacity-50"
+          className="flex h-10 w-10 sm:h-9 sm:w-9 shrink-0 items-center justify-center rounded-full text-[#5B655F] transition-colors hover:bg-[#F1F0EA] hover:text-[#3E6B52] disabled:opacity-50"
           aria-label="Attach file"
           title="Attach a file"
         >
@@ -256,7 +256,7 @@ export function MessageComposer({
           onChange={(e) => setText(e.target.value.slice(0, MAX_LEN))}
           onKeyDown={handleKeyDown}
           rows={1}
-          placeholder="Write a message…  (Enter to send · Shift+Enter for a new line)"
+          placeholder="Write a message…"
           className="max-h-36 min-h-9 flex-1 resize-none bg-transparent py-1.5 text-[13.5px] text-[#1E2621] placeholder:text-[#A9B0AA] focus:outline-none"
         />
         <span className="mb-1 hidden text-[10px] tabular-nums text-[#A9B0AA] sm:block">
@@ -266,7 +266,7 @@ export function MessageComposer({
           type="button"
           onClick={submit}
           disabled={!canSend}
-          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-linear-to-br from-[#3E6B52] to-[#2E5140] text-white shadow-[0_8px_18px_rgba(46,81,64,0.3)] transition-all hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40 disabled:shadow-none"
+          className="flex h-10 w-10 sm:h-9 sm:w-9 shrink-0 items-center justify-center rounded-full bg-linear-to-br from-[#3E6B52] to-[#2E5140] text-white shadow-[0_8px_18px_rgba(46,81,64,0.3)] transition-all hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40 disabled:shadow-none"
           aria-label="Send message"
         >
           {uploading || disabled ? (
@@ -277,7 +277,10 @@ export function MessageComposer({
         </button>
       </div>
       <p className="mt-1.5 px-1 text-[10.5px] text-[#A9B0AA]">
-        Drag &amp; drop to attach · PNG, JPG, WEBP, PDF, XLSX only
+        <span className="sm:hidden">PNG, JPG, WEBP, PDF, XLSX only</span>
+        <span className="hidden sm:inline">
+          Enter to send · Shift+Enter for a new line · Drag &amp; drop to attach · PNG, JPG, WEBP, PDF, XLSX only
+        </span>
       </p>
     </div>
   );

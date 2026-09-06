@@ -4,10 +4,6 @@ import { useState, useMemo, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Eye,
-  ChevronRight,
-  ChevronUp,
-  ChevronDown,
-  AlertTriangle,
   X,
   Clock,
   Building2,
@@ -21,15 +17,17 @@ import {
   TrendingDown,
   Minus,
   Target,
+  AlertTriangle,
+  ArrowUpRight,
 } from "lucide-react";
 import { formatCurrency, formatSize } from "@/lib/utils";
 import { computeActualMarks } from "@/lib/assessment-utils";
 
-const BUILDING_TYPE_MAPPING : Record<string, string> = {
-  "NRNC": "Non-Residential New Construction (NRNC)",
-  "RNC": "Residential New Construction (RNC)",
-  "NREB": "Non-Residential Existing Building (NREB)",
-}
+const BUILDING_TYPE_MAPPING: Record<string, string> = {
+  NRNC: "Non-Residential New Construction (NRNC)",
+  RNC: "Residential New Construction (RNC)",
+  NREB: "Non-Residential Existing Building (NREB)",
+};
 
 /* ── Cost helpers (mirror CostBreakdownHierarchy totals) ── */
 
@@ -74,9 +72,10 @@ function DeltaChip({
 }) {
   if (value == null || favorable == null) {
     return (
-      <span className="inline-flex items-center gap-1 rounded-full bg-[#F1F0EA] px-2.5 py-1 text-[11px] font-semibold text-[#8A938C]">
+      <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-[#F1F0EA] px-2 py-1 text-[10px] font-semibold text-[#8A938C] sm:px-2.5 sm:text-[11px]">
         <Minus size={11} />
-        No comparison
+        <span className="hidden xs:inline">No comparison</span>
+        <span className="xs:hidden">N/A</span>
       </span>
     );
   }
@@ -90,7 +89,7 @@ function DeltaChip({
   }[tone];
   return (
     <span
-      className="inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-bold"
+      className="inline-flex shrink-0 items-center gap-1 rounded-full px-2 py-1 text-[10px] font-bold sm:px-2.5 sm:text-[11px]"
       style={{ backgroundColor: colors.bg, color: colors.fg }}
     >
       <Icon size={12} />
@@ -120,7 +119,7 @@ function GbiTrack({
   }, [predicted, actual]);
 
   return (
-    <div className="relative h-3 w-full overflow-hidden rounded-full bg-[#EFEDE6]">
+    <div className="relative h-2.5 w-full overflow-hidden rounded-full bg-[#EFEDE6] sm:h-3">
       {!revealed ? (
         <motion.div
           key="gbi-track-skeleton"
@@ -147,7 +146,7 @@ function GbiTrack({
               className="group absolute top-1/2 -translate-y-1/2"
               style={{ left: `calc(${predictedPct}% - 5px)` }}
             >
-              <div className="h-4 w-0.75 rounded-full bg-[#1E2621]" />
+              <div className="h-3.5 w-0.75 rounded-full bg-[#1E2621] sm:h-4" />
             </div>
           )}
         </motion.div>
@@ -177,19 +176,19 @@ function CostBars({
   }, [predicted, actual]);
 
   return (
-    <div className="space-y-2.5">
+    <div className="space-y-2 sm:space-y-2.5">
       {!revealed ? (
         <>
-          <div className="flex items-center gap-2.5">
-            <span className="w-16 shrink-0 text-[10px] font-semibold uppercase tracking-wide text-[#8A938C]">
+          <div className="flex items-center gap-2 sm:gap-2.5">
+            <span className="w-14 shrink-0 text-[9.5px] font-semibold uppercase tracking-wide text-[#8A938C] sm:w-16 sm:text-[10px]">
               Predicted
             </span>
             <div className="h-2.5 flex-1 overflow-hidden rounded-full bg-[#EFEDE6]">
               <div className="h-2.5 w-3/4 animate-pulse rounded-full bg-[linear-gradient(90deg,#DFE4DE_0%,#EEF2EC_50%,#DFE4DE_100%)]" />
             </div>
           </div>
-          <div className="flex items-center gap-2.5">
-            <span className="w-16 shrink-0 text-[10px] font-semibold uppercase tracking-wide text-[#8A938C]">
+          <div className="flex items-center gap-2 sm:gap-2.5">
+            <span className="w-14 shrink-0 text-[9.5px] font-semibold uppercase tracking-wide text-[#8A938C] sm:w-16 sm:text-[10px]">
               Actual
             </span>
             <div className="h-2.5 flex-1 overflow-hidden rounded-full bg-[#EFEDE6]">
@@ -199,8 +198,8 @@ function CostBars({
         </>
       ) : (
         <>
-          <div className="flex items-center gap-2.5">
-            <span className="w-16 shrink-0 text-[10px] font-semibold uppercase tracking-wide text-[#8A938C]">
+          <div className="flex items-center gap-2 sm:gap-2.5">
+            <span className="w-14 shrink-0 text-[9.5px] font-semibold uppercase tracking-wide text-[#8A938C] sm:w-16 sm:text-[10px]">
               Predicted
             </span>
             <div className="h-2.5 flex-1 rounded-full bg-[#EFEDE6]">
@@ -210,8 +209,8 @@ function CostBars({
               />
             </div>
           </div>
-          <div className="flex items-center gap-2.5">
-            <span className="w-16 shrink-0 text-[10px] font-semibold uppercase tracking-wide text-[#8A938C]">
+          <div className="flex items-center gap-2 sm:gap-2.5">
+            <span className="w-14 shrink-0 text-[9.5px] font-semibold uppercase tracking-wide text-[#8A938C] sm:w-16 sm:text-[10px]">
               Actual
             </span>
             <div className="h-2.5 flex-1 rounded-full bg-[#EFEDE6]">
@@ -242,6 +241,7 @@ interface ProjectHeaderProps {
     size?: string | null;
     budget?: string | null;
     year?: string | null;
+    changed_cert?: number;
   };
   selectedProject: any;
   liveActualRating?: number | null;
@@ -259,7 +259,6 @@ export default function ProjectHeader({
   activeTab = "details",
 }: ProjectHeaderProps) {
   const [showModal, setShowModal] = useState(false);
-  const [panelOpen, setPanelOpen] = useState(true);
 
   const rating = useMemo(() => {
     if (liveActualRating != null) return liveActualRating;
@@ -272,7 +271,7 @@ export default function ProjectHeader({
   }, [liveActualRating, selectedProject, project.rating]);
 
   const targetCert = project.target_certification;
-  const isNotCert = !targetCert || targetCert === "Not Certified";
+  const isNotCert = !targetCert || (targetCert === "Not Certified" && project.changed_cert == 0);
   const predicted = project.rating ?? null;
   const marksDiff = predicted != null ? rating - predicted : null;
   const marksFavorable = marksDiff == null ? null : marksDiff >= 0;
@@ -309,79 +308,71 @@ export default function ProjectHeader({
         ? "On budget"
         : `${costDiff > 0 ? "+" : "−"}${formatCurrency(Math.abs(costDiff))} vs predicted`;
 
-  /* ── Right-panel content, branched by active tab ── */
+  /* ── Comparison content, branched by active tab ── */
 
   let panel: React.ReactNode;
 
   if (activeTab === "cost") {
-    // Cost breakdown tab → feature the GBI marks comparison
     panel = isNotCert ? (
-      <NoticePanel
+      <NoticeCard
         eyebrow="GBI Assessment"
         title="Assessment locked"
-        description="This project is set to Not Certified, so marks comparison stays locked until the target rating is raised."
+        description="Set to Not Certified, so marks comparison stays locked until the target rating is raised."
         badge="Locked"
       />
     ) : (
-      <StatPanel eyebrow="GBI Assessment" badge={targetCert ?? "GBI"}>
+      <MetricCard eyebrow="GBI Assessment" badge={targetCert ?? "GBI"} accent="sage" icon={Target}>
         <div className="flex items-end justify-between gap-3">
           <div>
             <p
-              className="text-[30px] font-semibold leading-none text-[#1E2621]"
+              className="text-[26px] font-semibold leading-none text-[#1E2621] sm:text-[30px]"
               style={{ fontFamily: "var(--font-display)" }}
             >
               {rating}
-              <span className="text-[16px] font-medium text-[#8A938C]">
+              <span className="text-[14px] font-medium text-[#8A938C] sm:text-[16px]">
                 {" "}
                 /100
               </span>
             </p>
-            <p className="mt-1.5 text-[12px] text-[#5B655F]">
+            <p className="mt-1.5 text-[11.5px] text-[#5B655F] sm:text-[12px]">
               Predicted {predicted ?? "—"} pts
             </p>
           </div>
         </div>
         <div className="mt-4">
           <GbiTrack predicted={predicted} actual={rating} />
-          <div className="mt-1.5 flex items-center gap-1.5 text-[10.5px] text-[#8A938C]">
-            <span className="h-0.75 w-3 rounded-full bg-[#1E2621]" /> Predicted
-            marker
+          <div className="mt-1.5 flex items-center gap-1.5 text-[10px] text-[#8A938C] sm:text-[10.5px]">
+            <span className="h-0.75 w-3 rounded-full bg-[#1E2621]" /> Predicted marker
           </div>
         </div>
-      </StatPanel>
+      </MetricCard>
     );
   } else if (activeTab === "gbi") {
-    // GBI Assessment tab → feature the cost comparison
     panel = (
-      <StatPanel eyebrow="Cost vs Predicted" badge="Cost">
+      <MetricCard eyebrow="Cost vs Predicted" badge="Cost" accent="amber" icon={Wallet}>
         <div className="flex items-end justify-between gap-3">
           <div>
             <p
-              className="text-[24px] font-semibold leading-none text-[#1E2621]"
+              className="text-[20px] font-semibold leading-none text-[#1E2621] sm:text-[24px]"
               style={{ fontFamily: "var(--font-display)" }}
             >
               {actualCost != null ? formatCurrency(actualCost) : "—"}
             </p>
-            <p className="mt-1.5 text-[12px] text-[#5B655F]">
+            <p className="mt-1.5 text-[11.5px] text-[#5B655F] sm:text-[12px]">
               Predicted{" "}
               {predictedCost != null ? formatCurrency(predictedCost) : "—"}
             </p>
           </div>
-          <DeltaChip
-            value={costDiff}
-            favorable={costFavorable}
-            label={costDeltaLabel}
-          />
+          <DeltaChip value={costDiff} favorable={costFavorable} label={costDeltaLabel} />
         </div>
         <div className="mt-4">
           <CostBars predicted={predictedCost} actual={actualCost} />
         </div>
-      </StatPanel>
+      </MetricCard>
     );
   } else {
-    // Details tab → glimpse of both, side by side
     panel = (
-      <DetailsComparisonPanel
+      <DetailsComparisonGrid
         isNotCert={isNotCert}
         rating={rating}
         predicted={predicted}
@@ -399,109 +390,107 @@ export default function ProjectHeader({
 
   return (
     <>
-      <div className="mb-6 overflow-hidden rounded-3xl border border-[#E4E1D8] bg-white shadow-[0_8px_24px_rgba(30,38,33,0.05)]">
-        <div className="grid grid-cols-1">
-          <div
-            className={`${panelOpen ? "border-b border-[#E4E1D8]" : ""} px-5 py-7 sm:px-7 sm:py-8 md:px-9 md:py-9`}
-          >
-            <div className="flex flex-wrap items-start justify-between gap-3">
-              <div>
-                <div className="flex items-center gap-2">
-                  <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[#3E6B52]">
-                    Project Overview
-                  </p>
-                  <button
-                    type="button"
-                    onClick={() => setShowModal(true)}
-                    aria-label="View project details"
-                    className="flex h-5 w-5 items-center justify-center rounded-full text-[#8A938C] transition-colors hover:bg-[#F1F0EA] hover:text-[#3E6B52] focus-visible:outline focus-visible:outline-offset-2 focus-visible:outline-[#3E6B52]"
-                  >
-                    <Eye size={12} />
-                  </button>
-                </div>
-                <h2
-                  className="mt-2 text-[22px] font-semibold leading-tight text-[#1E2621] sm:text-[26px] lg:text-[30px]"
-                  style={{ fontFamily: "var(--font-display)" }}
-                >
-                  {project.name || "Untitled Project"}
-                </h2>
-                {project.building_type && (
-                  <p className="mt-1 text-[13.5px] font-medium text-[#5B655F]">
-                    {BUILDING_TYPE_MAPPING[project.building_type]}
-                  </p>
-                )}
+      <div className="mb-6 overflow-hidden rounded-2xl border border-[#E4E1D8] bg-white shadow-[0_8px_24px_rgba(30,38,33,0.05)] sm:rounded-3xl">
+        {/* ── Title block ── */}
+        <div className="border-b border-[#E4E1D8] bg-[linear-gradient(180deg,#FBFAF7_0%,#FFFFFF_100%)] px-4 py-5 sm:px-7 sm:py-7 md:px-9 md:py-8">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+            <div className="min-w-0">
+              <div className="flex items-center gap-2">
+                <p className="text-[10.5px] font-semibold uppercase tracking-[0.14em] text-[#3E6B52] sm:text-[11px]">
+                  Project Overview
+                </p>
               </div>
-
-              <button
-                type="button"
-                onClick={() => setPanelOpen((o) => !o)}
-                aria-expanded={panelOpen}
-                className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-[#E4E1D8] bg-[#FBFAF7] px-4 py-2 text-[12.5px] font-medium text-[#5B655F] transition-colors hover:border-[#C9D3CC] hover:text-[#3E6B52] focus-visible:outline focus-visible:outline-offset-2 focus-visible:outline-[#3E6B52]"
+              <h2
+                className="mt-1.5 truncate text-[20px] font-semibold leading-tight text-[#1E2621] xs:text-[22px] sm:text-[26px] lg:text-[30px]"
+                style={{ fontFamily: "var(--font-display)" }}
+                title={project.name}
               >
-                {panelOpen ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
-                {panelOpen ? "Hide summary" : "Show summary"}
-              </button>
+                {project.name || "Untitled Project"}
+              </h2>
+              {project.building_type && (
+                <p className="mt-1 text-[12.5px] font-medium text-[#5B655F] sm:text-[13.5px]">
+                  {BUILDING_TYPE_MAPPING[project.building_type]}
+                </p>
+              )}
             </div>
-          </div>
 
-          <AnimatePresence initial={false}>
-            {panelOpen && (
-              <motion.div
-                key="summary-panel"
-                initial={{ height: 0, opacity: 0 }}
-                animate={{ height: "auto", opacity: 1 }}
-                exit={{ height: 0, opacity: 0 }}
-                transition={{ duration: 0.25, ease: "easeInOut" }}
-                className="overflow-hidden"
-              >
-                <div className="p-5 sm:px-7 sm:py-6 md:px-9 md:py-7">
-                  {panel}
-                </div>
-              </motion.div>
-            )}
-          </AnimatePresence>
+            <button
+              type="button"
+              onClick={() => setShowModal(true)}
+              className="inline-flex w-fit shrink-0 items-center gap-1.5 self-start rounded-full border border-[#E4E1D8] bg-white px-3.5 py-2 text-[12px] font-medium text-[#5B655F] transition-colors hover:border-[#C9D3CC] hover:text-[#3E6B52] focus-visible:outline focus-visible:outline-offset-2 focus-visible:outline-[#3E6B52] sm:text-[12.5px]"
+            >
+              <Eye size={13} />
+              View details
+              <ArrowUpRight size={12} className="text-[#8A938C]" />
+            </button>
+          </div>
         </div>
+
+        {/* ── Comparison panel — always visible, reflows per breakpoint ── */}
+        <div className="px-4 py-5 sm:px-7 sm:py-6 md:px-9 md:py-7">{panel}</div>
       </div>
 
       {showModal && (
-        <ProjectDetailsModal
-          project={project}
-          onClose={() => setShowModal(false)}
-        />
+        <ProjectDetailsModal project={project} onClose={() => setShowModal(false)} />
       )}
     </>
   );
 }
 
-/* ── Shared panel shells ── */
+/* ── Shared card shells ── */
 
-function StatPanel({
+const ACCENTS = {
+  sage: { bar: "#3E6B52", badgeBg: "rgba(62,107,82,0.10)", badgeFg: "#3E6B52", iconBg: "rgba(62,107,82,0.10)" },
+  amber: { bar: "#C08A3E", badgeBg: "rgba(200,138,62,0.13)", badgeFg: "#8A6420", iconBg: "rgba(200,138,62,0.13)" },
+} as const;
+
+function MetricCard({
   eyebrow,
   badge,
+  accent,
+  icon: Icon,
   children,
 }: {
   eyebrow: string;
   badge?: string;
+  accent: keyof typeof ACCENTS;
+  icon: any;
   children: React.ReactNode;
 }) {
+  const c = ACCENTS[accent];
   return (
-    <div className="flex h-full flex-col justify-center">
-      <div className="flex items-center justify-between">
-        <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[#8A938C]">
-          {eyebrow}
-        </p>
+    <div className="relative overflow-hidden rounded-2xl border border-[#E4E1D8] bg-[#FBFAF7] p-4 sm:p-5">
+      <div
+        className="absolute inset-y-0 left-0 w-1"
+        style={{ backgroundColor: c.bar }}
+      />
+      <div className="flex items-center justify-between pl-2">
+        <div className="flex items-center gap-2">
+          <span
+            className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full"
+            style={{ backgroundColor: c.iconBg, color: c.bar }}
+          >
+            <Icon size={12} />
+          </span>
+          <p className="text-[10.5px] font-semibold uppercase tracking-[0.12em] text-[#8A938C] sm:text-[11px]">
+            {eyebrow}
+          </p>
+        </div>
         {badge && (
-          <span className="rounded-full bg-[rgba(62,107,82,0.10)] px-3 py-1 text-[10px] font-bold uppercase tracking-[0.06em] text-[#3E6B52]">
+          <span
+            className="rounded-full px-2.5 py-1 text-[9.5px] font-bold uppercase tracking-[0.06em] sm:text-[10px]"
+            style={{ backgroundColor: c.badgeBg, color: c.badgeFg }}
+          >
             {badge}
           </span>
         )}
       </div>
-      {children}
+      <div className="pl-2 pt-3">{children}</div>
     </div>
   );
 }
 
-function NoticePanel({
+function NoticeCard({
   eyebrow,
   title,
   description,
@@ -513,21 +502,21 @@ function NoticePanel({
   badge?: string;
 }) {
   return (
-    <div className="flex h-full flex-col justify-center">
-      <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[#8A938C]">
+    <div className="rounded-2xl border border-[#E4DFC0] bg-[#FFF9E6] p-4 sm:p-5">
+      <p className="text-[10.5px] font-semibold uppercase tracking-[0.12em] text-[#8A6420] sm:text-[11px]">
         {eyebrow}
       </p>
-      <div className="mt-3 flex items-start gap-3 rounded-2xl border border-[#E4DFC0] bg-[#FFF9E6] px-4 py-3.5">
+      <div className="mt-2.5 flex items-start gap-3">
         <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#C08A3E] text-white">
           <AlertTriangle size={15} />
         </span>
         <div className="min-w-0">
           <p className="text-[13px] font-semibold text-[#8A6420]">{title}</p>
-          <p className="mt-1 text-[12.5px] leading-relaxed text-[#71603F]">
+          <p className="mt-1 text-[12px] leading-relaxed text-[#71603F] sm:text-[12.5px]">
             {description}
           </p>
           {badge && (
-            <span className="mt-2 inline-flex rounded-full border border-[#E8D8A2] bg-white/70 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.06em] text-[#8A6420]">
+            <span className="mt-2 inline-flex rounded-full border border-[#E8D8A2] bg-white/70 px-2.5 py-1 text-[9.5px] font-semibold uppercase tracking-[0.06em] text-[#8A6420] sm:text-[10px]">
               {badge}
             </span>
           )}
@@ -539,7 +528,7 @@ function NoticePanel({
 
 /* ── Details tab: unified predicted-vs-actual snapshot ── */
 
-function DetailsComparisonPanel({
+function DetailsComparisonGrid({
   isNotCert,
   rating,
   predicted,
@@ -565,111 +554,56 @@ function DetailsComparisonPanel({
   costDeltaLabel: string;
 }) {
   return (
-    <div className="flex h-full flex-col justify-center gap-4">
-      <div className="flex items-center justify-between">
-        <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[#8A938C]">
-          Assessment Snapshot
-        </p>
-        <span className="rounded-full bg-[rgba(124,136,128,0.10)] px-3 py-1 text-[10px] font-bold uppercase tracking-[0.06em] text-[#5B655F]">
-          Comparison
-        </span>
-      </div>
-
-      {isNotCert ? (
-        /* Not Certified → no GBI Assessment tab, so only show the cost gauge */
-        <div className="pt-1">
-          <div className="flex items-center gap-1.5 text-[10.5px] font-semibold uppercase tracking-widest text-[#8A938C]">
-            <Wallet size={12} />
-            Cost
-          </div>
-          <div className="mt-1.5 flex items-baseline justify-between gap-2">
+    <div className={`grid grid-cols-1 gap-3 sm:gap-4 ${isNotCert ? "" : "sm:grid-cols-2"}`}>
+      {!isNotCert && (
+        <MetricCard eyebrow="GBI Marks" accent="sage" icon={Target}>
+          <div className="flex items-baseline justify-between gap-2">
             <p
-              className="text-[24px] font-semibold leading-none text-[#1E2621]"
+              className="text-[22px] font-semibold leading-none text-[#1E2621] sm:text-[24px]"
               style={{ fontFamily: "var(--font-display)" }}
             >
-              {actualCost != null ? formatCurrency(actualCost) : "—"}
+              {rating}
+              <span className="text-[12px] font-medium text-[#8A938C] sm:text-[13px]">/100</span>
             </p>
-            <DeltaChip
-              value={costDiff}
-              favorable={costFavorable}
-              label={costDeltaLabel}
-            />
+            <DeltaChip value={marksDiff} favorable={marksFavorable} label={marksDeltaLabel} />
           </div>
-          <p className="mt-0.5 text-[11.5px] text-[#5B655F]">
-            Predicted{" "}
-            {predictedCost != null ? formatCurrency(predictedCost) : "—"}
+          <p className="mt-0.5 text-[11px] text-[#5B655F] sm:text-[11.5px]">
+            Predicted {predicted ?? "—"} pts
           </p>
           <div className="mt-2.5">
-            <CostBars predicted={predictedCost} actual={actualCost} />
+            <GbiTrack predicted={predicted} actual={rating} />
           </div>
-        </div>
-      ) : (
-        <div className="grid grid-cols-1 gap-5 divide-y divide-[#EFEDE6] sm:grid-cols-2 sm:gap-6 sm:divide-x sm:divide-y-0">
-          {/* GBI marks column */}
-          <div className="pt-1 sm:pr-6 sm:pt-0">
-            <div className="flex items-center gap-1.5 text-[10.5px] font-semibold uppercase tracking-widest text-[#8A938C]">
-              <Target size={12} />
-              GBI Marks
-            </div>
+        </MetricCard>
+      )}
 
-            <div className="mt-1.5 flex items-baseline justify-between gap-2">
-              <p
-                className="text-[24px] font-semibold leading-none text-[#1E2621]"
-                style={{ fontFamily: "var(--font-display)" }}
-              >
-                {rating}
-                <span className="text-[13px] font-medium text-[#8A938C]">
-                  /100
-                </span>
-              </p>
-              <DeltaChip
-                value={marksDiff}
-                favorable={marksFavorable}
-                label={marksDeltaLabel}
-              />
-            </div>
-            <p className="mt-0.5 text-[11.5px] text-[#5B655F]">
-              Predicted {predicted ?? "—"} pts
-            </p>
-            <div className="mt-2.5">
-              <GbiTrack predicted={predicted} actual={rating} />
-            </div>
-          </div>
-
-          {/* Cost column */}
-          <div className="pt-4 sm:pl-6 sm:pt-0">
-            <div className="flex items-center gap-1.5 text-[10.5px] font-semibold uppercase tracking-widest text-[#8A938C]">
-              <Wallet size={12} />
-              Cost
-            </div>
-            <div className="mt-1.5 flex items-baseline justify-between gap-2">
-              <p
-                className="text-[24px] font-semibold leading-none text-[#1E2621]"
-                style={{ fontFamily: "var(--font-display)" }}
-              >
-                {actualCost != null ? formatCurrency(actualCost) : "—"}
-              </p>
-              <DeltaChip
-                value={costDiff}
-                favorable={costFavorable}
-                label={costDeltaLabel}
-              />
-            </div>
-            <p className="mt-0.5 text-[11.5px] text-[#5B655F]">
-              Predicted{" "}
-              {predictedCost != null ? formatCurrency(predictedCost) : "—"}
-            </p>
-            <div className="mt-2.5">
-              <CostBars predicted={predictedCost} actual={actualCost} />
-            </div>
-          </div>
+      <MetricCard eyebrow="Cost" accent="amber" icon={Wallet}>
+        <div className="flex items-baseline justify-between gap-2">
+          <p
+            className="text-[22px] font-semibold leading-none text-[#1E2621] sm:text-[24px]"
+            style={{ fontFamily: "var(--font-display)" }}
+          >
+            {actualCost != null ? formatCurrency(actualCost) : "—"}
+          </p>
+          <DeltaChip value={costDiff} favorable={costFavorable} label={costDeltaLabel} />
         </div>
+        <p className="mt-0.5 text-[11px] text-[#5B655F] sm:text-[11.5px]">
+          Predicted {predictedCost != null ? formatCurrency(predictedCost) : "—"}
+        </p>
+        <div className="mt-2.5">
+          <CostBars predicted={predictedCost} actual={actualCost} />
+        </div>
+      </MetricCard>
+
+      {isNotCert && (
+        <p className="text-[11.5px] text-[#8A938C]">
+          GBI marks comparison is locked while this project is set to Not Certified.
+        </p>
       )}
     </div>
   );
 }
 
-/* ── Details modal (unchanged) ── */
+/* ── Details modal ── */
 
 function ProjectDetailsModal({
   project,
@@ -679,50 +613,22 @@ function ProjectDetailsModal({
   onClose: () => void;
 }) {
   const rows: { label: string; value: string; icon: React.ReactNode }[] = [
-    {
-      label: "Building Type",
-      value: project.building_type || "\u2014",
-      icon: <Building2 size={14} />,
-    },
-    {
-      label: "Category",
-      value: project.category || "\u2014",
-      icon: <Layers size={14} />,
-    },
+    { label: "Building Type", value: project.building_type || "\u2014", icon: <Building2 size={14} /> },
+    { label: "Category", value: project.category || "\u2014", icon: <Layers size={14} /> },
     { label: "Classification", value: "Not provided", icon: <Tag size={14} /> },
-    {
-      label: "Structure",
-      value: project.structure || "\u2014",
-      icon: <Building2 size={14} />,
-    },
-    {
-      label: "Location",
-      value: project.location || "\u2014",
-      icon: <MapPin size={14} />,
-    },
-    {
-      label: "Size",
-      value: project.size ? formatSize(project.size) : "\u2014",
-      icon: <Ruler size={14} />,
-    },
-    {
-      label: "Budget",
-      value: project.budget ? formatCurrency(project.budget) : "\u2014",
-      icon: <Wallet size={14} />,
-    },
-    {
-      label: "Year",
-      value: project.year || "\u2014",
-      icon: <Calendar size={14} />,
-    },
+    { label: "Structure", value: project.structure || "\u2014", icon: <Building2 size={14} /> },
+    { label: "Location", value: project.location || "\u2014", icon: <MapPin size={14} /> },
+    { label: "Size", value: project.size ? formatSize(project.size) : "\u2014", icon: <Ruler size={14} /> },
+    { label: "Budget", value: project.budget ? formatCurrency(project.budget) : "\u2014", icon: <Wallet size={14} /> },
+    { label: "Year", value: project.year || "\u2014", icon: <Calendar size={14} /> },
   ];
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#1E2621]/40 p-4 backdrop-blur-sm">
-      <div className="max-h-[90vh] w-full max-w-md overflow-y-auto rounded-3xl border border-[#E4E1D8] bg-white shadow-[0_24px_48px_rgba(30,38,33,0.16)]">
-        <div className="flex items-center justify-between border-b border-[#EFEDE6] px-6 py-4">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#1E2621]/40 p-3 backdrop-blur-sm sm:p-4">
+      <div className="max-h-[85vh] w-full max-w-md overflow-y-auto rounded-2xl border border-[#E4E1D8] bg-white shadow-[0_24px_48px_rgba(30,38,33,0.16)] sm:max-h-[90vh] sm:rounded-3xl">
+        <div className="flex items-center justify-between border-b border-[#EFEDE6] px-5 py-4 sm:px-6">
           <span
-            className="text-[12px] uppercase tracking-[0.08em] text-[#7C8880]"
+            className="text-[11.5px] uppercase tracking-[0.08em] text-[#7C8880] sm:text-[12px]"
             style={{ fontFamily: "var(--font-mono)" }}
           >
             Project Details
@@ -735,24 +641,21 @@ function ProjectDetailsModal({
             <X size={15} />
           </button>
         </div>
-        <div className="divide-y divide-[#EFEDE6] px-6 py-4">
+        <div className="divide-y divide-[#EFEDE6] px-5 py-4 sm:px-6">
           {rows.map((row) => (
-            <div
-              key={row.label}
-              className="flex items-center justify-between gap-4 py-3"
-            >
-              <span className="flex items-center gap-2 text-[12.5px] font-medium text-[#5B655F]">
+            <div key={row.label} className="flex items-center justify-between gap-4 py-3">
+              <span className="flex items-center gap-2 text-[12px] font-medium text-[#5B655F] sm:text-[12.5px]">
                 {row.icon}
                 {row.label}
               </span>
-              <span className="text-right text-[13px] font-semibold text-[#1E2621]">
+              <span className="max-w-[55%] truncate text-right text-[12.5px] font-semibold text-[#1E2621] sm:text-[13px]">
                 {row.value}
               </span>
             </div>
           ))}
         </div>
         {project.created_at && (
-          <div className="flex items-center gap-2 border-t border-[#EFEDE6] px-6 py-3.5 text-[11.5px] text-[#8A938C]">
+          <div className="flex items-center gap-2 border-t border-[#EFEDE6] px-5 py-3.5 text-[11px] text-[#8A938C] sm:px-6 sm:text-[11.5px]">
             <Clock size={13} />
             Created {formatDateTime(project.created_at)}
           </div>

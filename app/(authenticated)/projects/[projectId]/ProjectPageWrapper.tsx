@@ -2,10 +2,8 @@
 
 import { useState, useRef, useCallback, useEffect } from "react";
 import { Loader2, Check, MessageSquareText } from "lucide-react";
-import { useRouter } from "next/navigation";
 import ProjectHeader from "@/components/project/ProjectHeader";
 import ProjectDetailTabs from "@/components/tabs/ProjectDetailsTabs";
-import { BackButton } from "@/components/ui/BackButton";
 import CertificatePanel from "@/components/project/CertificatePanel";
 
 interface Props {
@@ -19,13 +17,10 @@ export default function ProjectPageWrapper({
   selectedProject,
   isShared = false,
 }: Props) {
-  const router = useRouter();
   const [actualRating, setActualRating] = useState<number | null>(null);
   const [dirty, setDirty] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const submitRef = useRef<(() => Promise<void>) | null>(null);
-  const pendingNavRef = useRef<(() => void) | null>(null);
-  const [confirmLeave, setConfirmLeave] = useState(false);
   const [activeTab, setActiveTab] = useState<"details" | "cost" | "gbi" | "chat">(
     "details",
   );
@@ -55,18 +50,8 @@ export default function ProjectPageWrapper({
     return () => window.removeEventListener("beforeunload", handler);
   }, [dirty, isShared]);
 
-  const confirmThenBack = useCallback(() => {
-    if (dirty && !isShared) {
-      pendingNavRef.current = () => router.back();
-      setConfirmLeave(true);
-    } else {
-      router.back();
-    }
-  }, [dirty, isShared, router]);
-
   return (
-    <div className="mx-auto max-w-275 pb-10 pt-6">
-      <BackButton action={confirmThenBack} />
+    <div className="mx-auto max-w-375 pb-10 pt-6">
       <ProjectHeader
         project={project}
         selectedProject={selectedProject}
@@ -167,46 +152,6 @@ export default function ProjectPageWrapper({
             )}
             {submitting ? "Saving\u2026" : "Save Changes"}
           </button>
-        </div>
-      )}
-
-      {/* Confirm leave modal */}
-      {confirmLeave && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#1E2621]/40 p-4 backdrop-blur-sm">
-          <div className="w-full max-w-sm rounded-3xl border border-[#E4E1D8] bg-white px-6 py-6 shadow-[0_24px_48px_rgba(30,38,33,0.16)]">
-            <p
-              className="text-[15px] font-semibold text-[#1E2621]"
-              style={{ fontFamily: "var(--font-display)" }}
-            >
-              Unsaved changes
-            </p>
-            <p className="mt-2 text-[13px] leading-relaxed text-[#5B655F]">
-              You have changes that haven&apos;t been saved yet. Leaving will discard them.
-            </p>
-            <div className="mt-5 flex items-center justify-end gap-3">
-              <button
-                type="button"
-                onClick={() => {
-                  pendingNavRef.current = null;
-                  setConfirmLeave(false);
-                }}
-                className="rounded-full border border-[#E4E1D8] bg-[#FBFAF7] px-4 py-2 text-[12.5px] font-medium text-[#5B655F] transition-colors hover:border-[#C9D3CC] hover:text-[#3E6B52]"
-              >
-                Stay
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setConfirmLeave(false);
-                  pendingNavRef.current?.();
-                  pendingNavRef.current = null;
-                }}
-                className="rounded-full bg-[#B4483C] px-4 py-2 text-[12.5px] font-semibold text-white transition-colors hover:bg-[#963B31]"
-              >
-                Leave anyway
-              </button>
-            </div>
-          </div>
         </div>
       )}
     </div>

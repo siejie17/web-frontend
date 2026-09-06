@@ -274,14 +274,7 @@ export default function ProfileClient() {
     <div
       className="py-4"
     >
-      <div className="mx-auto max-w-5xl space-y-8 px-4 py-2">
-        <BackButton
-          text="Dashboard"
-          redirect="/dashboard"
-        />
-
-        <UserPageTabs />
-
+      <div className="mx-auto md:max-w-375 space-y-8 px-4 py-2">
         {/* ---------------- Profile Hero ---------------- */}
         <ProfileHero
           fullName={fullName}

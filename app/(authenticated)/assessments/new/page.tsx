@@ -666,7 +666,7 @@ export default function NewAssessmentPage() {
           </p>
         </div>
       )}
-      <div className="mx-auto px-4 pb-8 pt-4 sm:pb-10 sm:pt-6">
+      <div className="mx-auto px-4 pb-8 pt-4 sm:pb-10 sm:pt-6 md:max-w-375">
         <BackButton text="Dashboard" redirect="/dashboard" />
 
         {/* ---------------- Intro ---------------- */}

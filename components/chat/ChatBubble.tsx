@@ -1,6 +1,6 @@
 "use client";
 
-import { memo, useState } from "react";
+import { memo, useCallback, useRef, useState } from "react";
 import { motion } from "framer-motion";
 import {
   FileText,
@@ -44,7 +44,7 @@ export function AttachmentInline({
 }) {
   const { Icon, bg } = KIND_ICON[attachment.kind];
   return (
-    <div className="mt-2 flex max-w-72 items-center gap-1 rounded-2xl border border-[#E4E1D8]/80 bg-white/95 p-2.5 text-left shadow-[0_1px_2px_rgba(30,38,33,0.04),0_8px_20px_-6px_rgba(30,38,33,0.10)] backdrop-blur-sm transition-all duration-200 hover:-translate-y-px hover:border-[#C9D3CC] hover:shadow-[0_2px_4px_rgba(30,38,33,0.05),0_14px_28px_-8px_rgba(30,38,33,0.16)]">
+    <div className="mt-2 flex max-w-[85vw] sm:max-w-72 items-center gap-1 rounded-2xl border border-[#E4E1D8]/80 bg-white/95 p-2.5 text-left shadow-[0_1px_2px_rgba(30,38,33,0.04),0_8px_20px_-6px_rgba(30,38,33,0.10)] backdrop-blur-sm transition-all duration-200 hover:-translate-y-px hover:border-[#C9D3CC] hover:shadow-[0_2px_4px_rgba(30,38,33,0.05),0_14px_28px_-8px_rgba(30,38,33,0.16)]">
       <button
         type="button"
         onClick={() => onOpen(attachment)}
@@ -157,7 +157,7 @@ function ReactionActions({
 }) {
   return (
     <div
-      className="absolute right-0 -top-9 z-20 flex items-center gap-0.5 rounded-full border border-[#E4E1D8]/70 bg-white/90 px-1 py-1 opacity-0 shadow-[0_2px_4px_rgba(30,38,33,0.04),0_10px_24px_-6px_rgba(30,38,33,0.18)] backdrop-blur-md transition-all duration-150 ease-out group-hover:-translate-y-0.5 group-hover:opacity-100"
+      className="absolute right-0 -top-9 z-20 flex items-center gap-0.5 rounded-full border border-[#E4E1D8]/70 bg-white/90 px-1 py-1 opacity-100 shadow-[0_2px_4px_rgba(30,38,33,0.04),0_10px_24px_-6px_rgba(30,38,33,0.18)] backdrop-blur-md transition-all duration-150 ease-out sm:opacity-0 sm:group-hover:-translate-y-0.5 sm:group-hover:opacity-100"
       data-reactions
     >
       {REACTION_EMOJIS.map((e) => (
@@ -165,7 +165,7 @@ function ReactionActions({
           key={e}
           type="button"
           onClick={() => onToggle(e)}
-          className="flex h-7 w-7 items-center justify-center rounded-full text-[14px] transition-transform duration-150 hover:scale-115 hover:bg-[#F1F0EA] active:scale-95"
+          className="flex h-8 w-8 sm:h-7 sm:w-7 items-center justify-center rounded-full text-[14px] transition-transform duration-150 hover:scale-115 hover:bg-[#F1F0EA] active:scale-95"
           aria-label={`React with ${e}`}
         >
           {e}
@@ -221,6 +221,36 @@ export const ChatBubble = memo(function ChatBubble({
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(message.message);
   const [action, setAction] = useState<"edit" | "delete" | null>(null);
+  const [showActions, setShowActions] = useState(false);
+  const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const didLongPress = useRef(false);
+
+  const clearLongPress = useCallback(() => {
+    if (longPressTimer.current) {
+      clearTimeout(longPressTimer.current);
+      longPressTimer.current = null;
+    }
+  }, []);
+
+  const handlePointerDown = useCallback(() => {
+    didLongPress.current = false;
+    longPressTimer.current = setTimeout(() => {
+      didLongPress.current = true;
+      setShowActions(true);
+    }, 500);
+  }, []);
+
+  const handlePointerUp = useCallback(() => {
+    clearLongPress();
+  }, [clearLongPress]);
+
+  const handlePointerCancel = useCallback(() => {
+    clearLongPress();
+  }, [clearLongPress]);
+
+  const handlePointerMove = useCallback(() => {
+    clearLongPress();
+  }, [clearLongPress]);
 
   const saveEdit = async () => {
     const next = draft.trim();
@@ -279,6 +309,17 @@ export const ChatBubble = memo(function ChatBubble({
         transition={SPRING}
         className={`group relative flex flex-col items-end ${isGrouped ? "mt-1" : "mt-4"
           }`}
+        onPointerDown={handlePointerDown}
+        onPointerUp={handlePointerUp}
+        onPointerCancel={handlePointerCancel}
+        onPointerMove={handlePointerMove}
+        onClick={(e) => {
+          if (didLongPress.current) {
+            e.stopPropagation();
+            return;
+          }
+          setShowActions(false);
+        }}
       >
         {replyName && (
           <div className="mb-1.5 w-fit max-w-[70%] rounded-2xl rounded-br-md border border-[#EFEDE6] bg-white px-3 py-2 shadow-[0_1px_2px_rgba(30,38,33,0.03)]">
@@ -289,7 +330,7 @@ export const ChatBubble = memo(function ChatBubble({
           </div>
         )}
 
-        <div className="flex max-w-full flex-col items-end">
+        <div className="flex max-w-[85%] flex-col items-end sm:max-w-[78%] lg:max-w-md">
           {message.attachment && (
             <div className="relative z-10 mb-1.5">
               <AttachmentInline
@@ -301,12 +342,21 @@ export const ChatBubble = memo(function ChatBubble({
 
           <div className="flex max-w-full items-center gap-1.5">
             {canInteract && !editing && (
-              <div className="flex items-center rounded-full border border-[#E4E1D8] bg-white p-0.5 opacity-100 shadow-sm transition-opacity sm:opacity-0 sm:group-hover:opacity-100 sm:focus-within:opacity-100">
+              <div
+                className={`flex items-center rounded-full border border-[#E4E1D8] bg-white p-0.5 shadow-sm transition-opacity duration-150 ${
+                  showActions
+                    ? "opacity-100"
+                    : "opacity-100 sm:opacity-0 sm:group-hover:opacity-100 sm:focus-within:opacity-100"
+                }`}
+                onMouseEnter={() => setShowActions(true)}
+                onMouseLeave={() => setShowActions(false)}
+              >
                 <button
                   type="button"
                   onClick={() => {
                     setDraft(message.message);
                     setEditing(true);
+                    setShowActions(false);
                   }}
                   disabled={action !== null}
                   className="flex h-7 w-7 items-center justify-center rounded-full text-[#6B746E] hover:bg-[#EFF6F1] hover:text-[#2E5140] disabled:opacity-40"
@@ -330,10 +380,14 @@ export const ChatBubble = memo(function ChatBubble({
 
             <div className="relative max-w-full">
               <div
-                className={`max-w-full rounded-xl2 rounded-br-md bg-linear-to-br from-[#4B8065] via-[#3E6B52] to-[#2A4C3B] px-4 text-[13.5px] leading-relaxed text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.16),0_1px_2px_rgba(30,38,33,0.08),0_14px_30px_-10px_rgba(46,81,64,0.45)] transition-shadow duration-200 group-hover:shadow-[inset_0_1px_0_rgba(255,255,255,0.18),0_1px_2px_rgba(30,38,33,0.10),0_18px_36px_-8px_rgba(46,81,64,0.5)] ${editing || message.message ? "py-2.5" : "py-2"}`}
+                className={`max-w-full rounded-xl2 rounded-br-md px-4 text-[13.5px] leading-relaxed transition-shadow duration-200 ${
+                  editing
+                    ? "border border-[#3E6B52]/25 bg-[#EFF6F1] text-[#1E2621] shadow-[0_1px_2px_rgba(30,38,33,0.04),0_8px_20px_-6px_rgba(30,38,33,0.08)]"
+                    : "bg-linear-to-br from-[#4B8065] via-[#3E6B52] to-[#2A4C3B] text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.16),0_1px_2px_rgba(30,38,33,0.08),0_14px_30px_-10px_rgba(46,81,64,0.45)] group-hover:shadow-[inset_0_1px_0_rgba(255,255,255,0.18),0_1px_2px_rgba(30,38,33,0.10),0_18px_36px_-8px_rgba(46,81,64,0.5)]"
+                } ${editing || message.message ? "py-2.5" : "py-2"}`}
               >
                 {editing ? (
-                  <div className="min-w-64">
+                  <div className="min-w-0 w-[min(16rem,70vw)] sm:min-w-64 sm:w-auto">
                     <textarea
                       autoFocus
                       value={draft}
@@ -350,7 +404,7 @@ export const ChatBubble = memo(function ChatBubble({
                       }}
                       rows={2}
                       disabled={action === "edit"}
-                      className="max-h-32 w-full resize-none bg-transparent text-[13.5px] text-white outline-none placeholder:text-white/60"
+                      className="max-h-32 w-full resize-none bg-transparent text-[13.5px] text-[#1E2621] outline-none placeholder:text-[#6B746E]/60"
                       aria-label="Edit message text"
                     />
                     <div className="mt-1 flex justify-end gap-1">
@@ -361,7 +415,7 @@ export const ChatBubble = memo(function ChatBubble({
                           setEditing(false);
                         }}
                         disabled={action === "edit"}
-                        className="flex h-7 w-7 items-center justify-center rounded-full text-white/75 hover:bg-white/15 hover:text-white"
+                        className="flex h-7 w-7 items-center justify-center rounded-full text-[#6B746E] hover:bg-[#E4E1D8]/50 hover:text-[#1E2621]"
                         aria-label="Cancel editing"
                         title="Cancel"
                       >
@@ -371,7 +425,7 @@ export const ChatBubble = memo(function ChatBubble({
                         type="button"
                         onClick={() => void saveEdit()}
                         disabled={action === "edit" || (!draft.trim() && !message.attachment)}
-                        className="flex h-7 w-7 items-center justify-center rounded-full bg-white text-[#2E5140] hover:bg-[#EFF6F1] disabled:opacity-50"
+                        className="flex h-7 w-7 items-center justify-center rounded-full bg-[#3E6B52] text-white hover:bg-[#2E5140] disabled:opacity-50"
                         aria-label="Save message"
                         title="Save"
                       >
@@ -423,7 +477,7 @@ export const ChatBubble = memo(function ChatBubble({
       </div>
 
       {/* Message column */}
-      <div className="group relative flex w-fit max-w-[78%] min-w-0 flex-col">
+      <div className="group relative flex w-fit max-w-[85%] min-w-0 flex-col sm:max-w-[78%] lg:max-w-md">
         {/* Sender info follows message column width */}
         {!isGrouped && sender && (
           <div className="mb-1 ml-2.5 flex items-center gap-2">

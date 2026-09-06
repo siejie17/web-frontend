@@ -25,7 +25,6 @@ import {
   Bell,
   BookOpen,
   ChartLine,
-  ChartNoAxesGantt,
   CheckCircle2,
   ChevronDown,
   ChevronRight,
@@ -45,22 +44,17 @@ import Link from "next/link";
 import AIAvatar from "@/components/ai/AIAvatar";
 import { useAuth } from "@/contexts/AuthContext";
 import { usePathname, useRouter } from "next/navigation";
-import Image from "next/image";
 
 const display = Plus_Jakarta_Sans({
   subsets: ["latin"],
   weight: ["500", "600", "700"],
   variable: "--font-display",
 });
+
 const body = Inter({
   subsets: ["latin"],
   weight: ["400", "500", "600"],
   variable: "--font-body",
-});
-const mono = IBM_Plex_Mono({
-  subsets: ["latin"],
-  weight: ["400", "500"],
-  variable: "--font-mono",
 });
 
 interface User {
@@ -94,19 +88,39 @@ type CategoryMeta = {
 const CATEGORY_RULES: Array<{ test: RegExp; meta: CategoryMeta }> = [
   {
     test: /overdue|urgent|reject|fail|expir|risk/i,
-    meta: { icon: AlertTriangle, tint: "#B5533C", tintSoft: "#B5533C14", gradient: "linear-gradient(135deg, #C2664D, #B5533C)" },
+    meta: {
+      icon: AlertTriangle,
+      tint: "#B5533C",
+      tintSoft: "#B5533C14",
+      gradient: "linear-gradient(135deg, #C2664D, #B5533C)",
+    },
   },
   {
     test: /approv|complete|verified|passed|certif|publish/i,
-    meta: { icon: CheckCircle2, tint: "#3E6B52", tintSoft: "#3E6B5214", gradient: "linear-gradient(135deg, #4C7E61, #3E6B52)" },
+    meta: {
+      icon: CheckCircle2,
+      tint: "#3E6B52",
+      tintSoft: "#3E6B5214",
+      gradient: "linear-gradient(135deg, #4C7E61, #3E6B52)",
+    },
   },
   {
     test: /cost|budget|estimate|price|invoice|proforma/i,
-    meta: { icon: TrendingUp, tint: "#B4802E", tintSoft: "#B4802E14", gradient: "linear-gradient(135deg, #C6953F, #B4802E)" },
+    meta: {
+      icon: TrendingUp,
+      tint: "#B4802E",
+      tintSoft: "#B4802E14",
+      gradient: "linear-gradient(135deg, #C6953F, #B4802E)",
+    },
   },
   {
     test: /team|invite|assign|member|collaborat|shared/i,
-    meta: { icon: Users, tint: "#51707C", tintSoft: "#51707C14", gradient: "linear-gradient(135deg, #628390, #51707C)" },
+    meta: {
+      icon: Users,
+      tint: "#51707C",
+      tintSoft: "#51707C14",
+      gradient: "linear-gradient(135deg, #628390, #51707C)",
+    },
   },
 ];
 
@@ -133,7 +147,10 @@ function formatRelative(dateStr?: string): string {
   if (diffHr < 24) return `${diffHr}h ago`;
   const diffDay = Math.floor(diffHr / 24);
   if (diffDay === 1) return "Yesterday";
-  return new Date(dateStr).toLocaleDateString([], { month: "short", day: "numeric" });
+  return new Date(dateStr).toLocaleDateString([], {
+    month: "short",
+    day: "numeric",
+  });
 }
 
 export default function AuthenticatedLayout({
@@ -179,21 +196,20 @@ export default function AuthenticatedLayout({
   const pathname = usePathname();
 
   const logoHref = pathname.includes("/dashboard") ? "#" : "/dashboard";
-  const canAccessAdmin = user?.system_role === "admin" || user?.system_role === "super_admin";
+  const canAccessAdmin =
+    user?.system_role === "admin" || user?.system_role === "super_admin";
   const canAccessFacilitator = user?.system_role === "facilitator_admin";
 
   const hideNavbar =
     pathname.includes("/assessments/new") ||
-    pathname.includes("/assessments/new/results") ||
-    pathname.includes("/projects") ||
-    pathname.includes("/profile") ||
-    pathname.includes("/recommendations") ||
-    pathname.includes("/notifications") ||
-    pathname.includes("/about");
+    pathname.includes("/assessments/new/results");
 
   const playNotificationSound = useCallback(() => {
     try {
-      const AudioCtor = window.AudioContext || (window as typeof window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+      const AudioCtor =
+        window.AudioContext ||
+        (window as typeof window & { webkitAudioContext?: typeof AudioContext })
+          .webkitAudioContext;
       if (!AudioCtor) return;
 
       const audioContext = new AudioCtor();
@@ -277,9 +293,13 @@ export default function AuthenticatedLayout({
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
       const target = event.target as Node;
-      const clickedOutsideMenu = !!menuRef.current && !menuRef.current.contains(target);
-      const clickedOutsideNotifications = !!notificationsRef.current && !notificationsRef.current.contains(target);
-      const clickedOutsideMobileMenu = !!mobileMenuRef.current && !mobileMenuRef.current.contains(target);
+      const clickedOutsideMenu =
+        !!menuRef.current && !menuRef.current.contains(target);
+      const clickedOutsideNotifications =
+        !!notificationsRef.current &&
+        !notificationsRef.current.contains(target);
+      const clickedOutsideMobileMenu =
+        !!mobileMenuRef.current && !mobileMenuRef.current.contains(target);
 
       if (clickedOutsideMenu) {
         setMenuOpen(false);
@@ -333,14 +353,19 @@ export default function AuthenticatedLayout({
 
   const markNotificationRead = async (notificationId: string) => {
     try {
-      const response = await fetch(`/be-api/notifications/${notificationId}/read`, {
-        method: "PATCH",
-        credentials: "include",
-      });
+      const response = await fetch(
+        `/be-api/notifications/${notificationId}/read`,
+        {
+          method: "PATCH",
+          credentials: "include",
+        },
+      );
       if (response.ok) {
         setNotifications((current) =>
           current.map((item) =>
-            item.id === notificationId ? { ...item, read_at: new Date().toISOString() } : item,
+            item.id === notificationId
+              ? { ...item, read_at: new Date().toISOString() }
+              : item,
           ),
         );
         setUnreadCount((current) => Math.max(0, current - 1));
@@ -370,19 +395,7 @@ export default function AuthenticatedLayout({
     <div
       className={`${display.variable} ${body.variable} relative min-h-screen text-[#1E2621]`}
     >
-      {/* 1. Base Background Image Layer */}
-      {/* <div className="fixed inset-0 -z-10">
-        <Image
-          src="/images/main-background.webp"
-          alt=""
-          fill
-          priority
-          sizes="100vw"
-          className="object-cover object-center"
-        />
-      </div> */}
-
-      {/* 2. Opacity Tint Overlay Layer (Sits right on top of the image) */}
+      {/* Opacity Tint Overlay Layer (Sits right on top of the image) */}
 
       <div className="pointer-events-none fixed inset-0 -z-10 bg-[#F6F6F2]/50" />
 
@@ -393,10 +406,7 @@ export default function AuthenticatedLayout({
           <div className="mx-auto flex max-w-560 items-center justify-between py-2.5">
             {/* Left: logo + navigation tabs */}
             <div className="hidden items-center gap-5 sm:flex">
-              <Link
-                href={logoHref}
-                className="group flex items-center gap-2.5"
-              >
+              <Link href={logoHref} className="group flex items-center gap-2.5">
                 <img
                   src="/logo/proformax-ori.png"
                   alt="ProFormaX Logo"
@@ -442,14 +452,18 @@ export default function AuthenticatedLayout({
             </div>
 
             {/* Mobile: centered logo + accordion trigger (all menu items consolidated) */}
-            <div className="relative flex flex-1 items-center justify-center sm:hidden" ref={mobileMenuRef}>
+            <div
+              className="relative flex flex-1 items-center justify-center sm:hidden"
+              ref={mobileMenuRef}
+            >
               <button
                 type="button"
                 onClick={() => setMobileMenuOpen((v) => !v)}
                 aria-haspopup="menu"
                 aria-expanded={mobileMenuOpen}
-                className={`flex items-center gap-1.5 rounded-full px-3 py-1.5 transition-colors ${mobileMenuOpen ? "bg-[#3E6B52]/10" : "hover:bg-[#F6F6F2]"
-                  }`}
+                className={`flex items-center gap-1.5 rounded-full px-3 py-1.5 transition-colors ${
+                  mobileMenuOpen ? "bg-[#3E6B52]/10" : "hover:bg-[#F6F6F2]"
+                }`}
               >
                 <img
                   src="/logo/proformax-ori.png"
@@ -465,7 +479,10 @@ export default function AuthenticatedLayout({
                 {unreadCount > 0 && (
                   <span
                     className="ml-0.5 flex min-h-[16px] min-w-[16px] items-center justify-center rounded-full px-1 text-[9px] font-semibold text-white"
-                    style={{ backgroundImage: "linear-gradient(135deg, #C2664D, #B5533C)" }}
+                    style={{
+                      backgroundImage:
+                        "linear-gradient(135deg, #C2664D, #B5533C)",
+                    }}
                   >
                     {unreadCount > 99 ? "99+" : unreadCount}
                   </span>
@@ -476,179 +493,189 @@ export default function AuthenticatedLayout({
                 />
               </button>
 
-{typeof document !== "undefined" &&
-  createPortal(
-              <AnimatePresence>
-                {mobileMenuOpen && (
-                  <motion.div
-                    role="menu"
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    exit={{ opacity: 0 }}
-                    transition={{ duration: 0.18, ease: "easeOut" }}
-                    className="fixed inset-0 z-50 flex flex-col bg-white/98 backdrop-blur-xl"
-                  >
-                    {/* Top bar: logo + close */}
-                    <div className="flex items-center justify-between border-b border-[#EFEDE6] px-5 py-4">
-                      <div className="flex items-center gap-2.5">
-                        <img
-                          src="/logo/proformax-ori.png"
-                          alt="ProFormaX Logo"
-                          className="h-7 w-7 object-contain"
-                        />
-                        <span
-                          className="text-[17px] font-bold tracking-[-0.01em] text-[#1E2621]"
-                          style={{ fontFamily: "var(--font-display)" }}
-                        >
-                          ProFormaX
-                        </span>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => setMobileMenuOpen(false)}
-                        aria-label="Close menu"
-                        className="flex h-9 w-9 items-center justify-center rounded-full text-[#5B655F] transition-colors hover:bg-[#F6F6F2]"
+              {typeof document !== "undefined" &&
+                createPortal(
+                  <AnimatePresence>
+                    {mobileMenuOpen && (
+                      <motion.div
+                        role="menu"
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        transition={{ duration: 0.18, ease: "easeOut" }}
+                        className="fixed inset-0 z-50 flex flex-col bg-white/98 backdrop-blur-xl"
                       >
-                        <X size={20} />
-                      </button>
-                    </div>
-
-                    {/* User info */}
-                    <div className="flex items-center gap-3 px-5 py-5">
-                      {currentUser.profilePicture ? (
-                        <img
-                          src={currentUser.profilePicture}
-                          alt={currentUser.fullName}
-                          className="h-12 w-12 rounded-full object-cover"
-                        />
-                      ) : (
-                        <span
-                          className="flex h-12 w-12 items-center justify-center rounded-full text-[14px] font-semibold text-white"
-                          style={{ fontFamily: "var(--font-display)", backgroundImage: "linear-gradient(135deg, #4C7E61, #294A39)" }}
-                        >
-                          {currentUser.initials}
-                        </span>
-                      )}
-                      <div className="min-w-0 text-left">
-                        <div className="truncate text-[15px] font-semibold text-[#1E2621]">
-                          {currentUser.fullName}
+                        {/* Top bar: logo + close */}
+                        <div className="flex items-center justify-between border-b border-[#EFEDE6] px-5 py-4">
+                          <div className="flex items-center gap-2.5">
+                            <img
+                              src="/logo/proformax-ori.png"
+                              alt="ProFormaX Logo"
+                              className="h-7 w-7 object-contain"
+                            />
+                            <span
+                              className="text-[17px] font-bold tracking-[-0.01em] text-[#1E2621]"
+                              style={{ fontFamily: "var(--font-display)" }}
+                            >
+                              ProFormaX
+                            </span>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => setMobileMenuOpen(false)}
+                            aria-label="Close menu"
+                            className="flex h-9 w-9 items-center justify-center rounded-full text-[#5B655F] transition-colors hover:bg-[#F6F6F2]"
+                          >
+                            <X size={20} />
+                          </button>
                         </div>
-                        <div className="truncate text-[13px] text-[#8A938C]">
-                          {currentUser.email}
+
+                        {/* User info */}
+                        <div className="flex items-center gap-3 px-5 py-5">
+                          {currentUser.profilePicture ? (
+                            <img
+                              src={currentUser.profilePicture}
+                              alt={currentUser.fullName}
+                              className="h-12 w-12 rounded-full object-cover"
+                            />
+                          ) : (
+                            <span
+                              className="flex h-12 w-12 items-center justify-center rounded-full text-[14px] font-semibold text-white"
+                              style={{
+                                fontFamily: "var(--font-display)",
+                                backgroundImage:
+                                  "linear-gradient(135deg, #4C7E61, #294A39)",
+                              }}
+                            >
+                              {currentUser.initials}
+                            </span>
+                          )}
+                          <div className="min-w-0 text-left">
+                            <div className="truncate text-[15px] font-semibold text-[#1E2621]">
+                              {currentUser.fullName}
+                            </div>
+                            <div className="truncate text-[13px] text-[#8A938C]">
+                              {currentUser.email}
+                            </div>
+                          </div>
                         </div>
-                      </div>
-                    </div>
 
-                    <div className="h-px bg-[#EFEDE6]" />
+                        <div className="h-px bg-[#EFEDE6]" />
 
-                    {/* Menu items — fills remaining screen */}
-                    <div className="flex-1 overflow-y-auto px-3 py-3">
-                      <MenuItem
-                        icon={<ChartLine size={18} />}
-                        label="Dashboard"
-                        large
-                        action={() => {
-                          setMobileMenuOpen(false);
-                          router.push("/dashboard");
-                        }}
-                      />
-                      <MenuItem
-                        icon={<SquareChartGantt size={18} />}
-                        label="Assessments"
-                        large
-                        action={() => {
-                          setMobileMenuOpen(false);
-                          router.push("/assessments/history");
-                        }}
-                      />
-                      <MenuItem
-                        icon={<Bell size={18} />}
-                        label="Notifications"
-                        badge={unreadCount > 0 ? (unreadCount > 99 ? "99+" : String(unreadCount)) : undefined}
-                        large
-                        action={() => {
-                          setMobileMenuOpen(false);
-                          router.push("/notifications");
-                        }}
-                      />
-                      <MenuItem
-                        icon={<UserRound size={18} />}
-                        label="Profile"
-                        large
-                        action={() => {
-                          setMobileMenuOpen(false);
-                          router.push("/profile");
-                        }}
-                      />
-                      <MenuItem
-                        icon={<Sparkles size={18} />}
-                        label="Recommendations"
-                        large
-                        action={() => {
-                          setMobileMenuOpen(false);
-                          router.push("/recommendations");
-                        }}
-                      />
-                      <MenuItem
-                        icon={<BookOpen size={18} />}
-                        label="References"
-                        large
-                        action={() => {
-                          setMobileMenuOpen(false);
-                          router.push("/references");
-                        }}
-                      />
-                      {canAccessAdmin && (
-                        <MenuItem
-                          icon={<ShieldCheck size={18} />}
-                          label="Admin view"
-                          large
-                          action={() => {
-                            setMobileMenuOpen(false);
-                            router.push("/admin");
-                          }}
-                        />
-                      )}
-                      <MenuItem
-                        icon={<Info size={18} />}
-                        label="About"
-                        large
-                        action={() => {
-                          setMobileMenuOpen(false);
-                          router.push("/about");
-                        }}
-                      />
-                      {canAccessFacilitator && (
-                        <MenuItem
-                          icon={<BadgeCheck size={18} />}
-                          label="Facilitator view"
-                          large
-                          action={() => {
-                            setMobileMenuOpen(false);
-                            router.push("/facilitator");
-                          }}
-                        />
-                      )}
-                    </div>
+                        {/* Menu items — fills remaining screen */}
+                        <div className="flex-1 overflow-y-auto px-3 py-3">
+                          <MenuItem
+                            icon={<ChartLine size={18} />}
+                            label="Dashboard"
+                            large
+                            action={() => {
+                              setMobileMenuOpen(false);
+                              router.push("/dashboard");
+                            }}
+                          />
+                          <MenuItem
+                            icon={<SquareChartGantt size={18} />}
+                            label="Assessments"
+                            large
+                            action={() => {
+                              setMobileMenuOpen(false);
+                              router.push("/assessments/history");
+                            }}
+                          />
+                          <MenuItem
+                            icon={<Bell size={18} />}
+                            label="Notifications"
+                            badge={
+                              unreadCount > 0
+                                ? unreadCount > 99
+                                  ? "99+"
+                                  : String(unreadCount)
+                                : undefined
+                            }
+                            large
+                            action={() => {
+                              setMobileMenuOpen(false);
+                              router.push("/notifications");
+                            }}
+                          />
+                          <MenuItem
+                            icon={<UserRound size={18} />}
+                            label="Profile"
+                            large
+                            action={() => {
+                              setMobileMenuOpen(false);
+                              router.push("/profile");
+                            }}
+                          />
+                          <MenuItem
+                            icon={<Sparkles size={18} />}
+                            label="Recommendations"
+                            large
+                            action={() => {
+                              setMobileMenuOpen(false);
+                              router.push("/recommendations");
+                            }}
+                          />
+                          <MenuItem
+                            icon={<BookOpen size={18} />}
+                            label="References"
+                            large
+                            action={() => {
+                              setMobileMenuOpen(false);
+                              router.push("/references");
+                            }}
+                          />
+                          {canAccessAdmin && (
+                            <MenuItem
+                              icon={<ShieldCheck size={18} />}
+                              label="Admin view"
+                              large
+                              action={() => {
+                                setMobileMenuOpen(false);
+                                router.push("/admin");
+                              }}
+                            />
+                          )}
+                          <MenuItem
+                            icon={<Info size={18} />}
+                            label="About"
+                            large
+                            action={() => {
+                              setMobileMenuOpen(false);
+                              router.push("/about");
+                            }}
+                          />
+                          {canAccessFacilitator && (
+                            <MenuItem
+                              icon={<BadgeCheck size={18} />}
+                              label="Facilitator view"
+                              large
+                              action={() => {
+                                setMobileMenuOpen(false);
+                                router.push("/facilitator");
+                              }}
+                            />
+                          )}
+                        </div>
 
-                    {/* Sign out pinned to bottom */}
-                    <div className="border-t border-[#EFEDE6] p-3">
-                      <MenuItem
-                        icon={<LogOut size={18} />}
-                        label="Sign out"
-                        danger
-                        large
-                        action={() => {
-                          setMobileMenuOpen(false);
-                          void handleLogout();
-                        }}
-                      />
-                    </div>
-                  </motion.div>
+                        {/* Sign out pinned to bottom */}
+                        <div className="border-t border-[#EFEDE6] p-3">
+                          <MenuItem
+                            icon={<LogOut size={18} />}
+                            label="Sign out"
+                            danger
+                            large
+                            action={() => {
+                              setMobileMenuOpen(false);
+                              void handleLogout();
+                            }}
+                          />
+                        </div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>,
+                  document.body,
                 )}
-              </AnimatePresence>,
-              document.body
-  )}
             </div>
 
             {/* Desktop icon cluster (bell + avatar) — hidden on mobile, replaced by the accordion above */}
@@ -659,8 +686,11 @@ export default function AuthenticatedLayout({
                   aria-label="Notifications"
                   aria-expanded={notificationsOpen}
                   onClick={() => setNotificationsOpen((value) => !value)}
-                  className={`relative flex h-9 w-9 items-center justify-center rounded-full transition-colors ${notificationsOpen ? "bg-[#3E6B52]/10 text-[#3E6B52]" : "text-[#5B655F] hover:bg-[#F6F6F2] hover:text-[#3E6B52]"
-                    }`}
+                  className={`relative flex h-9 w-9 items-center justify-center rounded-full transition-colors ${
+                    notificationsOpen
+                      ? "bg-[#3E6B52]/10 text-[#3E6B52]"
+                      : "text-[#5B655F] hover:bg-[#F6F6F2] hover:text-[#3E6B52]"
+                  }`}
                 >
                   <Bell size={17} />
                   <AnimatePresence>
@@ -670,9 +700,16 @@ export default function AuthenticatedLayout({
                         initial={{ scale: 0.4, opacity: 0 }}
                         animate={{ scale: 1, opacity: 1 }}
                         exit={{ scale: 0.4, opacity: 0 }}
-                        transition={{ type: "spring", stiffness: 500, damping: 25 }}
+                        transition={{
+                          type: "spring",
+                          stiffness: 500,
+                          damping: 25,
+                        }}
                         className="absolute -right-1 -top-1 flex min-h-[19px] min-w-[19px] items-center justify-center rounded-full px-1 text-[10px] font-semibold text-white shadow-[0_2px_6px_rgba(181,83,60,0.4)]"
-                        style={{ backgroundImage: "linear-gradient(135deg, #C2664D, #B5533C)" }}
+                        style={{
+                          backgroundImage:
+                            "linear-gradient(135deg, #C2664D, #B5533C)",
+                        }}
                       >
                         {unreadCount > 99 ? "99+" : unreadCount}
                       </motion.span>
@@ -707,7 +744,10 @@ export default function AuthenticatedLayout({
                         {loadingNotifications ? (
                           <div className="space-y-1.5 p-2">
                             {[1, 2, 3].map((item) => (
-                              <div key={item} className="h-16 animate-pulse rounded-2xl bg-[#F1F0EA]" />
+                              <div
+                                key={item}
+                                className="h-16 animate-pulse rounded-2xl bg-[#F1F0EA]"
+                              />
                             ))}
                           </div>
                         ) : notifications.length === 0 ? (
@@ -715,7 +755,9 @@ export default function AuthenticatedLayout({
                             <div className="flex h-9 w-9 items-center justify-center rounded-2xl bg-[#3E6B52]/8 text-[#3E6B52]">
                               <Bell size={14} />
                             </div>
-                            <p className="text-[12px] text-[#8A938C]">You do not have any notifications yet.</p>
+                            <p className="text-[12px] text-[#8A938C]">
+                              You do not have any notifications yet.
+                            </p>
                           </div>
                         ) : (
                           notifications.map((notification) => {
@@ -727,7 +769,9 @@ export default function AuthenticatedLayout({
                               <button
                                 key={notification.id}
                                 type="button"
-                                onClick={() => void handleNotificationClick(notification)}
+                                onClick={() =>
+                                  void handleNotificationClick(notification)
+                                }
                                 className="flex w-full items-start gap-3 rounded-2xl px-2.5 py-2.5 text-left transition-colors hover:bg-[#F6F6F2]"
                               >
                                 <div
@@ -743,7 +787,9 @@ export default function AuthenticatedLayout({
                                     >
                                       {notification.title}
                                     </span>
-                                    {isUnread && <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-[#3E6B52]" />}
+                                    {isUnread && (
+                                      <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-[#3E6B52]" />
+                                    )}
                                   </div>
                                   <p className="mt-0.5 line-clamp-1 text-[11.5px] leading-5 text-[#5B655F]">
                                     {notification.message}
@@ -768,7 +814,10 @@ export default function AuthenticatedLayout({
                           className="group flex w-full items-center justify-center gap-1.5 rounded-xl px-3 py-2.5 text-[12px] font-semibold text-[#3E6B52] transition-colors hover:bg-[#3E6B52]/8"
                         >
                           See all
-                          <ChevronRight size={13} className="transition-transform group-hover:translate-x-0.5" />
+                          <ChevronRight
+                            size={13}
+                            className="transition-transform group-hover:translate-x-0.5"
+                          />
                         </button>
                       </div>
                     </motion.div>
@@ -783,8 +832,9 @@ export default function AuthenticatedLayout({
                   onClick={() => setMenuOpen((v) => !v)}
                   aria-haspopup="menu"
                   aria-expanded={menuOpen}
-                  className={`flex items-center gap-1.5 rounded-full py-1 pl-1 pr-2 transition-colors ${menuOpen ? "bg-[#3E6B52]/10" : "hover:bg-[#F6F6F2]"
-                    }`}
+                  className={`flex items-center gap-1.5 rounded-full py-1 pl-1 pr-2 transition-colors ${
+                    menuOpen ? "bg-[#3E6B52]/10" : "hover:bg-[#F6F6F2]"
+                  }`}
                 >
                   {currentUser.profilePicture ? (
                     <img
@@ -795,7 +845,11 @@ export default function AuthenticatedLayout({
                   ) : (
                     <span
                       className={`flex h-7 w-7 items-center justify-center rounded-full text-[13px] font-semibold text-white ring-2 transition-all ${menuOpen ? "ring-[#3E6B52]/40" : "ring-transparent"}`}
-                      style={{ fontFamily: "var(--font-display)", backgroundImage: "linear-gradient(135deg, #4C7E61, #294A39)" }}
+                      style={{
+                        fontFamily: "var(--font-display)",
+                        backgroundImage:
+                          "linear-gradient(135deg, #4C7E61, #294A39)",
+                      }}
                     >
                       {currentUser.initials}
                     </span>
@@ -826,7 +880,11 @@ export default function AuthenticatedLayout({
                         ) : (
                           <span
                             className="flex h-9 w-9 items-center justify-center rounded-full text-[12.5px] font-semibold text-white"
-                            style={{ fontFamily: "var(--font-display)", backgroundImage: "linear-gradient(135deg, #4C7E61, #294A39)" }}
+                            style={{
+                              fontFamily: "var(--font-display)",
+                              backgroundImage:
+                                "linear-gradient(135deg, #4C7E61, #294A39)",
+                            }}
                           >
                             {currentUser.initials}
                           </span>
@@ -890,9 +948,7 @@ export default function AuthenticatedLayout({
       )}
 
       {/* Single <main> landmark for every authenticated page. */}
-      <main className="px-4">
-        {children}
-      </main>
+      <main className="px-4">{children}</main>
 
       <AIAvatar />
     </div>
@@ -918,15 +974,20 @@ function MenuItem({
     <button
       role="menuitem"
       onClick={action}
-      className={`flex w-full items-center gap-3 rounded-xl text-left font-medium transition-colors ${large ? "px-3.5 py-3.5 text-[14.5px]" : "px-3 py-2.5 text-[13px]"
-        } ${danger ? "text-[#B4483C] hover:bg-[#B4483C]/8" : "text-[#1E2621] hover:bg-[#F6F6F2]"}`}
+      className={`flex w-full items-center gap-3 rounded-xl text-left font-medium transition-colors ${
+        large ? "px-3.5 py-3.5 text-[14.5px]" : "px-3 py-2.5 text-[13px]"
+      } ${danger ? "text-[#B4483C] hover:bg-[#B4483C]/8" : "text-[#1E2621] hover:bg-[#F6F6F2]"}`}
     >
-      <span className={danger ? "text-[#B4483C]" : "text-[#7C8880]"}>{icon}</span>
+      <span className={danger ? "text-[#B4483C]" : "text-[#7C8880]"}>
+        {icon}
+      </span>
       <span className="flex-1">{label}</span>
       {badge && (
         <span
           className="rounded-full px-1.5 py-0.5 text-[10px] font-semibold text-white"
-          style={{ backgroundImage: "linear-gradient(135deg, #C2664D, #B5533C)" }}
+          style={{
+            backgroundImage: "linear-gradient(135deg, #C2664D, #B5533C)",
+          }}
         >
           {badge}
         </span>

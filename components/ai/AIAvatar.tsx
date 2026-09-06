@@ -145,8 +145,9 @@ export default function AIAvatar({ showLauncher = true }: { showLauncher?: boole
   const messagesRef = useRef<HTMLDivElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
-  const conversationVersionRef = useRef(0);
-  const openRef = useRef(false);
+  const [launcherPos, setLauncherPos] = useState({ x: 28, y: 28 });
+  const launcherRef = useRef<HTMLDivElement>(null);
+  const dragState = useRef({ active: false, moved: false, sx: 0, sy: 0, px: 0, py: 0 });
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -331,6 +332,42 @@ export default function AIAvatar({ showLauncher = true }: { showLauncher?: boole
   };
 
   const grouped = groupMessages(messages);
+
+  const handlePointerDown = (e: React.PointerEvent) => {
+    const el = launcherRef.current;
+    if (!el) return;
+    (e.target as HTMLElement).setPointerCapture(e.pointerId);
+    dragState.current = { active: true, moved: false, sx: e.clientX, sy: e.clientY, px: launcherPos.x, py: launcherPos.y };
+    let raf = 0;
+    const onMove = (ev: PointerEvent) => {
+      if (!dragState.current.active) return;
+      const dx = dragState.current.sx - ev.clientX;
+      const dy = dragState.current.sy - ev.clientY;
+      if (Math.abs(dx) > 3 || Math.abs(dy) > 3) {
+        dragState.current.moved = true;
+      }
+      if (dragState.current.moved) {
+        ev.preventDefault();
+        if (raf) cancelAnimationFrame(raf);
+        raf = requestAnimationFrame(() => {
+          const nx = dragState.current.px + dx;
+          const ny = dragState.current.py + dy;
+          el.style.right = `${nx}px`;
+          el.style.bottom = `${ny}px`;
+        });
+      }
+    };
+    const onUp = () => {
+      dragState.current.active = false;
+      if (raf) cancelAnimationFrame(raf);
+      const rect = el.getBoundingClientRect();
+      setLauncherPos({ x: window.innerWidth - rect.right, y: window.innerHeight - rect.bottom });
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+    };
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+  };
   const conversationReady =
     Boolean(conversationStorageKey) &&
     loadedStorageKey === conversationStorageKey;
@@ -338,11 +375,16 @@ export default function AIAvatar({ showLauncher = true }: { showLauncher?: boole
   return (
     <>
       {!open && showLauncher && (
-        <div className="fixed bottom-7 right-7 z-[100]">
+        <div
+          ref={launcherRef}
+          onPointerDown={handlePointerDown}
+          className="fixed z-30 cursor-grab touch-none active:cursor-grabbing"
+          style={{ bottom: launcherPos.y, right: launcherPos.x }}
+        >
           <button
-            onClick={() => setOpen((v) => !v)}
+            onClick={() => { if (!dragState.current.moved) setOpen(true); }}
             aria-label="Open AI assistant"
-            className="group relative flex h-14 w-14 items-center justify-center overflow-visible rounded-full bg-linear-to-br from-[#29382F] via-[#1E2621] to-[#17201B] shadow-[0_10px_28px_rgba(30,38,33,0.28)] ring-1 ring-white/15 transition-transform hover:scale-105 active:scale-95"
+            className="pointer-events-auto relative flex h-14 w-14 items-center justify-center rounded-full bg-[#1E2621] shadow-[0_10px_28px_rgba(30,38,33,0.28)] transition-transform hover:scale-105 active:scale-95"
           >
             <span className="absolute -inset-1 rounded-full border-[1.5px] border-[#C08A3E]/50" />
 
@@ -390,8 +432,12 @@ export default function AIAvatar({ showLauncher = true }: { showLauncher?: boole
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.94, y: 12 }}
               transition={{ type: 'spring', damping: 26, stiffness: 320 }}
-              style={{ transformOrigin: 'bottom right' }}
-              className="fixed inset-x-0 bottom-0 z-[110] flex h-[88vh] w-full flex-col overflow-hidden bg-paper shadow-[0_24px_60px_rgba(20,24,21,0.25)] sm:inset-x-auto sm:bottom-7 sm:right-7 sm:h-155 sm:max-h-[80vh] sm:w-100 sm:rounded-[28px] sm:ring-1 sm:ring-black/5"
+              style={{
+                transformOrigin: 'bottom right',
+                '--panel-bottom': `${launcherPos.y + 16}px`,
+                '--panel-right': `${launcherPos.x - 244 + 56}px`,
+              } as React.CSSProperties}
+              className="fixed inset-x-0 bottom-0 z-50 flex h-[88vh] w-full flex-col overflow-hidden bg-paper shadow-[0_24px_60px_rgba(20,24,21,0.25)] sm:inset-x-auto sm:h-155 sm:max-h-[80vh] sm:w-100 sm:rounded-[28px] sm:ring-1 sm:ring-black/5 sm:bottom-[var(--panel-bottom)] sm:right-[var(--panel-right)]"
             >
               {/* Header */}
               <div className="relative shrink-0 overflow-hidden bg-[#1E2621] px-5 py-4">

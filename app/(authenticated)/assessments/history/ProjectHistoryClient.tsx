@@ -43,6 +43,8 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { AnimatePresence, motion } from "framer-motion";
 import {
+  ArrowDownRight,
+  ArrowUpRight,
   Award,
   Calendar,
   ChevronLeft,
@@ -76,7 +78,7 @@ const T = {
   amber: "#B5842A",
 };
 
-const CARD_SHADOW = "0 8px 24px rgba(30,38,33,0.06)";
+const CARD_SHADOW = "0 1px 2px rgba(29,38,32,0.04), 0 1px 1px rgba(29,38,32,0.03)";
 
 /* ---------------- Helpers ---------------- */
 
@@ -239,7 +241,7 @@ export default function ProjectHistoryClient({
     <div className="mx-auto px-4 pb-10 pt-6 sm:px-6 md:px-10">
       {/* ---------------- Intro ---------------- */}
       <section
-        className="relative mb-6 flex flex-col gap-4 rounded-xl border bg-white p-5 sm:flex-row sm:items-center sm:justify-between sm:p-6"
+        className="relative mb-6 flex flex-col gap-4 rounded-2xl border bg-white p-5 sm:flex-row sm:items-center sm:justify-between sm:p-6"
         style={{ borderColor: T.hairline, boxShadow: CARD_SHADOW }}
       >
         <div>
@@ -267,7 +269,7 @@ export default function ProjectHistoryClient({
       <div
         role="tablist"
         aria-label="Project history views"
-        className="mb-4 flex w-full flex-col divide-y divide-[#E4E1D8] rounded-lg border bg-white p-1 sm:flex-row sm:divide-y-0"
+        className="mb-4 flex w-full flex-col divide-y divide-[#E4E1D8] rounded-xl border bg-white p-1 sm:flex-row sm:divide-y-0"
         style={{ borderColor: T.hairline }}
       >
         <button
@@ -324,7 +326,7 @@ export default function ProjectHistoryClient({
           onChange={(e) => handleSearchChange(e.target.value)}
           placeholder="Search by project name..."
           aria-label="Search projects"
-          className="w-full rounded-lg border bg-white py-2.5 pl-10 pr-10 text-[13.5px] transition-colors focus:outline-none focus:ring-2 sm:text-[14px]"
+          className="w-full rounded-xl border bg-white py-2.5 pl-10 pr-10 text-[13.5px] transition-colors focus:outline-none focus:ring-2 sm:text-[14px]"
           style={{
             borderColor: T.hairline,
             color: T.ink,
@@ -441,7 +443,7 @@ function EmptyState({
 }) {
   return (
     <div
-      className="flex flex-col items-center justify-center rounded-xl border border-dashed bg-white px-5 py-12 text-center sm:px-6 sm:py-16"
+      className="flex flex-col items-center justify-center rounded-2xl border border-dashed bg-white px-5 py-12 text-center sm:px-6 sm:py-16"
       style={{ borderColor: T.hairline }}
     >
       <div
@@ -646,7 +648,7 @@ function ScoreGauge({
 
   return (
     <div
-      className="flex items-center gap-2.5 rounded-lg border px-3 py-2"
+      className="flex items-center gap-2.5 rounded-xl border px-3 py-2"
       style={{ borderColor: T.hairline, background: "#fff" }}
     >
       <svg width="46" height="46" viewBox="0 0 46 46" className="shrink-0 -rotate-90">
@@ -690,16 +692,142 @@ function ScoreGauge({
   );
 }
 
-/* ---------------- Project card ---------------- */
-function ProjectCard({
-  project,
-  unread = 0,
-  onOpen,
-}: {
+interface Certificate {
+  status: "issued" | "pending" | string;
+  certification_level: string;
+  approved_actual_score: number;
+  maximum_score: number;
+}
+
+interface Project {
+  id: string | number;
+  type_name: string;
+  classification?: string;
+  name: string;
+  category: string;
+  structure: string;
+  location: string;
+  size?: number | string;
+  year: number | string;
+  budget?: number;
+  adjusted_cost?: number;
+  rating?: number;
+  actual_rating?: number;
+  target_certification?: string;
+  certificate?: Certificate;
+  changed_cert?: number;
+  created_at: string;
+}
+
+interface ProjectCardProps {
   project: Project;
   unread?: number;
   onOpen?: () => void;
-}) {
+}
+
+interface CostBarProps {
+  budget?: number;
+  actual?: number;
+}
+
+interface ScoreCompareProps {
+  predicted: number;
+  actual?: number;
+  certification?: string;
+}
+
+const formatMoney = (n: number) =>
+  `RM ${Math.round(n).toLocaleString("en-MY")}`;
+
+function CostBar({ budget, actual }: CostBarProps) {
+  if (!budget || actual == null) return null;
+  const pct = ((actual - budget) / budget) * 100;
+  const over = pct > 0;
+  const fill = Math.min(Math.max((actual / budget) * 100, 4), 130);
+
+  return (
+    <div className="flex-1 min-w-[140px]">
+      <div className="mb-1 flex items-baseline justify-between">
+        <span className="text-[10.5px] font-semibold uppercase tracking-wide" style={{ color: T.mutedSoft }}>
+          Cost
+        </span>
+        <span
+          className="flex items-center gap-0.5 text-[11.5px] font-bold"
+          style={{ color: over ? T.clay : T.forest }}
+        >
+          {over ? <ArrowUpRight size={12} /> : <ArrowDownRight size={12} />}
+          {Math.abs(pct).toFixed(1)}%
+        </span>
+      </div>
+      <div className="relative h-1.5 w-full overflow-hidden rounded-full" style={{ background: T.hairlineSoft }}>
+        <div
+          className="absolute inset-y-0 left-0 rounded-full"
+          style={{ width: `${Math.min(fill, 100)}%`, background: over ? T.clay : T.forest }}
+        />
+      </div>
+      <div className="mt-1 flex justify-between text-[11px]" style={{ color: T.muted }}>
+        <span>{formatMoney(budget)} budget</span>
+        <span className="font-medium" style={{ color: T.ink }}>
+          {formatMoney(actual)}
+        </span>
+      </div>
+    </div>
+  );
+}
+
+function ScoreCompare({ predicted, actual, certification }: ScoreCompareProps) {
+  const hasActual = actual != null;
+  return (
+    <div className="flex-1 min-w-[140px]">
+      <div className="mb-1 flex items-baseline justify-between">
+        <span className="text-[10.5px] font-semibold uppercase tracking-wide" style={{ color: T.mutedSoft }}>
+          {certification || "Score"}
+        </span>
+        {hasActual && (
+          <span className="text-[11px]" style={{ color: T.muted }}>
+            predicted → actual
+          </span>
+        )}
+      </div>
+      <div className="flex items-center gap-2.5">
+        <div className="flex items-baseline gap-1">
+          <span
+            className="text-[19px] font-bold leading-none"
+            style={{ fontFamily: "var(--font-display)", color: hasActual ? T.mutedSoft : T.ink }}
+          >
+            {predicted ?? "—"}
+          </span>
+          {hasActual && (
+            <>
+              <span style={{ color: T.mutedSoft }}>→</span>
+              <span
+                className="text-[19px] font-bold leading-none"
+                style={{ fontFamily: "var(--font-display)", color: T.forest }}
+              >
+                {actual}
+              </span>
+            </>
+          )}
+        </div>
+        <div className="flex h-1.5 flex-1 overflow-hidden rounded-full" style={{ background: T.hairlineSoft }}>
+          <div
+            className="h-full rounded-full"
+            style={{
+              width: `${Math.min((((hasActual ? actual : predicted) as number) / 110) * 100, 100)}%`,
+              background: hasActual ? T.forest : T.mutedSoft,
+            }}
+          />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ---------------- Project card ---------------- */
+function ProjectCard({ project, unread = 0, onOpen }: ProjectCardProps) {
+  const isCertified = project.certificate?.status === "issued";
+  const hasTarget = project.target_certification != "Not Certified" || (project.target_certification == "Not Certified" && project.changed_cert == 1);
+
   const stage = getHistoryProjectStage(project.certificate);
   const isCertified = stage === "Certified";
 
@@ -707,179 +835,103 @@ function ProjectCard({
     <a
       href={`/projects/${project.id}`}
       onClick={onOpen}
-      className="group/card relative block overflow-hidden rounded-xl border bg-white transition-colors focus-visible:outline focus-visible:outline-offset-2"
-      style={{
-        borderColor: T.hairline,
-        boxShadow: CARD_SHADOW,
-        outlineColor: T.forest,
-      }}
+      className="group block overflow-hidden rounded-2xl border bg-white transition-colors focus-visible:outline focus-visible:outline-offset-2"
+      style={{ borderColor: T.hairline, boxShadow: CARD_SHADOW, outlineColor: T.forest }}
       onMouseEnter={(e) => (e.currentTarget.style.borderColor = "#C9D3CC")}
       onMouseLeave={(e) => (e.currentTarget.style.borderColor = T.hairline)}
     >
-      {/* New-messages badge */}
-      {unread > 0 && (
-        <span
-          className="absolute right-3 top-3 z-10 flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-[10.5px] font-bold text-white"
-          style={{ background: T.clay, fontFamily: "var(--font-mono)" }}
-          title={`${unread} new message${unread === 1 ? "" : "s"}`}
-        >
-          {unread > 9 ? "9+" : unread}
-        </span>
-      )}
-
-      <div className="relative flex flex-col gap-4 p-5 md:flex-row md:items-start md:justify-between md:gap-6 sm:p-6">
-        <div className="min-w-0 flex-1">
-          <div className="mb-2 flex flex-wrap items-center gap-2">
-            <span
-              className="rounded-md px-2 py-0.5 text-[10.5px] font-medium sm:text-[11px]"
-              style={{ fontFamily: "var(--font-mono)", background: T.chip, color: T.mutedSoft }}
-            >
-              {project.type_name}
-            </span>
-            {project.classification && (
+      <div className="p-5 sm:p-6">
+        {/* Top: identity + unread, no floating badge */}
+        <div className="mb-3 flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <div className="mb-1.5 flex flex-wrap items-center gap-1.5">
               <span
-                className="rounded-md px-2 py-0.5 text-[10.5px] font-medium sm:text-[11px]"
+                className="rounded-md px-2 py-0.5 text-[10.5px] font-medium"
                 style={{ background: T.chip, color: T.mutedSoft }}
               >
-                {project.classification}
+                {project.type_name}
               </span>
-            )}
-          </div>
-
-          <h3
-            className="truncate text-[16px] font-bold leading-tight tracking-[-0.01em] sm:text-[17.5px]"
-            style={{ fontFamily: "var(--font-display)", color: T.ink }}
-          >
-            {project.name}
-          </h3>
-          <p className="mt-1 truncate text-[12.5px] sm:text-[13px]" style={{ color: T.muted }}>
-            {project.category} &middot; {project.structure}
-          </p>
-
-          <div
-            className="mt-3.5 flex flex-wrap gap-x-4 gap-y-1.5 text-[12px] sm:mt-4 sm:gap-x-5 sm:text-[12.5px]"
-            style={{ color: T.muted }}
-          >
-            <span className="flex items-center gap-1.5">
-              <MapPin size={13} className="shrink-0" style={{ color: T.mutedSoft }} />
-              {project.location}
-            </span>
-            <span className="flex items-center gap-1.5">
-              <Ruler size={13} className="shrink-0" style={{ color: T.mutedSoft }} />
-              {formatSize(project.size ?? "0")}
-            </span>
-            <span className="flex items-center gap-1.5">
-              <Calendar size={13} className="shrink-0" style={{ color: T.mutedSoft }} />
-              {project.year}
-            </span>
-          </div>
-
-          <CostVarianceStrip budget={project.budget} adjustedCost={project.adjusted_cost} />
-        </div>
-
-        <div className="flex flex-row items-center gap-2.5 md:shrink-0 md:flex-col md:items-end md:gap-2.5">
-          {project.certificate?.status === "issued" && (
-            <div
-              className="flex min-w-36 items-center gap-2 rounded-lg border px-3 py-2"
-              style={{ borderColor: "#B9CBBF", background: T.lightGreen, color: T.forestDeep }}
-            >
-              <Award size={16} className="shrink-0" />
-              <div>
-                <p className="text-[9px] font-semibold uppercase tracking-[0.04em]">Final certificate</p>
-                <p className="text-xs font-bold">{project.certificate.certification_level}</p>
-                <p className="text-[10px]" style={{ color: T.muted }}>
-                  {project.certificate.approved_actual_score}/{project.certificate.maximum_score} points
-                </p>
-              </div>
-            </div>
-          )}
-
-          {project.target_certification && project.target_certification !== "Not Certified" ? (
-            <div className="hidden md:flex md:flex-col md:gap-1.5">
-              <ScoreGauge
-                rating={project.rating ?? 0}
-                label="Predicted"
-                certification={project.target_certification}
-              />
-              {project.actual_rating != null && (
-                <>
-                  <div className="flex items-center gap-2 px-1">
-                    <div className="h-px flex-1" style={{ background: T.hairline }} />
-                    <span
-                      className="text-[10px] font-semibold uppercase tracking-wider"
-                      style={{ color: T.mutedSoft }}
-                    >
-                      vs.
-                    </span>
-                    <div className="h-px flex-1" style={{ background: T.hairline }} />
-                  </div>
-                  <ScoreGauge
-                    rating={project.actual_rating}
-                    label="Actual"
-                    certification={
-                      project.certifications
-                        ? getCertificationName(
-                            project.certifications.certifiedScaleRange as Record<
-                              string,
-                              [number, number]
-                            >,
-                            project.actual_rating,
-                          )
-                        : undefined
-                    }
-                  />
-                </>
+              {project.classification && (
+                <span
+                  className="rounded-md px-2 py-0.5 text-[10.5px] font-medium"
+                  style={{ background: T.chip, color: T.mutedSoft }}
+                >
+                  {project.classification}
+                </span>
               )}
             </div>
+            <h3
+              className="truncate text-[17px] font-bold leading-tight tracking-[-0.01em]"
+              style={{ fontFamily: "var(--font-display)", color: T.ink }}
+            >
+              {project.name}
+            </h3>
+            <p className="mt-0.5 truncate text-[12.5px]" style={{ color: T.muted }}>
+              {project.category} · {project.structure}
+            </p>
+          </div>
+
+          {unread > 0 && (
+            <span
+              className="flex h-5 min-w-5 shrink-0 items-center justify-center rounded-full px-1.5 text-[10.5px] font-bold text-white"
+              style={{ background: T.clay }}
+              title={`${unread} new message${unread === 1 ? "" : "s"}`}
+            >
+              {unread > 9 ? "9+" : unread}
+            </span>
+          )}
+        </div>
+
+        {/* Meta: one line, includes created date so there's no separate footer bar */}
+        <div className="mb-4 flex flex-wrap items-center gap-x-3.5 gap-y-1 text-[12px]" style={{ color: T.muted }}>
+          <span className="flex items-center gap-1">
+            <MapPin size={12} style={{ color: T.mutedSoft }} />
+            {project.location}
+          </span>
+          <span className="flex items-center gap-1">
+            <Ruler size={12} style={{ color: T.mutedSoft }} />
+            {formatSize(project.size ?? "0")}
+          </span>
+          <span className="flex items-center gap-1">
+            <Calendar size={12} style={{ color: T.mutedSoft }} />
+            {project.year}
+          </span>
+        </div>
+
+        {/* Hero content: cost + score, side by side, one responsive path */}
+        <div
+          className="flex flex-wrap gap-x-6 gap-y-4 rounded-xl border p-4"
+          style={{ borderColor: T.hairlineSoft, background: T.cream }}
+        >
+          <CostBar budget={project.budget} actual={project.adjusted_cost} />
+          {hasTarget ? (
+            <ScoreCompare
+              predicted={project.rating ?? 0}
+              actual={project.actual_rating}
+              certification={project.target_certification}
+            />
           ) : (
-            <div className="flex max-[720px]:hidden flex-col items-start gap-1.5">
-              <span
-                className="text-[9.5px] font-semibold uppercase tracking-[0.05em]"
-                style={{ fontFamily: "var(--font-mono)", color: T.mutedSoft }}
-              >
-                Predicted
-              </span>
-              <CertStatus certification={project.target_certification} />
+            <div className="flex flex-1 min-w-[140px] items-center gap-1.5 text-[12.5px]" style={{ color: T.mutedSoft }}>
+              Not pursuing certification
             </div>
           )}
         </div>
 
-        {project.target_certification && project.target_certification !== "Not Certified" && (
+        {/* Certificate: compact ribbon, only when actually issued */}
+        {isCertified && project.certificate && (
           <div
-            className="flex w-full items-center justify-center gap-5 pt-1.5 max-[578px]:hidden md:hidden"
-            style={{ borderColor: T.hairlineSoft }}
+            className="mt-3 flex items-center gap-2 rounded-lg border px-3 py-1.5"
+            style={{ borderColor: "#B9CBBF", background: T.lightGreen, color: T.forestDeep }}
           >
-            <ScoreGauge
-              rating={project.rating ?? 0}
-              label="Predicted"
-              certification={project.target_certification}
-            />
-            <span className="text-[10px] font-semibold uppercase tracking-wider" style={{ color: T.mutedSoft }}>
-              vs.
+            <Award size={14} />
+            <span className="text-[12px] font-semibold">
+              {project.certificate.certification_level} certified
             </span>
-            {project.actual_rating != null && (
-              <ScoreGauge
-                rating={project.actual_rating}
-                label="Actual"
-                certification={
-                  project.certifications
-                    ? getCertificationName(
-                        project.certifications.certifiedScaleRange as Record<string, [number, number]>,
-                        project.actual_rating,
-                      )
-                    : undefined
-                }
-              />
-            )}
+            <span className="text-[11px]" style={{ color: T.muted }}>
+              · {project.certificate.approved_actual_score}/{project.certificate.maximum_score} pts
+            </span>
           </div>
         )}
-      </div>
-
-      <div
-        className="relative border-t px-5 py-2.5 text-[11px] sm:px-6 sm:text-[11.5px]"
-        style={{ borderColor: T.hairlineSoft, background: T.cream, color: T.mutedSoft }}
-      >
-        Created {formatDateTime(project.created_at)}
       </div>
     </a>
   );
@@ -915,7 +967,7 @@ function Pagination({
           onClick={() => onChange(page - 1)}
           disabled={page === 1}
           aria-label="Previous page"
-          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border bg-white transition-colors disabled:pointer-events-none disabled:opacity-40 focus-visible:outline focus-visible:outline-offset-2"
+          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border bg-white transition-colors disabled:pointer-events-none disabled:opacity-40 focus-visible:outline focus-visible:outline-offset-2"
           style={{ borderColor: T.hairline, color: T.muted }}
         >
           <ChevronLeft size={16} />
@@ -930,7 +982,7 @@ function Pagination({
           onClick={() => onChange(page + 1)}
           disabled={page === totalPages}
           aria-label="Next page"
-          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border bg-white transition-colors disabled:pointer-events-none disabled:opacity-40 focus-visible:outline focus-visible:outline-offset-2"
+          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border bg-white transition-colors disabled:pointer-events-none disabled:opacity-40 focus-visible:outline focus-visible:outline-offset-2"
           style={{ borderColor: T.hairline, color: T.muted }}
         >
           <ChevronRight size={16} />
@@ -944,7 +996,7 @@ function Pagination({
           onClick={() => onChange(page - 1)}
           disabled={page === 1}
           aria-label="Previous page"
-          className="flex h-9 w-9 items-center justify-center rounded-lg border bg-white transition-colors hover:bg-[#F6F6F2] disabled:pointer-events-none disabled:opacity-40 focus-visible:outline focus-visible:outline-offset-2"
+          className="flex h-9 w-9 items-center justify-center rounded-xl border bg-white transition-colors hover:bg-[#F6F6F2] disabled:pointer-events-none disabled:opacity-40 focus-visible:outline focus-visible:outline-offset-2"
           style={{ borderColor: T.hairline, color: T.muted }}
         >
           <ChevronLeft size={16} />
@@ -965,7 +1017,7 @@ function Pagination({
               type="button"
               onClick={() => onChange(p)}
               aria-current={p === page ? "page" : undefined}
-              className="flex h-9 w-9 items-center justify-center rounded-lg text-[13px] font-medium transition-colors focus-visible:outline focus-visible:outline-offset-2"
+              className="flex h-9 w-9 items-center justify-center rounded-xl text-[13px] font-medium transition-colors focus-visible:outline focus-visible:outline-offset-2"
               style={
                 p === page
                   ? { background: T.forest, color: "#fff" }
@@ -982,7 +1034,7 @@ function Pagination({
           onClick={() => onChange(page + 1)}
           disabled={page === totalPages}
           aria-label="Next page"
-          className="flex h-9 w-9 items-center justify-center rounded-lg border bg-white transition-colors hover:bg-[#F6F6F2] disabled:pointer-events-none disabled:opacity-40 focus-visible:outline focus-visible:outline-offset-2"
+          className="flex h-9 w-9 items-center justify-center rounded-xl border bg-white transition-colors hover:bg-[#F6F6F2] disabled:pointer-events-none disabled:opacity-40 focus-visible:outline focus-visible:outline-offset-2"
           style={{ borderColor: T.hairline, color: T.muted }}
         >
           <ChevronRight size={16} />

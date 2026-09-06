@@ -44,6 +44,7 @@ export function RecentAssessments({
   loading?: boolean;
 }) {
   if (loading) return <RecentAssessmentsSkeleton />;
+  console.log(projects)
 
   return (
     <div className="rounded-xl2 border border-[#E4E1D8] bg-white p-4 shadow-[0_8px_24px_rgba(30,38,33,0.04)] sm:p-6">
@@ -96,7 +97,12 @@ export function RecentAssessments({
                     </td>
                     <td className="py-3 pr-3 text-[13px] text-[#5B655F]">{project.type}</td>
                     <td className="py-3 pr-3">
-                      <CertificationBadge score={project.predicted_score} />
+                      {project.target_certification === "Not Certified" &&
+                      project.changed_cert === 0 ? (
+                        <span className="text-[13px] text-[#5B655F]">N/A</span>
+                      ) : (
+                        <CertificationBadge score={project.predicted_score} />
+                      )}
                     </td>
                     <td className="py-3 pr-3 text-[13px] text-[#1E2621]">
                       {formatCurrencyMYR(project.savings)}

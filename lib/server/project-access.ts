@@ -37,6 +37,7 @@ export type Project = {
     verification_code: string;
     issued_at?: string | null;
   } | null;
+  changed_cert?: boolean;
   created_at?: string;
 };
 

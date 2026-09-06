@@ -37,6 +37,8 @@ export interface RecentProject {
   savings: number;
   predicted_score: number;
   created_at: string; // "YYYY-MM-DD HH:mm:ss"
+  target_certification: string;
+  changed_cert: number;
 }
 
 export interface AnalyticsResponse {

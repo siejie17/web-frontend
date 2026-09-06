@@ -72,7 +72,7 @@ export function KpiGrid({ metrics, loading }: { metrics: AnalyticsMetrics | null
         icon={<TrendingUp size={18} />}
         title="Average predicted GBI score"
         value={roundScore(metrics.average_predicted_gbi_score)}
-        supporting="Across all projects"
+        supporting="Across all projects (excl. non-certification projects)"
       />
       <KpiCard
         icon={<Award size={18} />}

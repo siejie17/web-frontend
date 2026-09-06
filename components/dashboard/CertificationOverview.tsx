@@ -109,7 +109,7 @@ export function CertificationOverview({
                                 style={{ fontFamily: "var(--font-mono)" }}
                             >
                                 {threshold.label === "Not certified"
-                                    ? "< 35"
+                                    ? "< 50"
                                     : `≥ ${threshold.min}`}
                             </span>
                         </li>
