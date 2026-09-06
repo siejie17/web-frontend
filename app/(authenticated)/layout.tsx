@@ -17,7 +17,7 @@
  */
 
 import { useEffect, useRef, useState } from "react";
-import { ChevronDown, LogOut, UserRound, Info } from "lucide-react";
+import { BadgeCheck, BookOpen, ChevronDown, LogOut, UserRound, Info, ShieldCheck, Sparkles } from "lucide-react";
 import { Plus_Jakarta_Sans, Inter, IBM_Plex_Mono } from "next/font/google";
 import Link from "next/link";
 
@@ -57,7 +57,7 @@ interface AuthenticatedLayoutProps {
 export default function AuthenticatedLayout({
   children,
 }: Readonly<AuthenticatedLayoutProps>) {
-  const { user } = useAuth();
+  const { user, logout } = useAuth();
 
   const firstName = user?.first_name?.split(" ")[0] || "User";
   const fullName =
@@ -88,6 +88,8 @@ export default function AuthenticatedLayout({
   const pathname = usePathname();
 
   const logoHref = pathname.includes("/dashboard") ? "#" : "/dashboard";
+  const canAccessAdmin = user?.system_role === "admin" || user?.system_role === "super_admin";
+  const canAccessFacilitator = user?.system_role === "facilitator_admin";
 
   const hideNavbar =
     pathname.includes("/assessments/new") ||
@@ -95,6 +97,8 @@ export default function AuthenticatedLayout({
     pathname.includes("/assessments/history") ||
     pathname.includes("/projects") ||
     pathname.includes("/profile") ||
+    pathname.includes("/recommendations") ||
+    pathname.includes("/references") ||
     pathname.includes("/about");
 
   useEffect(() => {
@@ -109,12 +113,7 @@ export default function AuthenticatedLayout({
 
   const handleLogout = async () => {
     try {
-      await fetch("/be-api/auth/logout", {
-        method: "POST",
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
-      });
-      window.location.href = "/login";
+      await logout();
     } catch (error) {
       console.error("Logout failed", error);
     }
@@ -159,6 +158,7 @@ export default function AuthenticatedLayout({
             </span>
           </Link>
 
+          <div className="flex items-center gap-3">
           <div className="relative" ref={menuRef}>
             <button
               onClick={() => setMenuOpen((v) => !v)}
@@ -212,10 +212,30 @@ export default function AuthenticatedLayout({
                     action={() => router.push("/profile")}
                   />
                   <MenuItem
+                    icon={<Sparkles size={16} />}
+                    label="Recommendations"
+                    action={() => router.push("/recommendations")}
+                  />
+                  <MenuItem
+                    icon={<BookOpen size={16} />}
+                    label="References"
+                    action={() => router.push("/references")}
+                  />
+                  <MenuItem
                     icon={<Info size={16} />}
                     label="About"
                     action={() => router.push("/about")}
                   />
+                  {canAccessAdmin && <MenuItem
+                    icon={<ShieldCheck size={16} />}
+                    label="Admin view"
+                    action={() => router.push("/admin")}
+                  />}
+                  {canAccessFacilitator && <MenuItem
+                    icon={<BadgeCheck size={16} />}
+                    label="Facilitator view"
+                    action={() => router.push("/facilitator")}
+                  />}
                   <div className="my-1 h-px bg-[#EFEDE6]" />
                   <MenuItem
                     icon={<LogOut size={16} />}
@@ -226,6 +246,7 @@ export default function AuthenticatedLayout({
                 </div>
               </>
             )}
+          </div>
           </div>
         </header>
       )}

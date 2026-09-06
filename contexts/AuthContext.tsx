@@ -2,6 +2,11 @@
 
 import { createContext, ReactNode, useContext, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import {
+    AI_CONVERSATION_CLEARED_EVENT,
+    clearAIConversation,
+    getAIConversationStorageKey,
+} from "@/lib/aiConversation";
 
 type User = {
     id: string;
@@ -13,7 +18,10 @@ type User = {
     profile_pic: string;
     profile_picture?: string;
     created_at?: string;
+    email_notifications?: boolean;
+    push_notifications?: boolean;
     role_id?: number | null;
+    system_role?: "user" | "admin" | "super_admin" | "facilitator_admin";
     role?:
         | {
               id: number;
@@ -52,6 +60,31 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
 
     const logout = async () => {
+        const response = await fetch("/be-api/auth/logout", {
+            method: "POST",
+            credentials: "include",
+        });
+
+        if (!response.ok) {
+            throw new Error("Logout failed");
+        }
+
+        if (user?.id) {
+            const storageKey = getAIConversationStorageKey(user.id);
+
+            try {
+                clearAIConversation(window.sessionStorage, user.id);
+            } catch {
+                // Logout must continue if browser storage is unavailable.
+            }
+
+            window.dispatchEvent(
+                new CustomEvent(AI_CONVERSATION_CLEARED_EVENT, {
+                    detail: { storageKey },
+                }),
+            );
+        }
+
         setUser(null);
         router.replace("/login");
     };

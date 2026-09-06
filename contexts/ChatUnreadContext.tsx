@@ -5,35 +5,18 @@ import {
   ReactNode,
   useCallback,
   useContext,
+  useEffect,
   useRef,
   useState,
 } from "react";
 import { apiProjectChatService } from "@/services/apiProjectChatService";
 import { useAuth } from "@/contexts/AuthContext";
 
-/**
- * Global unread-message tracking for project chats.
- *
- * The chat hook (`useProjectChat`) only runs while a project's chat is mounted,
- * so its unread count is lost as soon as you navigate away. This context keeps
- * a per-project "last read" timestamp (persisted in localStorage) and computes
- * unread counts on demand by fetching each project's latest messages. That lets
- * surfaces like the assessment history cards show "new messages" badges even
- * when no chat page is open.
- *
- * Responsibilities:
- *  - markRead(projectId)   -> record "now" as the read timestamp, clear unread
- *  - incrementUnread(id)   -> bump unread by one (used by the live chat hook)
- *  - computeUnread(id)     -> fetch messages and derive unread from last-read
- *  - refreshProjects(ids)  -> compute unread for many projects (history page)
- */
-
-const STORAGE_KEY = "chat-unread-last-read";
-
 type ChatUnreadContextValue = {
   unreadByProject: Record<number, number>;
-  markRead: (projectId: number) => void;
+  markRead: (projectId: number, messageId?: string) => Promise<void>;
   incrementUnread: (projectId: number) => void;
+  setUnreadCount: (projectId: number, count: number) => void;
   computeUnread: (projectId: number) => Promise<number>;
   refreshProjects: (projectIds: number[]) => Promise<void>;
 };
@@ -41,83 +24,121 @@ type ChatUnreadContextValue = {
 const ChatUnreadContext =
   createContext<ChatUnreadContextValue | undefined>(undefined);
 
-function loadLastRead(): Record<number, string> {
-  // Guard for SSR — localStorage doesn't exist on the server.
-  if (typeof window === "undefined") return {};
-  try {
-    const raw = window.localStorage.getItem(STORAGE_KEY);
-    const parsed = raw ? JSON.parse(raw) : {};
-    if (parsed && typeof parsed === "object") return parsed as Record<number, string>;
-    return {};
-  } catch {
-    return {};
-  }
-}
-
-function persistLastRead(map: Record<number, string>) {
-  if (typeof window === "undefined") return;
-  try {
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(map));
-  } catch {
-    /* storage may be unavailable (private mode etc.) — ignore */
-  }
-}
-
 export function ChatUnreadProvider({ children }: { children: ReactNode }) {
   const { user } = useAuth();
-  const currentUserId = user?.id != null ? String(user.id) : "";
-
   const [unreadByProject, setUnreadByProject] = useState<Record<number, number>>(
     {},
   );
-  const lastReadRef = useRef<Record<number, string>>(loadLastRead());
+  const trackedProjectIdsRef = useRef<number[]>([]);
 
-  const markRead = useCallback((projectId: number) => {
-    const now = new Date().toISOString();
-    lastReadRef.current = { ...lastReadRef.current, [projectId]: now };
-    persistLastRead(lastReadRef.current);
-    setUnreadByProject((prev) => ({ ...prev, [projectId]: 0 }));
+  const setUnreadCount = useCallback((projectId: number, count: number) => {
+    if (!trackedProjectIdsRef.current.includes(projectId)) {
+      trackedProjectIdsRef.current = [
+        ...trackedProjectIdsRef.current,
+        projectId,
+      ];
+    }
+    setUnreadByProject((previous) => ({
+      ...previous,
+      [projectId]: Math.max(0, count),
+    }));
   }, []);
 
+  const fetchCounts = useCallback(async () => {
+    if (!user?.id) return {};
+    return apiProjectChatService.getUnreadCounts();
+  }, [user?.id]);
+
+  const markRead = useCallback(
+    async (projectId: number, messageId?: string) => {
+      setUnreadCount(projectId, 0);
+      try {
+        const remaining = await apiProjectChatService.markProjectRead(
+          projectId,
+          messageId,
+        );
+        setUnreadCount(projectId, remaining);
+      } catch {
+        const counts = await fetchCounts().catch(() => null);
+        if (counts) setUnreadCount(projectId, counts[projectId] ?? 0);
+      }
+    },
+    [fetchCounts, setUnreadCount],
+  );
+
   const incrementUnread = useCallback((projectId: number) => {
-    setUnreadByProject((prev) => ({
-      ...prev,
-      [projectId]: (prev[projectId] ?? 0) + 1,
+    if (!trackedProjectIdsRef.current.includes(projectId)) {
+      trackedProjectIdsRef.current = [
+        ...trackedProjectIdsRef.current,
+        projectId,
+      ];
+    }
+    setUnreadByProject((previous) => ({
+      ...previous,
+      [projectId]: (previous[projectId] ?? 0) + 1,
     }));
   }, []);
 
   const computeUnread = useCallback(
     async (projectId: number): Promise<number> => {
-      if (!currentUserId) return 0;
       try {
-        const page = await apiProjectChatService.getProjectMessages(projectId, {
-          limit: 60,
-        });
-        const lastReadAt = lastReadRef.current[projectId];
-        const lastReadTime = lastReadAt ? new Date(lastReadAt).getTime() : 0;
-
-        let count = 0;
-        for (const m of page.messages) {
-          if (m.system) continue;
-          if (m.senderId === currentUserId) continue;
-          const created = new Date(m.createdAt).getTime();
-          if (!lastReadAt || created > lastReadTime) count++;
-        }
-        setUnreadByProject((prev) => ({ ...prev, [projectId]: count }));
+        const counts = await fetchCounts();
+        const count = counts[projectId] ?? 0;
+        setUnreadCount(projectId, count);
         return count;
       } catch {
         return 0;
       }
     },
-    [currentUserId],
+    [fetchCounts, setUnreadCount],
   );
 
   const refreshProjects = useCallback(
     async (projectIds: number[]) => {
-      await Promise.all(projectIds.map((id) => computeUnread(id)));
+      trackedProjectIdsRef.current = [...new Set(projectIds)];
+      if (projectIds.length === 0) return;
+
+      try {
+        const counts = await fetchCounts();
+        setUnreadByProject((previous) => {
+          const next = { ...previous };
+          projectIds.forEach((projectId) => {
+            next[projectId] = counts[projectId] ?? 0;
+          });
+          return next;
+        });
+      } catch {
+        // Keep the last known counts during a temporary network failure.
+      }
     },
-    [computeUnread],
+    [fetchCounts],
   );
+
+  useEffect(() => {
+    if (!user?.id) {
+      setUnreadByProject({});
+      trackedProjectIdsRef.current = [];
+      return;
+    }
+
+    const refreshTracked = () => {
+      const ids = trackedProjectIdsRef.current;
+      if (ids.length > 0) void refreshProjects(ids);
+    };
+    const handleVisibility = () => {
+      if (document.visibilityState === "visible") refreshTracked();
+    };
+
+    const interval = window.setInterval(refreshTracked, 10_000);
+    window.addEventListener("focus", refreshTracked);
+    document.addEventListener("visibilitychange", handleVisibility);
+
+    return () => {
+      window.clearInterval(interval);
+      window.removeEventListener("focus", refreshTracked);
+      document.removeEventListener("visibilitychange", handleVisibility);
+    };
+  }, [refreshProjects, user?.id]);
 
   return (
     <ChatUnreadContext.Provider
@@ -125,6 +146,7 @@ export function ChatUnreadProvider({ children }: { children: ReactNode }) {
         unreadByProject,
         markRead,
         incrementUnread,
+        setUnreadCount,
         computeUnread,
         refreshProjects,
       }}
@@ -135,7 +157,9 @@ export function ChatUnreadProvider({ children }: { children: ReactNode }) {
 }
 
 export function useChatUnread() {
-  const ctx = useContext(ChatUnreadContext);
-  if (!ctx) throw new Error("useChatUnread must be used within ChatUnreadProvider");
-  return ctx;
+  const context = useContext(ChatUnreadContext);
+  if (!context) {
+    throw new Error("useChatUnread must be used within ChatUnreadProvider");
+  }
+  return context;
 }

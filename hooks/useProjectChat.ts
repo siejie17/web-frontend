@@ -17,7 +17,12 @@ import { useChatUnread } from "@/contexts/ChatUnreadContext";
  */
 export function useProjectChat(realProjectId?: number | null) {
   const { user } = useAuth();
-  const { markRead, incrementUnread, unreadByProject } = useChatUnread();
+  const {
+    markRead,
+    incrementUnread,
+    setUnreadCount,
+    unreadByProject,
+  } = useChatUnread();
   // The /me id arrives as an integer; senders are strings, so normalise to a
   // string to make `isOwn` (bubble placement) and member matching line up.
   const currentUserId = useMemo(
@@ -57,8 +62,11 @@ export function useProjectChat(realProjectId?: number | null) {
   const markAllRead = useCallback(() => {
     unreadRef.current = 0;
     setUnread(0);
-    if (projectId) markRead(projectId);
-  }, [projectId, markRead]);
+    if (projectId) {
+      const latestMessageId = messages[messages.length - 1]?.id;
+      void markRead(projectId, latestMessageId);
+    }
+  }, [projectId, markRead, messages]);
 
   const activate = useCallback(() => {
     // Opening the tab alone does NOT mark messages as read. Reading is driven
@@ -103,7 +111,7 @@ export function useProjectChat(realProjectId?: number | null) {
     isActiveRef.current = false;
   }, []);
 
-  /* Initial load + polling subscription. */
+  /* Initial load + incremental synchronization subscription. */
   useEffect(() => {
     if (!projectId) {
       setInitialLoading(false);
@@ -119,26 +127,33 @@ export function useProjectChat(realProjectId?: number | null) {
     setInitialLoading(true);
     setMembersLoading(true);
 
-    Promise.all([
-      chatService.getProjectMessages(projectId),
-      chatService.getProjectMembers(projectId),
-    ])
-      .then(([page, memberList]) => {
+    chatService.getProjectMessages(projectId)
+      .then((page) => {
         if (disposed) return;
         page.messages.forEach((m) => knownIdsRef.current.add(m.id));
         setMessages(page.messages);
         setHasMore(page.hasMore);
         oldestRef.current = page.messages[0]?.createdAt ?? null;
+        const initialUnread = page.unreadCount ?? 0;
+        unreadRef.current = initialUnread;
+        setUnread(initialUnread);
+        setUnreadCount(projectId, initialUnread);
+      })
+      .catch(() => undefined)
+      .finally(() => {
+        if (!disposed) setInitialLoading(false);
+      });
+
+    chatService.getProjectMembers(projectId)
+      .then((memberList) => {
+        if (disposed) return;
         setMembers(memberList);
-        setMembersLoading(false);
-        setInitialLoading(false);
         const owner = memberList.find((m) => m.isOwner)?.user.id ?? "";
         setProjectUserId(owner);
       })
-      .catch(() => {
-        if (disposed) return;
-        setInitialLoading(false);
-        setMembersLoading(false);
+      .catch(() => undefined)
+      .finally(() => {
+        if (!disposed) setMembersLoading(false);
       });
 
     const unsubscribe = chatService.subscribe(projectId, (e) => {
@@ -147,18 +162,17 @@ export function useProjectChat(realProjectId?: number | null) {
         const isNew = !knownIdsRef.current.has(msg.id);
         if (isNew) knownIdsRef.current.add(msg.id);
         upsertMessage(msg);
-        if (
-          isNew &&
-          !msg.system &&
-          msg.senderId !== currentUserId &&
-          !isActiveRef.current
-        ) {
+        if (isNew && !msg.system && msg.senderId !== currentUserId) {
           unreadRef.current += 1;
           setUnread(unreadRef.current);
           incrementUnread(projectId);
         }
       } else if (e.type === "update") {
         upsertMessage(e.message as ProjectMessage);
+      } else if (e.type === "delete") {
+        const messageId = String(e.messageId);
+        knownIdsRef.current.delete(messageId);
+        setMessages((current) => current.filter((message) => message.id !== messageId));
       } else if (e.type === "member") {
         setMembers(e.members as MemberWithUser[]);
       }
@@ -168,7 +182,13 @@ export function useProjectChat(realProjectId?: number | null) {
       disposed = true;
       unsubscribe();
     };
-  }, [projectId, currentUserId, upsertMessage, incrementUnread]);
+  }, [
+    projectId,
+    currentUserId,
+    upsertMessage,
+    incrementUnread,
+    setUnreadCount,
+  ]);
 
   /** Load an older page and prepend it (lazy pagination). */
   const loadOlder = useCallback(async () => {
@@ -257,9 +277,23 @@ export function useProjectChat(realProjectId?: number | null) {
       setMessages(optimistic);
       return chatService
         .toggleReaction(projectId, messageId, emoji)
-        .catch(() => setMessages(optimistic));
+        .then((reactions) => {
+          setMessages((current) =>
+            current.map((message) =>
+              message.id === messageId ? { ...message, reactions } : message,
+            ),
+          );
+        })
+        .catch(async (error) => {
+          const page = await chatService
+            .getProjectMessages(projectId, { limit: 60 })
+            .catch(() => null);
+          const serverMessage = page?.messages.find((message) => message.id === messageId);
+          if (serverMessage) upsertMessage(serverMessage);
+          throw error;
+        });
     },
-    [projectId, currentUserId],
+    [projectId, currentUserId, upsertMessage],
   );
 
   /** Upload a file; throws for unsupported types. */
@@ -310,6 +344,35 @@ export function useProjectChat(realProjectId?: number | null) {
     [projectId],
   );
 
+  const updateMessage = useCallback(
+    async (messageId: string, message: string) => {
+      if (!projectId) return;
+      const updated = await chatService.updateMessage(projectId, messageId, message);
+      upsertMessage(updated);
+    },
+    [projectId, upsertMessage],
+  );
+
+  const deleteMessage = useCallback(
+    async (messageId: string) => {
+      if (!projectId) return;
+      await chatService.deleteMessage(projectId, messageId);
+      setMessages((current) => current.filter((message) => message.id !== messageId));
+      knownIdsRef.current.delete(messageId);
+    },
+    [projectId],
+  );
+
+  const updateMemberRole = useCallback(
+    async (userId: string, roleId: number) => {
+      if (!projectId) return;
+      await chatService.updateProjectMemberRole(projectId, userId, roleId);
+      const refreshed = await chatService.getProjectMembers(projectId);
+      setMembers(refreshed);
+    },
+    [projectId],
+  );
+
   return {
     projectId,
     currentUserId,
@@ -325,12 +388,15 @@ export function useProjectChat(realProjectId?: number | null) {
     membersLoading,
     memberIds: members.map((m) => m.user.id),
     unread,
+    updateMemberRole,
     activate,
     deactivate,
     markAllRead,
     loadOlder,
     send,
     toggleReaction,
+    updateMessage,
+    deleteMessage,
     uploadAttachment,
     searchUsers,
     addMembers,

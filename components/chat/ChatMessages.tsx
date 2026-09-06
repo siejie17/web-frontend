@@ -36,6 +36,10 @@ export function ChatMessages({
   onOpenAttachment,
   onReply,
   onReaction,
+  onEdit,
+  onDelete,
+  onActionError,
+  canInteract = true,
   active = true,
   onAtBottom,
 }: {
@@ -49,6 +53,10 @@ export function ChatMessages({
   onOpenAttachment: (a: Attachment) => void;
   onReply: (m: ProjectMessage) => void;
   onReaction: (m: ProjectMessage, emoji: string) => void;
+  onEdit: (messageId: string, message: string) => Promise<void>;
+  onDelete: (messageId: string) => Promise<void>;
+  onActionError: (message: string) => void;
+  canInteract?: boolean;
   /** Whether this pane is the visible tab. Hidden panes have zero size and
    *  must never be treated as "at the bottom". */
   active?: boolean;
@@ -239,6 +247,10 @@ export function ChatMessages({
                   onOpenAttachment={onOpenAttachment}
                   onReply={onReply}
                   onReaction={onReaction}
+                  onEdit={onEdit}
+                  onDelete={onDelete}
+                  onActionError={onActionError}
+                  canInteract={canInteract}
                   currentUserId={currentUserId}
                   replyName={replyName}
                   replyPreview={replyPreview}

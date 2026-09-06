@@ -603,7 +603,7 @@ export default function NewAssessmentPage() {
                 className="text-[30px] font-bold leading-[1.15] tracking-[-0.02em] sm:text-[32px]"
                 style={{ fontFamily: "var(--font-display)" }}
               >
-                Green Building Scores Calculator
+                High-Level Cost Estimation
               </h1>
               <p className="mt-3 max-w-lg text-[15px] leading-relaxed text-[#5B655F]">
                 Estimate your project&apos;s performance against the standards
@@ -895,7 +895,7 @@ export default function NewAssessmentPage() {
 
                       <TextField
                         name="projectBudget"
-                        label="Project/Building Budget"
+                        label="Project/Building Estimation"
                         placeholder="Enter budget or leave empty"
                         value={budgetDisplay}
                         onChange={handleBudgetChange}
@@ -1749,7 +1749,7 @@ function BudgetPredictionIndicator({
       : !hasBudget
         ? "No budget set"
         : isOverBudget
-          ? "Over budget"
+          ? "Under estimate"
           : "Within budget";
 
   const StatusIcon = predictionLoading

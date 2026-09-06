@@ -15,15 +15,21 @@ import { ChatToast, type ChatToastData } from "./Toast";
 export function ProjectChatTab({
   realProjectId,
   active,
+  isProjectOwner = false,
   onUnreadChange,
   onMembersChange,
 }: {
   realProjectId?: number | null;
   active: boolean;
+  isProjectOwner?: boolean;
   onUnreadChange?: (unread: number) => void;
   onMembersChange?: (count: number) => void;
 }) {
   const chat = useProjectChat(realProjectId);
+  const permissions = chat.currentMember?.membership.permissions ?? [];
+  const canSendMessages = isProjectOwner || permissions.includes("send_messages");
+  const canManageMembers = isProjectOwner || permissions.includes("manage_members");
+  const canManageRoles = isProjectOwner || permissions.includes("manage_roles");
 
   const [toast, setToast] = useState<ChatToastData | null>(null);
   const [previewAttachment, setPreviewAttachment] = useState<Attachment | null>(null);
@@ -93,10 +99,17 @@ export function ProjectChatTab({
   );
 
   const handleReaction = useCallback(
-    (m: { id: string }, emoji: string) => {
-      chat.toggleReaction(m.id, emoji);
+    async (m: { id: string }, emoji: string) => {
+      try {
+        await chat.toggleReaction(m.id, emoji);
+      } catch (error) {
+        notify(
+          "error",
+          error instanceof Error ? error.message : "Unable to update reaction.",
+        );
+      }
     },
-    [chat],
+    [chat, notify],
   );
 
   return (
@@ -114,7 +127,7 @@ export function ProjectChatTab({
               <Users size={13} />
               <span className="hidden sm:inline">Members</span>
             </button>
-            {chat.isCreator && (
+            {canManageMembers && (
               <button
                 type="button"
                 onClick={() => setShowAdd(true)}
@@ -142,17 +155,23 @@ export function ProjectChatTab({
             onOpenAttachment={setPreviewAttachment}
             onReply={handleReply}
             onReaction={handleReaction}
+            onEdit={chat.updateMessage}
+            onDelete={chat.deleteMessage}
+            onActionError={(message) => notify("error", message)}
+            canInteract={canSendMessages}
             active={active}
             onAtBottom={chat.markAllRead}
           />
-          <MessageComposer
-            onSend={handleSend}
-            uploadAttachment={chat.uploadAttachment}
-            disabled={chat.sending}
-            onToast={notify}
-            replyTarget={replyTarget}
-            onCancelReply={() => setReplyTarget(null)}
-          />
+          {canSendMessages && (
+            <MessageComposer
+              onSend={handleSend}
+              uploadAttachment={chat.uploadAttachment}
+              disabled={chat.sending}
+              onToast={notify}
+              replyTarget={replyTarget}
+              onCancelReply={() => setReplyTarget(null)}
+            />
+          )}
         </div>
       </div>
 
@@ -165,9 +184,11 @@ export function ProjectChatTab({
         <MemberListModal
           members={effectiveMembers}
           currentUserId={chat.currentUserId}
-          isCreator={chat.isCreator}
+          canManageMembers={canManageMembers}
+          canManageRoles={canManageRoles}
           onClose={() => setShowMembers(false)}
           onRemoveMember={chat.removeMember}
+          onChangeMemberRole={chat.updateMemberRole}
           onToast={notify}
         />
       )}

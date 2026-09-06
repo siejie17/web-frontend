@@ -26,6 +26,9 @@ import {
 } from "lucide-react";
 import CustomDropdown from "../form/CustomDropdown";
 import ReactMarkdown from "react-markdown";
+import { formatEsgMapping } from "@/lib/esgMapping";
+import EsgSuggestionsContent from "./EsgSuggestionsContent";
+import GuideContent from "./GuideContent";
 
 /* ────────────────────────────────────────────────────────────────────────
    Types
@@ -342,7 +345,7 @@ function InfoGuideModal({
     <AnimatePresence>
       {isVisible && (
         <motion.div
-          className="fixed inset-0 z-50 flex items-end justify-center bg-[#1E2621]/40 backdrop-blur-sm sm:items-center"
+          className="fixed inset-0 z-50 flex items-end justify-center bg-[#1E2621]/40 sm:items-center"
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
@@ -376,7 +379,7 @@ function InfoGuideModal({
               </button>
             </div>
             <div className="max-h-[60vh] overflow-y-auto px-5 py-4 text-[13.5px] leading-6 text-[#1E2621]/75">
-              {sections.map((section, i) => (
+              {title === "ESG & Suggestions" ? <EsgSuggestionsContent markdown={info} /> : title === "Information" && label === "Guide" ? <GuideContent markdown={info} /> : sections.map((section, i) => (
                 <div
                   key={i}
                   className="rounded-xl border border-[#1E2621]/8 bg-[#1E2621]/2 px-4 py-3.5 mb-3 last:mb-0"
@@ -1380,14 +1383,16 @@ const GreenElementsScreen = ({
     const sections: string[] = [];
 
     if (item.esg) {
-      sections.push(`## Sarawak 13ᵗʰ Malaysia Plan\n\n${item.esg}`);
+      sections.push(formatEsgMapping(item.esg));
     }
 
     if (item.suggestions) {
       sections.push(`## Materials & Suggestions\n\n${item.suggestions}`);
     }
 
-    return sections.join("\n\n");
+    return sections.length > 0
+      ? sections.join("\n\n")
+      : "## ESG alignment\n\nNo ESG alignment or material suggestions have been recorded for this item yet.";
   }, []);
 
   // Custom render function for dropdown items with marks
@@ -1571,21 +1576,14 @@ const GreenElementsScreen = ({
                     />
                   ) : null}
 
-                  {item.suggestions || item.esg ? (
-                    <IconButton
-                      onPress={() =>
-                        handleInfoGuideOpen(
-                          buildSupplementalInfo(item),
-                          "ESG & Suggestions",
-                          "Details",
-                        )
-                      }
-                      icon="doc"
-                      color="#B7791F"
-                      bg="bg-[#B7791F]/[0.08]"
-                      activeBg="hover:bg-[#B7791F]/[0.14]"
-                    />
-                  ) : null}
+                  <button
+                    type="button"
+                    onClick={() => handleInfoGuideOpen(buildSupplementalInfo(item), "ESG & Suggestions", "Details")}
+                    className="flex h-7 items-center gap-1 rounded-lg bg-[#B7791F]/[0.08] px-2 text-[10px] font-bold text-[#9A6418] transition-colors hover:bg-[#B7791F]/[0.14]"
+                    aria-label="ESG and suggestions"
+                  >
+                    <FileText size={12} /> ESG
+                  </button>
                 </div>
               </div>
 

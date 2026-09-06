@@ -12,12 +12,13 @@ import PasswordRequirement from "@/components/ui/PasswordRequirement";
 
 type FieldState = { value: string; error: string };
 
-const PASSWORD_MIN_LENGTH = 6;
+const PASSWORD_MIN_LENGTH = 8;
 
 function getPasswordChecks(password: string) {
     return {
         length: password.length >= PASSWORD_MIN_LENGTH,
         upperLower: /[a-z]/.test(password) && /[A-Z]/.test(password),
+        number: /\d/.test(password),
         special: /[^A-Za-z0-9]/.test(password),
     };
 }
@@ -51,15 +52,16 @@ function PasswordLabel({ passwordChecks }: { passwordChecks: ReturnType<typeof g
                 </p>
                 <ul className="space-y-1.5">
                     <PasswordRequirement met={passwordChecks.length}>
-                        Minimum 6 characters
+                        Minimum {PASSWORD_MIN_LENGTH} characters
                     </PasswordRequirement>
                     <PasswordRequirement met={passwordChecks.upperLower}>
                         Upper &amp; lower case letters
-                        <span className="ml-1 text-slate/60">(recommended)</span>
+                    </PasswordRequirement>
+                    <PasswordRequirement met={passwordChecks.number}>
+                        At least one number
                     </PasswordRequirement>
                     <PasswordRequirement met={passwordChecks.special}>
                         At least one special character
-                        <span className="ml-1 text-slate/60">(recommended)</span>
                     </PasswordRequirement>
                 </ul>
             </div>
@@ -91,9 +93,15 @@ export default function RegisterPage() {
         const emailError = email.value ? "" : "Email cannot be empty";
         const passwordError = !password.value
             ? "Password cannot be empty"
-            : password.value.length < PASSWORD_MIN_LENGTH
+            : !passwordChecks.length
                 ? `Password must be at least ${PASSWORD_MIN_LENGTH} characters`
-                : "";
+                : !passwordChecks.upperLower
+                    ? "Password must include upper and lower case letters"
+                    : !passwordChecks.number
+                        ? "Password must include at least one number"
+                        : !passwordChecks.special
+                            ? "Password must include at least one special character"
+                            : "";
         const confirmPasswordError = !confirmPassword.value
             ? "Please confirm your password"
             : confirmPassword.value !== password.value

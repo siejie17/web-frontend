@@ -1,32 +1,72 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
-import { X, Crown, UserMinus } from "lucide-react";
-import type { MemberWithUser } from "@/lib/mockChat/types";
+import { ChevronDown, Crown, LoaderCircle, UserMinus, X } from "lucide-react";
+import type { MemberWithUser, ProjectRole, UserRole } from "@/lib/mockChat/types";
 import { Avatar } from "./Avatar";
 import { RoleBadge } from "./RoleBadge";
 import type { ToastKind } from "./Toast";
 
+type RoleOption = {
+  id: number;
+  name: ProjectRole;
+  display_name: string;
+  description?: string | null;
+  level: number;
+};
+
 export function MemberListModal({
   members,
   currentUserId,
-  isCreator,
+  canManageMembers,
+  canManageRoles,
   onClose,
   onRemoveMember,
+  onChangeMemberRole,
   onToast,
 }: {
   members: MemberWithUser[];
   currentUserId: string;
-  isCreator: boolean;
+  canManageMembers: boolean;
+  canManageRoles: boolean;
   onClose: () => void;
   onRemoveMember: (userId: string) => Promise<void>;
+  onChangeMemberRole: (userId: string, roleId: number) => Promise<void>;
   onToast: (kind: ToastKind, message: string) => void;
 }) {
   const [removingId, setRemovingId] = useState<string | null>(null);
+  const [savingRoleId, setSavingRoleId] = useState<string | null>(null);
+  const [roles, setRoles] = useState<RoleOption[]>([]);
+
+  useEffect(() => {
+    if (!canManageRoles) return;
+
+    let active = true;
+    fetch("/be-api/roles", { credentials: "include", cache: "no-store" })
+      .then(async (response) => {
+        const data = await response.json().catch(() => null);
+        if (!response.ok) throw new Error(data?.message ?? "Unable to load roles.");
+        if (active) setRoles(Array.isArray(data?.roles) ? data.roles : []);
+      })
+      .catch((error) => {
+        if (active) {
+          onToast("error", error instanceof Error ? error.message : "Unable to load roles.");
+        }
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [canManageRoles, onToast]);
+
+  const rolesByName = useMemo(
+    () => new Map(roles.map((role) => [role.name, role])),
+    [roles],
+  );
 
   const remove = async (m: MemberWithUser) => {
-    if (!isCreator || m.isOwner) return;
+    if (!canManageMembers || m.isOwner) return;
     setRemovingId(m.user.id);
     try {
       await onRemoveMember(m.user.id);
@@ -38,9 +78,33 @@ export function MemberListModal({
     }
   };
 
+  const changeRole = async (member: MemberWithUser, nextRoleId: number) => {
+    if (!canManageRoles || member.isOwner || member.membership.roleId === nextRoleId) return;
+
+    const nextRole = roles.find((role) => role.id === nextRoleId);
+    if (!nextRole) return;
+
+    if (
+      nextRole.name === "gbi_facilitator" &&
+      !window.confirm(`Grant ${member.user.fullName} full project access as GBI Facilitator?`)
+    ) {
+      return;
+    }
+
+    setSavingRoleId(member.user.id);
+    try {
+      await onChangeMemberRole(member.user.id, nextRoleId);
+      onToast("success", `${member.user.fullName}'s role was changed to ${nextRole.display_name}.`);
+    } catch (error) {
+      onToast("error", error instanceof Error ? error.message : "Could not update the member role.");
+    } finally {
+      setSavingRoleId(null);
+    }
+  };
+
   return (
     <div
-      className="fixed inset-0 z-60 flex items-center justify-center bg-[#1E2621]/40 p-4 backdrop-blur-sm"
+      className="fixed inset-0 z-60 flex items-center justify-center bg-[#1E2621]/40 p-4"
       role="dialog"
       aria-modal="true"
       onClick={onClose}
@@ -101,29 +165,53 @@ export function MemberListModal({
                     {m.user.email}
                   </span>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => remove(m)}
-                  disabled={!isCreator || m.isOwner || removingId === m.user.id}
-                  className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-transparent text-[#A9B0AA] transition-all ${
-                    isCreator && !m.isOwner
-                      ? "opacity-0 group-hover:opacity-100 hover:bg-[#FBEAE4] hover:text-[#B4483C]"
-                      : "invisible"
-                  } disabled:opacity-40 disabled:cursor-not-allowed`}
-                  aria-label={`Remove ${m.user.fullName}`}
-                  title="Remove member"
-                  aria-hidden={!isCreator || m.isOwner}
-                  tabIndex={isCreator && !m.isOwner ? 0 : -1}
-                >
-                  <UserMinus size={14} />
-                </button>
-                <RoleBadge role={m.user.role} />
+                <div className="flex shrink-0 items-center gap-1.5">
+                  {canManageRoles && !m.isOwner ? (
+                    <div className="relative">
+                      <select
+                        value={m.membership.roleId ?? rolesByName.get(m.membership.role)?.id ?? ""}
+                        onChange={(event) => void changeRole(m, Number(event.target.value))}
+                        disabled={roles.length === 0 || savingRoleId === m.user.id || removingId === m.user.id}
+                        aria-label={`Change ${m.user.fullName}'s project role`}
+                        title={rolesByName.get(m.membership.role)?.description ?? "Project role"}
+                        className="h-8 w-34 appearance-none rounded-lg border border-[#DDE2DD] bg-white pl-2.5 pr-7 text-[11px] font-semibold text-[#425048] outline-none transition-colors hover:border-[#AEBAB1] focus:border-[#3E6B52] focus:ring-2 focus:ring-[#3E6B52]/15 disabled:cursor-wait disabled:bg-[#F6F6F2] disabled:text-[#8A938C]"
+                      >
+                        {roles.map((role) => (
+                          <option key={role.id} value={role.id}>
+                            {role.display_name}
+                          </option>
+                        ))}
+                      </select>
+                      {savingRoleId === m.user.id ? (
+                        <LoaderCircle className="pointer-events-none absolute right-2 top-2 animate-spin text-[#3E6B52]" size={14} />
+                      ) : (
+                        <ChevronDown className="pointer-events-none absolute right-2 top-2 text-[#7C8880]" size={14} />
+                      )}
+                    </div>
+                  ) : (
+                    <RoleBadge role={projectRoleLabel(m.membership.role) as UserRole} />
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => remove(m)}
+                    disabled={!canManageMembers || m.isOwner || removingId === m.user.id || savingRoleId === m.user.id}
+                    className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-transparent text-[#A9B0AA] transition-all ${
+                      canManageMembers && !m.isOwner
+                        ? "hover:bg-[#FBEAE4] hover:text-[#B4483C]"
+                        : "hidden"
+                    } disabled:cursor-not-allowed disabled:opacity-40`}
+                    aria-label={`Remove ${m.user.fullName}`}
+                    title="Remove member"
+                  >
+                    {removingId === m.user.id ? <LoaderCircle size={14} className="animate-spin" /> : <UserMinus size={14} />}
+                  </button>
+                </div>
               </div>
             );
           })}
         </div>
 
-        {!isCreator && (
+        {!canManageMembers && !canManageRoles && (
           <p className="border-t border-[#EFEDE6] px-6 py-3 text-center text-[11.5px] text-[#8A938C]">
             Only the project owner can manage members.
           </p>
@@ -131,4 +219,15 @@ export function MemberListModal({
       </motion.div>
     </div>
   );
+}
+
+function projectRoleLabel(role: ProjectRole): UserRole {
+  const labels: Record<ProjectRole, UserRole> = {
+    member: "Member",
+    developer: "Developer",
+    quantity_surveyor: "Quantity Surveyor",
+    gbi_facilitator: "GBI Facilitator",
+  };
+
+  return labels[role];
 }

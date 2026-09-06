@@ -1,6 +1,6 @@
 "use client";
 
-import { memo } from "react";
+import { memo, useState } from "react";
 import { motion } from "framer-motion";
 import {
   FileText,
@@ -8,11 +8,15 @@ import {
   ImageIcon,
   Download,
   CornerUpLeft,
+  Check,
+  Loader2,
+  Pencil,
+  Trash2,
+  X,
 } from "lucide-react";
 import type { Attachment, ProjectMessage, User } from "@/lib/mockChat/types";
 import { formatFileSize, formatTime } from "@/lib/mockChat/assets";
 import { Avatar } from "./Avatar";
-import { RoleBadge } from "./RoleBadge";
 import { downloadAttachment } from "./downloadAttachment";
 
 const KIND_ICON: Record<
@@ -108,10 +112,12 @@ function ReactionRow({
   reactions,
   currentUserId,
   onToggle,
+  disabled = false,
 }: {
   reactions: Record<string, string[]> | undefined;
   currentUserId: string;
   onToggle: (emoji: string) => void;
+  disabled?: boolean;
 }) {
   const entries = Object.entries(reactions ?? {}).filter(
     ([, ids]) => ids.length > 0,
@@ -126,11 +132,12 @@ function ReactionRow({
             key={emoji}
             type="button"
             onClick={() => onToggle(emoji)}
-            whileTap={{ scale: 0.88 }}
+            disabled={disabled}
+            whileTap={disabled ? undefined : { scale: 0.88 }}
             className={`flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-medium transition-colors duration-150 ${me
               ? "border-[#3E6B52]/50 bg-[#EFF6F1] text-[#2E5140] shadow-[inset_0_0_0_1px_rgba(62,107,82,0.06)]"
               : "border-[#E4E1D8] bg-white text-[#6B746E] hover:border-[#C9D3CC] hover:bg-[#F8F7F2]"
-              }`}
+              } disabled:cursor-default disabled:hover:border-[#E4E1D8] disabled:hover:bg-white`}
           >
             <span className="text-[12px] leading-none">{emoji}</span>
             <span className="tabular-nums">{ids.length}</span>
@@ -187,6 +194,10 @@ export const ChatBubble = memo(function ChatBubble({
   onOpenAttachment,
   onReply,
   onReaction,
+  onEdit,
+  onDelete,
+  onActionError,
+  canInteract = true,
   currentUserId,
   replyName,
   replyPreview,
@@ -199,10 +210,49 @@ export const ChatBubble = memo(function ChatBubble({
   onOpenAttachment: (a: Attachment) => void;
   onReply: (m: ProjectMessage) => void;
   onReaction: (m: ProjectMessage, emoji: string) => void;
+  onEdit: (messageId: string, message: string) => Promise<void>;
+  onDelete: (messageId: string) => Promise<void>;
+  onActionError: (message: string) => void;
+  canInteract?: boolean;
   currentUserId: string;
   replyName?: string | null;
   replyPreview?: string | null;
 }) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(message.message);
+  const [action, setAction] = useState<"edit" | "delete" | null>(null);
+
+  const saveEdit = async () => {
+    const next = draft.trim();
+    if ((!next && !message.attachment) || next === message.message) {
+      setDraft(message.message);
+      setEditing(false);
+      return;
+    }
+
+    setAction("edit");
+    try {
+      await onEdit(message.id, next);
+      setEditing(false);
+    } catch (error) {
+      onActionError(error instanceof Error ? error.message : "Unable to update message.");
+    } finally {
+      setAction(null);
+    }
+  };
+
+  const deleteMessage = async () => {
+    if (!window.confirm("Delete this message? This cannot be undone.")) return;
+
+    setAction("delete");
+    try {
+      await onDelete(message.id);
+    } catch (error) {
+      onActionError(error instanceof Error ? error.message : "Unable to delete message.");
+      setAction(null);
+    }
+  };
+
   if (message.system) {
     return (
       <motion.div
@@ -249,22 +299,105 @@ export const ChatBubble = memo(function ChatBubble({
             </div>
           )}
 
-          <div className="relative">
-            <div
-              className={`max-w-full rounded-xl2 rounded-br-md bg-linear-to-br from-[#4B8065] via-[#3E6B52] to-[#2A4C3B] px-4 text-[13.5px] leading-relaxed text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.16),0_1px_2px_rgba(30,38,33,0.08),0_14px_30px_-10px_rgba(46,81,64,0.45)] transition-shadow duration-200 group-hover:shadow-[inset_0_1px_0_rgba(255,255,255,0.18),0_1px_2px_rgba(30,38,33,0.10),0_18px_36px_-8px_rgba(46,81,64,0.5)] ${message.message ? "py-2.5" : "py-2"
-                }`}
-            >
-              {message.message && (
-                <p className="whitespace-pre-wrap tracking-[-0.005em]">
-                  {message.message}
-                </p>
-              )}
+          <div className="flex max-w-full items-center gap-1.5">
+            {canInteract && !editing && (
+              <div className="flex items-center rounded-full border border-[#E4E1D8] bg-white p-0.5 opacity-100 shadow-sm transition-opacity sm:opacity-0 sm:group-hover:opacity-100 sm:focus-within:opacity-100">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setDraft(message.message);
+                    setEditing(true);
+                  }}
+                  disabled={action !== null}
+                  className="flex h-7 w-7 items-center justify-center rounded-full text-[#6B746E] hover:bg-[#EFF6F1] hover:text-[#2E5140] disabled:opacity-40"
+                  aria-label="Edit message"
+                  title="Edit message"
+                >
+                  <Pencil size={12.5} />
+                </button>
+                <button
+                  type="button"
+                  onClick={deleteMessage}
+                  disabled={action !== null}
+                  className="flex h-7 w-7 items-center justify-center rounded-full text-[#8A938C] hover:bg-[#FBEAE4] hover:text-[#B4483C] disabled:opacity-40"
+                  aria-label="Delete message"
+                  title="Delete message"
+                >
+                  {action === "delete" ? <Loader2 size={12.5} className="animate-spin" /> : <Trash2 size={12.5} />}
+                </button>
+              </div>
+            )}
+
+            <div className="relative max-w-full">
+              <div
+                className={`max-w-full rounded-xl2 rounded-br-md bg-linear-to-br from-[#4B8065] via-[#3E6B52] to-[#2A4C3B] px-4 text-[13.5px] leading-relaxed text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.16),0_1px_2px_rgba(30,38,33,0.08),0_14px_30px_-10px_rgba(46,81,64,0.45)] transition-shadow duration-200 group-hover:shadow-[inset_0_1px_0_rgba(255,255,255,0.18),0_1px_2px_rgba(30,38,33,0.10),0_18px_36px_-8px_rgba(46,81,64,0.5)] ${editing || message.message ? "py-2.5" : "py-2"}`}
+              >
+                {editing ? (
+                  <div className="min-w-64">
+                    <textarea
+                      autoFocus
+                      value={draft}
+                      onChange={(event) => setDraft(event.target.value.slice(0, 2000))}
+                      onKeyDown={(event) => {
+                        if (event.key === "Escape") {
+                          setDraft(message.message);
+                          setEditing(false);
+                        }
+                        if (event.key === "Enter" && !event.shiftKey) {
+                          event.preventDefault();
+                          void saveEdit();
+                        }
+                      }}
+                      rows={2}
+                      disabled={action === "edit"}
+                      className="max-h-32 w-full resize-none bg-transparent text-[13.5px] text-white outline-none placeholder:text-white/60"
+                      aria-label="Edit message text"
+                    />
+                    <div className="mt-1 flex justify-end gap-1">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setDraft(message.message);
+                          setEditing(false);
+                        }}
+                        disabled={action === "edit"}
+                        className="flex h-7 w-7 items-center justify-center rounded-full text-white/75 hover:bg-white/15 hover:text-white"
+                        aria-label="Cancel editing"
+                        title="Cancel"
+                      >
+                        <X size={13} />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => void saveEdit()}
+                        disabled={action === "edit" || (!draft.trim() && !message.attachment)}
+                        className="flex h-7 w-7 items-center justify-center rounded-full bg-white text-[#2E5140] hover:bg-[#EFF6F1] disabled:opacity-50"
+                        aria-label="Save message"
+                        title="Save"
+                      >
+                        {action === "edit" ? <Loader2 size={13} className="animate-spin" /> : <Check size={13} />}
+                      </button>
+                    </div>
+                  </div>
+                ) : message.message ? (
+                  <p className="whitespace-pre-wrap tracking-[-0.005em]">{message.message}</p>
+                ) : null}
+              </div>
             </div>
           </div>
 
-          <span className="mt-1 pr-1">
+          <span className="mt-1 flex items-center gap-1 pr-1">
+            {message.editedAt && <span className="text-[10px] text-[#A5ACA4]">edited</span>}
             <Timestamp value={message.createdAt} />
           </span>
+          <div className="mt-1 pr-0.5">
+            <ReactionRow
+              reactions={message.reactions}
+              currentUserId={currentUserId}
+              onToggle={(emoji) => onReaction(message, emoji)}
+              disabled={!canInteract}
+            />
+          </div>
         </div>
       </motion.div>
     );
@@ -323,7 +456,7 @@ export const ChatBubble = memo(function ChatBubble({
         {/* Actual message */}
         <div className="w-fit max-w-full">
           <div className="relative">
-            {!isOwn && (
+            {!isOwn && canInteract && (
               <ReactionActions
                 onToggle={(id) => onReaction(message, id)}
                 onReply={() => onReply(message)}
@@ -347,6 +480,7 @@ export const ChatBubble = memo(function ChatBubble({
               reactions={message.reactions}
               currentUserId={currentUserId}
               onToggle={(id) => onReaction(message, id)}
+              disabled={!canInteract}
             />
           </div>
         </div>

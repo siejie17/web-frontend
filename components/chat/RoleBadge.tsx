@@ -3,6 +3,7 @@
 import type { UserRole } from "@/lib/mockChat/types";
 
 const ROLE_STYLES: Record<UserRole, { bg: string; fg: string }> = {
+  Member: { bg: "rgba(124,136,128,0.12)", fg: "#5B655F" },
   Developer: { bg: "rgba(62,107,82,0.12)", fg: "#2E5140" },
   "GBI Facilitator": { bg: "rgba(192,138,62,0.14)", fg: "#8A6420" },
   Architect: { bg: "rgba(51,85,110,0.12)", fg: "#2C4A5E" },

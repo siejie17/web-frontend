@@ -2,18 +2,54 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
-import { Bot, Send, Sparkles, User, X } from 'lucide-react';
-import ReactMarkdown from 'react-markdown';
+import { Send, User, X } from 'lucide-react';
+import ReactMarkdown, { type Components } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { useAuth } from '@/contexts/AuthContext';
-import { sendMessageToGemini } from '@/lib/geminiApi';
+import { sendMessageToAI } from '@/lib/aiApi';
+import {
+  AI_CONVERSATION_CLEARED_EVENT,
+  buildAIRequestHistory,
+  getAIConversationStorageKey,
+  loadAIConversation,
+  saveAIConversation,
+  type AIConversationMessage as Message,
+} from '@/lib/aiConversation';
 
-type Message = {
-  id: string;
-  text: string;
-  sender: 'user' | 'bot';
-  timestamp: Date;
+const assistantMarkdownComponents: Components = {
+  p: ({ children }) => (
+    <p className="my-2 first:mt-0 last:mb-0">{children}</p>
+  ),
+  ul: ({ children }) => (
+    <ul className="my-2 list-disc space-y-1 pl-5">{children}</ul>
+  ),
+  ol: ({ children }) => (
+    <ol className="my-2 list-decimal space-y-1 pl-5">{children}</ol>
+  ),
+  li: ({ children }) => <li className="pl-0.5">{children}</li>,
+  strong: ({ children }) => (
+    <strong className="font-semibold text-ink">{children}</strong>
+  ),
+  h1: ({ children }) => (
+    <h1 className="mb-2 mt-3 text-base font-semibold first:mt-0">{children}</h1>
+  ),
+  h2: ({ children }) => (
+    <h2 className="mb-2 mt-3 text-[15px] font-semibold first:mt-0">{children}</h2>
+  ),
+  h3: ({ children }) => (
+    <h3 className="mb-1.5 mt-3 text-sm font-semibold first:mt-0">{children}</h3>
+  ),
 };
+
+function createWelcomeMessage(): Message {
+  return {
+    id: 'welcome',
+    text: "Hello! I'm your AI assistant. How can I help you today?",
+    sender: 'bot',
+    timestamp: new Date(),
+    includeInContext: false,
+  };
+}
 
 function UserAvatar({ name, profilePic }: { name: string; profilePic?: string }) {
   if (profilePic) {
@@ -40,10 +76,42 @@ function UserAvatar({ name, profilePic }: { name: string; profilePic?: string })
   );
 }
 
+function ProFormaAIIcon({ size = 24 }: { size?: number }) {
+  return (
+    <svg
+      aria-hidden="true"
+      width={size}
+      height={size}
+      viewBox="3 2.5 22 22"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+    >
+      <path
+        d="M5.25 15.05C5.25 8.78 9.65 4.5 21.7 4.5c0 11.83-4.19 17.1-11.04 17.1-3.2 0-5.41-2.58-5.41-6.55Z"
+        fill="#E8C27E"
+        fillOpacity="0.14"
+        stroke="#E8C27E"
+        strokeWidth="1.45"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M7.2 23.15c2.43-5.2 5.53-9.35 10.7-13.55M11.1 17.62l-.15-4.25M13.68 14.02l3.62.3"
+        stroke="#F7F4EA"
+        strokeWidth="1.65"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <circle cx="10.94" cy="12.65" r="1.45" fill="#E8C27E" stroke="#1E2621" strokeWidth="0.7" />
+      <circle cx="18.08" cy="9.42" r="1.45" fill="#E8C27E" stroke="#1E2621" strokeWidth="0.7" />
+      <circle cx="18.1" cy="14.4" r="1.45" fill="#E8C27E" stroke="#1E2621" strokeWidth="0.7" />
+    </svg>
+  );
+}
+
 function BotAvatar() {
   return (
     <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-linear-to-br from-[#2B3A31] to-[#1E2621] shadow-sm ring-2 ring-white">
-      <Bot size={13} className="text-[#E8C27E]" />
+      <ProFormaAIIcon size={17} />
     </div>
   );
 }
@@ -66,38 +134,115 @@ function groupMessages(messages: Message[]) {
   });
 }
 
-export default function AIAvatar() {
+export default function AIAvatar({ showLauncher = true }: { showLauncher?: boolean }) {
   const { user } = useAuth();
   const [open, setOpen] = useState(false);
-  const [messages, setMessages] = useState<Message[]>([
-    {
-      id: '1',
-      text: "Hello! I'm your AI assistant. How can I help you today?",
-      sender: 'bot',
-      timestamp: new Date(),
-    },
-  ]);
+  const [messages, setMessages] = useState<Message[]>(() => [createWelcomeMessage()]);
+  const [loadedStorageKey, setLoadedStorageKey] = useState<string | null>(null);
   const [inputText, setInputText] = useState('');
   const [loading, setLoading] = useState(false);
+  const [hasUnreadResponse, setHasUnreadResponse] = useState(false);
+  const messagesRef = useRef<HTMLDivElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const conversationVersionRef = useRef(0);
+  const openRef = useRef(false);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, loading]);
 
   useEffect(() => {
+    openRef.current = open;
+    if (open) setHasUnreadResponse(false);
+  }, [open]);
+
+  useEffect(() => {
     if (!open) return;
-    setMessages([
-      {
-        id: '1',
-        text: "Hello! I'm your AI assistant. How can I help you today?",
-        sender: 'bot',
-        timestamp: new Date(),
-      },
-    ]);
+
+    const frame = window.requestAnimationFrame(() => {
+      const messageList = messagesRef.current;
+      if (messageList) messageList.scrollTop = messageList.scrollHeight;
+    });
+
+    return () => window.cancelAnimationFrame(frame);
+  }, [open, loadedStorageKey]);
+
+  const authenticatedUserId = user?.id ?? null;
+  const conversationStorageKey = authenticatedUserId
+    ? getAIConversationStorageKey(authenticatedUserId)
+    : null;
+
+  useEffect(() => {
+    conversationVersionRef.current += 1;
+    setLoadedStorageKey(null);
+    setHasUnreadResponse(false);
+
+    if (!conversationStorageKey || !authenticatedUserId) {
+      setMessages([createWelcomeMessage()]);
+      return;
+    }
+
+    const restored = loadAIConversation(
+      window.sessionStorage,
+      authenticatedUserId,
+    );
+    setMessages(restored.length > 0 ? restored : [createWelcomeMessage()]);
+    setLoadedStorageKey(conversationStorageKey);
+  }, [authenticatedUserId, conversationStorageKey]);
+
+  useEffect(() => {
+    const handleConversationCleared = (event: Event) => {
+      const detail = (event as CustomEvent<{ storageKey?: string }>).detail;
+      if (!conversationStorageKey || detail?.storageKey !== conversationStorageKey) {
+        return;
+      }
+
+      conversationVersionRef.current += 1;
+      setLoadedStorageKey(null);
+      setMessages([createWelcomeMessage()]);
+      setInputText('');
+      setLoading(false);
+      setHasUnreadResponse(false);
+    };
+
+    window.addEventListener(
+      AI_CONVERSATION_CLEARED_EVENT,
+      handleConversationCleared,
+    );
+    return () =>
+      window.removeEventListener(
+        AI_CONVERSATION_CLEARED_EVENT,
+        handleConversationCleared,
+      );
+  }, [conversationStorageKey]);
+
+  useEffect(() => {
+    if (
+      !conversationStorageKey ||
+      !authenticatedUserId ||
+      loadedStorageKey !== conversationStorageKey
+    ) {
+      return;
+    }
+
+    try {
+      saveAIConversation(window.sessionStorage, authenticatedUserId, messages);
+    } catch {
+      // The in-memory conversation still works when browser storage is unavailable.
+    }
+  }, [authenticatedUserId, conversationStorageKey, loadedStorageKey, messages]);
+
+  useEffect(() => {
+    if (!open) return;
     setTimeout(() => inputRef.current?.focus(), 300);
   }, [open]);
+
+  useEffect(() => {
+    const openAssistant = () => setOpen(true);
+    window.addEventListener("open-ai-assistant", openAssistant);
+    return () => window.removeEventListener("open-ai-assistant", openAssistant);
+  }, []);
 
   useEffect(() => {
     if (!open) return;
@@ -117,7 +262,13 @@ export default function AIAvatar() {
 
   const handleSend = async () => {
     const text = inputText.trim();
-    if (!text || loading) return;
+    const conversationReady =
+      Boolean(conversationStorageKey) &&
+      loadedStorageKey === conversationStorageKey;
+    if (!text || loading || !conversationReady) return;
+
+    const history = buildAIRequestHistory(messages, text);
+    const conversationVersion = conversationVersionRef.current;
 
     const userMsg: Message = {
       id: Date.now().toString(),
@@ -131,7 +282,8 @@ export default function AIAvatar() {
     setLoading(true);
 
     try {
-      const response = await sendMessageToGemini(text);
+      const response = await sendMessageToAI(text, history);
+      if (conversationVersion !== conversationVersionRef.current) return;
 
       const botMsg: Message = {
         id: (Date.now() + 1).toString(),
@@ -141,17 +293,33 @@ export default function AIAvatar() {
       };
 
       setMessages((prev) => [...prev, botMsg]);
-    } catch {
+      if (!openRef.current) setHasUnreadResponse(true);
+    } catch (error) {
+      if (conversationVersion !== conversationVersionRef.current) return;
       const errorMsg: Message = {
         id: (Date.now() + 1).toString(),
-        text: 'Sorry, I encountered an error. Please try again.',
+        text:
+          error instanceof Error
+            ? error.message
+            : 'Sorry, I encountered an error. Please try again.',
         sender: 'bot',
         timestamp: new Date(),
+        includeInContext: false,
       };
 
-      setMessages((prev) => [...prev, errorMsg]);
+      setMessages((prev) => [
+        ...prev.map((message) =>
+          message.id === userMsg.id
+            ? { ...message, includeInContext: false }
+            : message,
+        ),
+        errorMsg,
+      ]);
+      if (!openRef.current) setHasUnreadResponse(true);
     } finally {
-      setLoading(false);
+      if (conversationVersion === conversationVersionRef.current) {
+        setLoading(false);
+      }
     }
   };
 
@@ -163,31 +331,42 @@ export default function AIAvatar() {
   };
 
   const grouped = groupMessages(messages);
+  const conversationReady =
+    Boolean(conversationStorageKey) &&
+    loadedStorageKey === conversationStorageKey;
 
   return (
     <>
-      {!open && (
-        <div className="fixed bottom-7 right-7 z-30">
+      {!open && showLauncher && (
+        <div className="fixed bottom-7 right-7 z-[100]">
           <button
             onClick={() => setOpen((v) => !v)}
             aria-label="Open AI assistant"
-            className="relative flex h-14 w-14 items-center justify-center rounded-full bg-[#1E2621] shadow-[0_10px_28px_rgba(30,38,33,0.28)] transition-transform hover:scale-105 active:scale-95"
+            className="group relative flex h-14 w-14 items-center justify-center overflow-visible rounded-full bg-linear-to-br from-[#29382F] via-[#1E2621] to-[#17201B] shadow-[0_10px_28px_rgba(30,38,33,0.28)] ring-1 ring-white/15 transition-transform hover:scale-105 active:scale-95"
           >
-            <span className="absolute -inset-1 animate-[pfx-pulse_2.4s_ease-out_infinite] rounded-full border-[1.5px] border-[#C08A3E] opacity-50" />
+            <span className="absolute -inset-1 rounded-full border-[1.5px] border-[#C08A3E]/50" />
+
+            <span className="absolute inset-1 rounded-full border border-[#E8C27E]/15 transition-colors group-hover:border-[#E8C27E]/35" />
 
             <AnimatePresence mode="wait" initial={false}>
               <motion.span
-                key="sparkle"
-                initial={{ rotate: 90, opacity: 0 }}
-                animate={{ rotate: 0, opacity: 1 }}
-                exit={{ rotate: -90, opacity: 0 }}
-                transition={{ duration: 0.15 }}
+                key="proformax-neural-leaf"
+                initial={{ scale: 0.72, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                exit={{ scale: 0.72, opacity: 0 }}
+                transition={{ type: 'spring', damping: 18, stiffness: 320 }}
+                className="relative flex transition-transform duration-300 group-hover:-rotate-6 group-hover:scale-110"
               >
-                <Sparkles size={20} className="text-[#F6F6F2]" />
+                <ProFormaAIIcon size={32} />
               </motion.span>
             </AnimatePresence>
 
-            <span className="absolute right-0.5 top-0.5 h-2.25 w-2.25 rounded-full border-2 border-[#1E2621] bg-[#C08A3E]" />
+            {hasUnreadResponse && (
+              <span
+                aria-label="Unread assistant response"
+                className="absolute right-0.5 top-0.5 h-2.25 w-2.25 rounded-full border-2 border-[#1E2621] bg-[#C08A3E]"
+              />
+            )}
           </button>
         </div>
       )}
@@ -202,7 +381,7 @@ export default function AIAvatar() {
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               transition={{ duration: 0.2 }}
-              className="fixed inset-0 z-40 bg-ink/30 sm:hidden"
+              className="fixed inset-0 z-[100] bg-ink/30 sm:hidden"
               onClick={() => setOpen(false)}
             />
 
@@ -212,7 +391,7 @@ export default function AIAvatar() {
               exit={{ opacity: 0, scale: 0.94, y: 12 }}
               transition={{ type: 'spring', damping: 26, stiffness: 320 }}
               style={{ transformOrigin: 'bottom right' }}
-              className="fixed inset-x-0 bottom-0 z-50 flex h-[88vh] w-full flex-col overflow-hidden bg-paper shadow-[0_24px_60px_rgba(20,24,21,0.25)] sm:inset-x-auto sm:bottom-7 sm:right-7 sm:h-155 sm:max-h-[80vh] sm:w-100 sm:rounded-[28px] sm:ring-1 sm:ring-black/5"
+              className="fixed inset-x-0 bottom-0 z-[110] flex h-[88vh] w-full flex-col overflow-hidden bg-paper shadow-[0_24px_60px_rgba(20,24,21,0.25)] sm:inset-x-auto sm:bottom-7 sm:right-7 sm:h-155 sm:max-h-[80vh] sm:w-100 sm:rounded-[28px] sm:ring-1 sm:ring-black/5"
             >
               {/* Header */}
               <div className="relative shrink-0 overflow-hidden bg-[#1E2621] px-5 py-4">
@@ -226,7 +405,7 @@ export default function AIAvatar() {
                 <div className="relative flex items-center justify-between">
                   <div className="flex items-center gap-3">
                     <div className="flex h-10 w-10 items-center justify-center rounded-full bg-white/10 ring-1 ring-white/15">
-                      <Bot size={19} className="text-[#E8C27E]" />
+                      <ProFormaAIIcon size={24} />
                     </div>
                     <div>
                       <p className="text-sm font-semibold text-[#F6F6F2]">AI Assistant</p>
@@ -247,7 +426,10 @@ export default function AIAvatar() {
               </div>
 
               {/* Messages */}
-              <div className="flex-1 space-y-3 overflow-y-auto bg-mist/40 px-4 pt-5">
+              <div
+                ref={messagesRef}
+                className="flex-1 space-y-3 overflow-y-auto bg-mist/40 px-4 pt-5"
+              >
                 {grouped.map((msg) => {
                   const isUser = msg.sender === 'user';
                   return (
@@ -275,8 +457,11 @@ export default function AIAvatar() {
                           {isUser ? (
                             <p className="whitespace-pre-wrap">{msg.text}</p>
                           ) : (
-                            <div className="prose prose-sm max-w-none prose-p:my-1 prose-p:text-[14.5px] prose-p:leading-6 prose-strong:font-semibold prose-code:rounded prose-code:bg-slate-100 prose-code:px-1 prose-code:text-[13px] prose-pre:rounded-xl prose-pre:bg-slate-900 prose-pre:text-sm prose-a:text-sage prose-ul:my-1 prose-ol:my-1 prose-li:text-[14.5px]">
-                              <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                            <div className="max-w-none text-[14.5px] leading-6 [&_a]:text-sage [&_a]:underline [&_code]:rounded [&_code]:bg-slate-100 [&_code]:px-1 [&_code]:text-[13px] [&_pre]:overflow-x-auto [&_pre]:rounded-xl [&_pre]:bg-slate-900 [&_pre]:p-3 [&_pre]:text-sm [&_pre]:text-white">
+                              <ReactMarkdown
+                                remarkPlugins={[remarkGfm]}
+                                components={assistantMarkdownComponents}
+                              >
                                 {msg.text}
                               </ReactMarkdown>
                             </div>
@@ -333,14 +518,14 @@ export default function AIAvatar() {
                     value={inputText}
                     onChange={(e) => setInputText(e.target.value)}
                     onKeyDown={handleKeyDown}
-                    disabled={loading}
+                    disabled={loading || !conversationReady}
                   />
                   <button
                     onClick={handleSend}
-                    disabled={loading || !inputText.trim()}
+                    disabled={loading || !conversationReady || !inputText.trim()}
                     aria-label="Send message"
                     className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full transition-all ${
-                      loading || !inputText.trim()
+                      loading || !conversationReady || !inputText.trim()
                         ? 'bg-slate-100 text-slate-300'
                         : 'bg-sage text-white shadow-[0_2px_8px_rgba(47,122,77,0.3)] hover:scale-105 active:scale-95'
                     }`}
@@ -349,7 +534,7 @@ export default function AIAvatar() {
                   </button>
                 </div>
                 <p className="pt-2.5 text-center text-[10.5px] text-slate-400">
-                  Powered by Google Gemini AI
+                  AI-generated responses may contain mistakes
                 </p>
               </div>
             </motion.div>

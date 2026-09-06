@@ -86,6 +86,7 @@ export default function ProjectDetailTabs({
   onUnsavedChange,
   submitRef,
   readOnly = false,
+  isProjectOwner = false,
 }: {
   selectedProject: any | null;
   activeTab: TabKey;
@@ -94,6 +95,7 @@ export default function ProjectDetailTabs({
   onUnsavedChange?: (dirty: boolean) => void;
   submitRef?: React.MutableRefObject<(() => Promise<void>) | null>;
   readOnly?: boolean;
+  isProjectOwner?: boolean;
 }) {
   const [projectData, setProjectData] = useState<Project | null>(null);
   const [costBreakdownData, setCostBreakdownData] =
@@ -670,6 +672,7 @@ export default function ProjectDetailTabs({
             <ProjectChatTab
               realProjectId={selectedProject?.projectData?.id}
               active={activeTab === "chat"}
+              isProjectOwner={isProjectOwner}
               onUnreadChange={setChatUnread}
               onMembersChange={setChatMemberCount}
             />

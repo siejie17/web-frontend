@@ -1,4 +1,5 @@
 export type UserRole =
+  | "Member"
   | "Developer"
   | "GBI Facilitator"
   | "Architect"
@@ -36,6 +37,8 @@ export type ProjectMember = {
   userId: string;
   addedBy: string;
   role: ProjectRole;
+  roleId?: number | null;
+  permissions?: string[];
   createdAt: string;
 };
 
@@ -61,6 +64,7 @@ export type ProjectMessage = {
   attachment?: Attachment | null;
   replyToId?: string | null;
   createdAt: string;
+  editedAt?: string | null;
   system?: boolean;
   reactions?: Record<string, string[]>;
 };
@@ -75,4 +79,6 @@ export type MemberWithUser = {
 export type MessagePage = {
   messages: ProjectMessage[];
   hasMore: boolean;
+  cursor?: string;
+  unreadCount?: number;
 };

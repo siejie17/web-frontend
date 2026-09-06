@@ -191,3 +191,60 @@ input[type="number"]::-webkit-outer-spin-button {
 .chat-scroll::-webkit-scrollbar-thumb:hover {
   background-color: rgba(62, 107, 82, 0.5);
 }
+
+/* Native scrollbar scoped to the desktop/tablet Assessment Review scroller. */
+.assessment-review-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: #262626 rgba(0, 0, 0, 0.07);
+}
+
+@media (min-width: 640px) {
+  .assessment-review-scroll {
+    border-radius: 1.5rem;
+  }
+}
+
+.assessment-review-scroll:hover {
+  scrollbar-color: #111111 rgba(0, 0, 0, 0.09);
+}
+
+.assessment-review-scroll::-webkit-scrollbar {
+  width: 10px;
+  background: transparent;
+}
+
+.assessment-review-scroll::-webkit-scrollbar-track {
+  margin-block: 12px;
+  border-radius: 9999px;
+  background: rgba(0, 0, 0, 0.07);
+}
+
+.assessment-review-scroll::-webkit-scrollbar-thumb {
+  min-height: 44px;
+  border: 2px solid transparent;
+  border-radius: 9999px;
+  background-color: #262626;
+  background-clip: padding-box;
+}
+
+.assessment-review-scroll::-webkit-scrollbar-thumb:hover {
+  background-color: #111111;
+}
+
+.assessment-review-scroll::-webkit-scrollbar-thumb:active {
+  background-color: #000000;
+}
+
+.assessment-review-scroll::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+/* Preserve scrolling while keeping navigation chrome visually clean. */
+.scrollbar-hidden {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+.scrollbar-hidden::-webkit-scrollbar {
+  display: none;
+}

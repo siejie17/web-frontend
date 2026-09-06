@@ -30,6 +30,10 @@ import {
 } from "lucide-react";
 import CustomDropdown from "../form/CustomDropdown";
 import ReactMarkdown from "react-markdown";
+import { formatEsgMapping } from "@/lib/esgMapping";
+import EsgSuggestionsContent from "./EsgSuggestionsContent";
+import GuideContent from "./GuideContent";
+import AssessmentEvidenceUploader, { type AssessmentEvidenceFile, type AssessmentItemFeedback } from "./AssessmentEvidenceUploader";
 
 type ID = string | number;
 
@@ -308,7 +312,7 @@ function InfoGuideModal({
     <AnimatePresence>
       {isVisible && (
         <motion.div
-          className="fixed inset-0 z-50 flex items-end justify-center bg-[#1E2621]/40 backdrop-blur-sm sm:items-center"
+          className="fixed inset-0 z-50 flex items-end justify-center bg-[#1E2621]/40 sm:items-center"
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
@@ -342,7 +346,7 @@ function InfoGuideModal({
               </button>
             </div>
             <div className="max-h-[60vh] overflow-y-auto px-5 py-4 text-[13.5px] leading-6 text-[#1E2621]/75">
-              {sections.map((section, i) => (
+              {title === "ESG & Suggestions" ? <EsgSuggestionsContent markdown={info} /> : title === "Information" && label === "Guide" ? <GuideContent markdown={info} /> : sections.map((section, i) => (
                 <div
                   key={i}
                   className={isBoxed ? "rounded-xl border border-[#1E2621]/8 bg-[#1E2621]/2 px-4 py-3.5 mb-3 last:mb-0" : "last:mb-0"}
@@ -534,6 +538,12 @@ const ActualGBIAssessment = ({
   const isRefreshingProject =
     (otherProps?.isRefreshingProject as boolean) || false;
   const displayOnly = (otherProps?.displayOnly as boolean) || false;
+  const assessmentStatus = selectedProject?.projectData?.assessment_status
+    ?? selectedProject?.assessment_status
+    ?? "submitted";
+  const evidenceUnlocked = ["submitted", "pending_verification", "verified", "requires_changes", "certified"].includes(assessmentStatus);
+  // Actual decisions are made only in the administration review workflow.
+  const actualControlsLocked = true;
   const handleExportGbiPdf = otherProps?.handleExportGbiPdf as
     | (() => void | Promise<void>)
     | undefined;
@@ -553,6 +563,13 @@ const ActualGBIAssessment = ({
   const auditSubmitRef = useRef(onAuditSubmitRef);
 
   const [criteria, setCriteria] = useState<CriterionType[]>([]);
+  const [assessmentEvidence, setAssessmentEvidence] = useState<AssessmentEvidenceFile[]>(() =>
+    Array.isArray(selectedProject?.assessment_evidence) ? selectedProject.assessment_evidence : [],
+  );
+  const assessmentItemFeedback = useMemo<AssessmentItemFeedback[]>(
+    () => Array.isArray(selectedProject?.assessment_item_feedback) ? selectedProject.assessment_item_feedback : [],
+    [selectedProject],
+  );
   const [selectedDropdowns, setSelectedDropdowns] = useState<
     Record<string, SelectionType | null>
   >({});
@@ -1231,12 +1248,14 @@ const ActualGBIAssessment = ({
   const buildSupplementalInfo = useCallback((item: ItemType) => {
     const sections: string[] = [];
     if (item.esg) {
-      sections.push(`## Sarawak 13ᵗʰ Malaysia Plan\n\n${item.esg}`);
+      sections.push(formatEsgMapping(item.esg));
     }
     if (item.suggestions) {
       sections.push(`## Materials & Suggestions\n\n${item.suggestions}`);
     }
-    return sections.join("\n\n");
+    return sections.length > 0
+      ? sections.join("\n\n")
+      : "## ESG alignment\n\nNo ESG alignment or material suggestions have been recorded for this item yet.";
   }, []);
 
   const toggleActualAnswer = useCallback(
@@ -2190,11 +2209,7 @@ const ActualGBIAssessment = ({
                     <ScoreChip
                       value={item.marks!}
                       active={actualItemChecked}
-                      onToggle={
-                        displayOnly
-                          ? undefined
-                          : () => toggleActualAnswer("items", String(item.id))
-                      }
+                      onToggle={undefined}
                     />
                   ) : null}
 
@@ -2219,19 +2234,14 @@ const ActualGBIAssessment = ({
                     />
                   ) : null}
 
-                  {item.suggestions || item.esg ? (
-                    <IconGhostButton
-                      onPress={() =>
-                        handleInfoGuideOpen(
-                          buildSupplementalInfo(item),
-                          "ESG & Suggestions",
-                          "Details",
-                        )
-                      }
-                      icon={FileText}
-                      color={T.custom}
-                    />
-                  ) : null}
+                  <button
+                    type="button"
+                    onClick={() => handleInfoGuideOpen(buildSupplementalInfo(item), "ESG & Suggestions", "Details")}
+                    className="flex h-7 items-center gap-1 rounded-lg bg-[#B7791F]/[0.08] px-2 text-[10px] font-bold text-[#9A6418] transition-colors hover:bg-[#B7791F]/[0.14]"
+                    aria-label="ESG and suggestions"
+                  >
+                    <FileText size={12} /> ESG
+                  </button>
                 </div>
               </div>
 
@@ -2240,12 +2250,10 @@ const ActualGBIAssessment = ({
                   predicted={isItemChecked}
                   actual={actualItemChecked}
                   onToggle={() => toggleActualAnswer("items", String(item.id))}
-                  locked={isUnchanged || displayOnly}
-                  lockedMessage={
-                    displayOnly
-                      ? "This project is shared in read-only mode — changes are not allowed."
-                      : "Compulsory item — always counted toward the score and can't be unchecked."
-                  }
+                  locked={isUnchanged || actualControlsLocked}
+                  lockedMessage={isUnchanged
+                    ? "Compulsory item — always counted toward the score and can't be unchecked."
+                    : "Actual selections are locked for users. Add evidence for administrator review."}
                 />
               ) : null}
 
@@ -2317,7 +2325,7 @@ const ActualGBIAssessment = ({
                               onToggle={() =>
                                 toggleActualAnswer("options", optionAuditKey)
                               }
-                              locked={displayOnly}
+                              locked={actualControlsLocked}
                             />
                           </div>
                         );
@@ -2373,7 +2381,7 @@ const ActualGBIAssessment = ({
                               background: `${T.actual}1A`,
                             }}
                           >
-                            Actual
+                            Actual · reviewer determined
                           </label>
                           <CustomDropdown
                             data={group.selections}
@@ -2383,7 +2391,7 @@ const ActualGBIAssessment = ({
                             placeholder="Select an option…"
                             renderItem={(i) => renderSelectionItem(i)}
                             renderSelectedLabel={(i) => renderSelectedLabel(i)}
-                            readOnly={displayOnly}
+                            readOnly={actualControlsLocked}
                             onChange={(selected) => {
                               setSelectedDropdowns((prev) => ({
                                 ...prev,
@@ -2455,7 +2463,7 @@ const ActualGBIAssessment = ({
                               >
                                 <button
                                   type="button"
-                                  disabled={displayOnly}
+                                  disabled={actualControlsLocked}
                                   onClick={() => {
                                     if (isActive) {
                                       setActiveExclusiveGroup(null);
@@ -2539,11 +2547,11 @@ const ActualGBIAssessment = ({
                                     background: `${T.actual}1A`,
                                   }}
                                 >
-                                  Actual
+                                  Actual · reviewer determined
                                 </label>
                                 <CustomDropdown
                                   disable={!isActive}
-                                  readOnly={displayOnly}
+                                  readOnly={actualControlsLocked}
                                   data={group.selections}
                                   value={
                                     selectedDropdowns[group.id] ||
@@ -2635,7 +2643,7 @@ const ActualGBIAssessment = ({
                               onToggle={() =>
                                 toggleActualAnswer("subitems", subitemAuditKey)
                               }
-                              locked={displayOnly}
+                              locked={actualControlsLocked}
                             />
                           </div>
                         );
@@ -2668,7 +2676,7 @@ const ActualGBIAssessment = ({
                                   predicted
                                   actual={actualCustomChecked}
                                   onToggle={() => toggleActualAnswer("customEntries", customAuditKey)}
-                                  locked={displayOnly}
+                                  locked={actualControlsLocked}
                                 />
                               </div>
                             );
@@ -2701,7 +2709,7 @@ const ActualGBIAssessment = ({
                                 >
                                   New
                                 </span>
-                                {!displayOnly && (
+                                {!actualControlsLocked && (
                                   <button
                                     type="button"
                                     onClick={() => deleteCustomItem(item.id, customItem.id)}
@@ -2722,7 +2730,7 @@ const ActualGBIAssessment = ({
                       </div>
                     )}
 
-                    {!displayOnly && (
+                    {!actualControlsLocked && (
                       <div className="mt-1.5">
                         <AddCustomItemRow
                           itemId={item.id}
@@ -2741,11 +2749,25 @@ const ActualGBIAssessment = ({
               })()}
             </div>
           ) : null}
+
+          <AssessmentEvidenceUploader
+            projectId={selectedProject.id}
+            itemId={item.id}
+            files={assessmentEvidence.filter((file) => String(file.item_id) === String(item.id))}
+            feedback={assessmentItemFeedback.find((entry) => String(entry.item_id) === String(item.id))}
+            readOnly={displayOnly || !evidenceUnlocked}
+            disabledReason={!displayOnly && !evidenceUnlocked
+              ? "Evidence submissions open after the Predicted assessment is submitted."
+              : undefined}
+            onUploaded={(file) => setAssessmentEvidence((current) => [...current, file])}
+            onRemoved={(fileId) => setAssessmentEvidence((current) => current.filter((file) => file.id !== fileId))}
+          />
         </div>
       );
     },
     [
       actualAnswers,
+      actualControlsLocked,
       actualSelectionAnswers,
       activeExclusiveGroup,
       addCustomItem,
@@ -2754,6 +2776,10 @@ const ActualGBIAssessment = ({
       customInputs,
       deleteCustomItem,
       displayOnly,
+      evidenceUnlocked,
+      assessmentStatus,
+      assessmentEvidence,
+      assessmentItemFeedback,
       getActualCustomInputsList,
       getCheckedItemIds,
       getCheckedOptionIds,
@@ -2904,8 +2930,8 @@ const ActualGBIAssessment = ({
               Information:
             </p>
             <p className="text-sm leading-5 text-blue-700">
-              Review the predicted answers, toggle the actual checkboxes, and
-              submit the pending additions or deletions.
+              Predicted answers are the applicant&apos;s plan. Submit supporting
+              evidence for an administrator to determine the Actual assessment.
             </p>
           </div>
         </div>
@@ -3211,7 +3237,7 @@ function CompareCheckboxes({
           tone="predicted"
         />
         <PremiumCheckbox
-          label="Actual"
+          label="Actual · reviewer"
           checked={!!actual}
           tone="actual"
           onToggle={onToggle}
