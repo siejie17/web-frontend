@@ -7,6 +7,7 @@ import * as Select from "@radix-ui/react-select";
 import { ChevronDown, ChevronUp } from "lucide-react";
 import type { AssessmentItem as ItemT, OptionGroup, SelectionGroup } from "@/types/project";
 import { cn } from "@/lib/utils";
+import { formatEsgMapping } from "@/lib/esgMapping";
 
 /* ---------- shared bits ---------- */
 
@@ -293,7 +294,7 @@ export default function AssessmentItemCard({
                   type="button"
                   onClick={() =>
                     onOpenInfo(
-                      [item.esg && `## Sarawak 13ᵗʰ Malaysia Plan\n\n${item.esg}`, item.suggestions && `## Materials & Suggestions\n\n${item.suggestions}`]
+                      [item.esg && formatEsgMapping(item.esg), item.suggestions && `## Materials & Suggestions\n\n${item.suggestions}`]
                         .filter(Boolean)
                         .join("\n\n"),
                       "ESG & Suggestions",

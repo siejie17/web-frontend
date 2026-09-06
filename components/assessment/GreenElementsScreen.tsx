@@ -26,6 +26,9 @@ import {
 } from "lucide-react";
 import CustomDropdown from "../form/CustomDropdown";
 import ReactMarkdown from "react-markdown";
+import { formatEsgMapping } from "@/lib/esgMapping";
+import EsgSuggestionsContent from "./EsgSuggestionsContent";
+import GuideContent from "./GuideContent";
 
 /* ────────────────────────────────────────────────────────────────────────
    Types
@@ -376,7 +379,7 @@ function InfoGuideModal({
               </button>
             </div>
             <div className="max-h-[60vh] overflow-y-auto px-5 py-4 text-[13.5px] leading-6 text-[#1E2621]/75">
-              {sections.map((section, i) => (
+              {title === "ESG & Suggestions" ? <EsgSuggestionsContent markdown={info} /> : title === "Information" && label === "Guide" ? <GuideContent markdown={info} /> : sections.map((section, i) => (
                 <div
                   key={i}
                   className="rounded-xl border border-[#1E2621]/8 bg-[#1E2621]/2 px-4 py-3.5 mb-3 last:mb-0"
@@ -1380,7 +1383,7 @@ const GreenElementsScreen = ({
     const sections: string[] = [];
 
     if (item.esg) {
-      sections.push(`## Sarawak 13ᵗʰ Malaysia Plan\n\n${item.esg}`);
+      sections.push(formatEsgMapping(item.esg));
     }
 
     if (item.suggestions) {

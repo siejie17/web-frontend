@@ -76,7 +76,7 @@ export default function AssessmentHero({
 
             <p className="mt-4 max-w-xl text-sm leading-6 text-slate-400">
               {meta.buildingType}. Compare the predicted design-stage score against
-              the verified as-built score, section by section.
+              the reviewer-awarded Actual score, section by section.
             </p>
           </div>
 

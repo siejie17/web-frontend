@@ -57,6 +57,7 @@ import {
   X,
 } from "lucide-react";
 import { Project } from "@/lib/server/project-access"; // Adjust this import path
+import { getHistoryProjectStage } from "@/lib/historyProjectStage";
 import { BackButton } from "@/components/ui/BackButton";
 import { useChatUnread } from "@/contexts/ChatUnreadContext";
 
@@ -699,6 +700,9 @@ function ProjectCard({
   unread?: number;
   onOpen?: () => void;
 }) {
+  const stage = getHistoryProjectStage(project.certificate);
+  const isCertified = stage === "Certified";
+
   return (
     <a
       href={`/projects/${project.id}`}

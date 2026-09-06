@@ -139,7 +139,7 @@ function formatRelative(dateStr?: string): string {
 export default function AuthenticatedLayout({
   children,
 }: Readonly<AuthenticatedLayoutProps>) {
-  const { user } = useAuth();
+  const { user, logout } = useAuth();
 
   const firstName = user?.first_name?.split(" ")[0] || "User";
   const fullName =
@@ -325,12 +325,7 @@ export default function AuthenticatedLayout({
 
   const handleLogout = async () => {
     try {
-      await fetch("/be-api/auth/logout", {
-        method: "POST",
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
-      });
-      window.location.href = "/login";
+      await logout();
     } catch (error) {
       console.error("Logout failed", error);
     }
