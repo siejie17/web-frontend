@@ -716,6 +716,7 @@ interface Project {
   target_certification?: string;
   certificate?: Certificate;
   changed_cert?: number;
+  status?: string;
   created_at: string;
 }
 
@@ -748,14 +749,14 @@ function CostBar({ budget, actual }: CostBarProps) {
   return (
     <div className="flex-1 min-w-[140px]">
       <div className="mb-1 flex items-baseline justify-between">
-        <span className="text-[10.5px] font-semibold uppercase tracking-wide" style={{ color: T.mutedSoft }}>
+        <span className="text-[12px] font-semibold uppercase tracking-wide" style={{ color: T.mutedSoft }}>
           Cost
         </span>
         <span
-          className="flex items-center gap-0.5 text-[11.5px] font-bold"
+          className="flex items-center gap-0.5 text-[13px] font-bold"
           style={{ color: over ? T.clay : T.forest }}
         >
-          {over ? <ArrowUpRight size={12} /> : <ArrowDownRight size={12} />}
+          {over ? <ArrowUpRight size={14} /> : <ArrowDownRight size={14} />}
           {Math.abs(pct).toFixed(1)}%
         </span>
       </div>
@@ -765,7 +766,7 @@ function CostBar({ budget, actual }: CostBarProps) {
           style={{ width: `${Math.min(fill, 100)}%`, background: over ? T.clay : T.forest }}
         />
       </div>
-      <div className="mt-1 flex justify-between text-[11px]" style={{ color: T.muted }}>
+      <div className="mt-1.5 flex justify-between text-[13px]" style={{ color: T.muted }}>
         <span>{formatMoney(budget)} budget</span>
         <span className="font-medium" style={{ color: T.ink }}>
           {formatMoney(actual)}
@@ -780,11 +781,11 @@ function ScoreCompare({ predicted, actual, certification }: ScoreCompareProps) {
   return (
     <div className="flex-1 min-w-[140px]">
       <div className="mb-1 flex items-baseline justify-between">
-        <span className="text-[10.5px] font-semibold uppercase tracking-wide" style={{ color: T.mutedSoft }}>
+        <span className="text-[12px] font-semibold uppercase tracking-wide" style={{ color: T.mutedSoft }}>
           {certification || "Score"}
         </span>
         {hasActual && (
-          <span className="text-[11px]" style={{ color: T.muted }}>
+          <span className="text-[12.5px]" style={{ color: T.muted }}>
             predicted → actual
           </span>
         )}
@@ -792,7 +793,7 @@ function ScoreCompare({ predicted, actual, certification }: ScoreCompareProps) {
       <div className="flex items-center gap-2.5">
         <div className="flex items-baseline gap-1">
           <span
-            className="text-[19px] font-bold leading-none"
+            className="text-[21px] font-bold leading-none"
             style={{ fontFamily: "var(--font-display)", color: hasActual ? T.mutedSoft : T.ink }}
           >
             {predicted ?? "—"}
@@ -801,7 +802,7 @@ function ScoreCompare({ predicted, actual, certification }: ScoreCompareProps) {
             <>
               <span style={{ color: T.mutedSoft }}>→</span>
               <span
-                className="text-[19px] font-bold leading-none"
+                className="text-[21px] font-bold leading-none"
                 style={{ fontFamily: "var(--font-display)", color: T.forest }}
               >
                 {actual}
@@ -823,13 +824,45 @@ function ScoreCompare({ predicted, actual, certification }: ScoreCompareProps) {
   );
 }
 
+/* ---------------- Project status chip ---------------- */
+
+function statusStyle(status: string | null | undefined) {
+  const s = (status ?? "").toLowerCase();
+  if (s.includes("certified") || s.includes("verified")) {
+    return { dot: T.forest, text: T.forestDeep, bg: T.lightGreen };
+  }
+  if (s.includes("changes") || s.includes("rejected") || s.includes("failed")) {
+    return { dot: T.clay, text: "#8C3D33", bg: "#FBEDEB" };
+  }
+  if (s.includes("submitted") || s.includes("pending")) {
+    return { dot: "#B5842A", text: "#7A5A20", bg: "#FBF3E7" };
+  }
+  return { dot: T.mutedSoft, text: T.muted, bg: T.chip };
+}
+
+function StatusChip({ status }: { status?: string | null }) {
+  if (!status) return null;
+  const style = statusStyle(status);
+  return (
+    <span
+      className="inline-flex shrink-0 items-center gap-1.5 rounded-md px-2.5 py-0.5 text-[12px] font-semibold"
+      style={{ background: style.bg, color: style.text }}
+    >
+      <span
+        className="inline-block h-1.5 w-1.5 rounded-full"
+        style={{ background: style.dot }}
+      />
+      {status}
+    </span>
+  );
+}
+
 /* ---------------- Project card ---------------- */
 function ProjectCard({ project, unread = 0, onOpen }: ProjectCardProps) {
-  const isCertified = project.certificate?.status === "issued";
   const hasTarget = project.target_certification != "Not Certified" || (project.target_certification == "Not Certified" && project.changed_cert == 1);
 
   const stage = getHistoryProjectStage(project.certificate);
-  const isCertified = stage === "Certified";
+  const isCertified = project.certificate?.status === "issued" || stage === "Certified";
 
   return (
     <a
@@ -846,14 +879,14 @@ function ProjectCard({ project, unread = 0, onOpen }: ProjectCardProps) {
           <div className="min-w-0">
             <div className="mb-1.5 flex flex-wrap items-center gap-1.5">
               <span
-                className="rounded-md px-2 py-0.5 text-[10.5px] font-medium"
+                className="rounded-md px-2.5 py-0.5 text-[12px] font-medium"
                 style={{ background: T.chip, color: T.mutedSoft }}
               >
                 {project.type_name}
               </span>
               {project.classification && (
                 <span
-                  className="rounded-md px-2 py-0.5 text-[10.5px] font-medium"
+                  className="rounded-md px-2.5 py-0.5 text-[12px] font-medium"
                   style={{ background: T.chip, color: T.mutedSoft }}
                 >
                   {project.classification}
@@ -861,19 +894,19 @@ function ProjectCard({ project, unread = 0, onOpen }: ProjectCardProps) {
               )}
             </div>
             <h3
-              className="truncate text-[17px] font-bold leading-tight tracking-[-0.01em]"
+              className="truncate text-[19px] font-bold leading-tight tracking-[-0.01em]"
               style={{ fontFamily: "var(--font-display)", color: T.ink }}
             >
               {project.name}
             </h3>
-            <p className="mt-0.5 truncate text-[12.5px]" style={{ color: T.muted }}>
+            <p className="mt-0.5 truncate text-[14px]" style={{ color: T.muted }}>
               {project.category} · {project.structure}
             </p>
           </div>
 
           {unread > 0 && (
             <span
-              className="flex h-5 min-w-5 shrink-0 items-center justify-center rounded-full px-1.5 text-[10.5px] font-bold text-white"
+              className="flex h-6 min-w-6 shrink-0 items-center justify-center rounded-full px-1.5 text-[12px] font-bold text-white"
               style={{ background: T.clay }}
               title={`${unread} new message${unread === 1 ? "" : "s"}`}
             >
@@ -883,17 +916,18 @@ function ProjectCard({ project, unread = 0, onOpen }: ProjectCardProps) {
         </div>
 
         {/* Meta: one line, includes created date so there's no separate footer bar */}
-        <div className="mb-4 flex flex-wrap items-center gap-x-3.5 gap-y-1 text-[12px]" style={{ color: T.muted }}>
-          <span className="flex items-center gap-1">
-            <MapPin size={12} style={{ color: T.mutedSoft }} />
+        <div className="mb-4 flex flex-wrap items-center gap-x-4 gap-y-1.5 text-[13.5px]" style={{ color: T.muted }}>
+          <StatusChip status={project.status} />
+          <span className="flex items-center gap-1.5">
+            <MapPin size={14} style={{ color: T.mutedSoft }} />
             {project.location}
           </span>
-          <span className="flex items-center gap-1">
-            <Ruler size={12} style={{ color: T.mutedSoft }} />
+          <span className="flex items-center gap-1.5">
+            <Ruler size={14} style={{ color: T.mutedSoft }} />
             {formatSize(project.size ?? "0")}
           </span>
-          <span className="flex items-center gap-1">
-            <Calendar size={12} style={{ color: T.mutedSoft }} />
+          <span className="flex items-center gap-1.5">
+            <Calendar size={14} style={{ color: T.mutedSoft }} />
             {project.year}
           </span>
         </div>
@@ -911,7 +945,7 @@ function ProjectCard({ project, unread = 0, onOpen }: ProjectCardProps) {
               certification={project.target_certification}
             />
           ) : (
-            <div className="flex flex-1 min-w-[140px] items-center gap-1.5 text-[12.5px]" style={{ color: T.mutedSoft }}>
+            <div className="flex flex-1 min-w-[140px] items-center gap-1.5 text-[14px]" style={{ color: T.mutedSoft }}>
               Not pursuing certification
             </div>
           )}
@@ -920,14 +954,14 @@ function ProjectCard({ project, unread = 0, onOpen }: ProjectCardProps) {
         {/* Certificate: compact ribbon, only when actually issued */}
         {isCertified && project.certificate && (
           <div
-            className="mt-3 flex items-center gap-2 rounded-lg border px-3 py-1.5"
+            className="mt-3 flex items-center gap-2.5 rounded-lg border px-3.5 py-2"
             style={{ borderColor: "#B9CBBF", background: T.lightGreen, color: T.forestDeep }}
           >
-            <Award size={14} />
-            <span className="text-[12px] font-semibold">
+            <Award size={16} />
+            <span className="text-[13.5px] font-semibold">
               {project.certificate.certification_level} certified
             </span>
-            <span className="text-[11px]" style={{ color: T.muted }}>
+            <span className="text-[12.5px]" style={{ color: T.muted }}>
               · {project.certificate.approved_actual_score}/{project.certificate.maximum_score} pts
             </span>
           </div>

@@ -22,7 +22,7 @@ import {
   Trash2,
   Check,
   Sparkles,
-  Award,
+  XCircle,
 } from "lucide-react";
 import CustomDropdown from "../form/CustomDropdown";
 import ReactMarkdown from "react-markdown";
@@ -2340,329 +2340,204 @@ const GAUGE_BANDS = [
   { key: "Platinum", color: "#3E6B52" },
 ] as const;
 
-function GaugeLegendDot({ color, label }: { color: string; label: string }) {
-  return (
-    <span
-      className="flex items-center gap-1.5 text-[11px] text-[#8A938C]"
-      style={{ fontFamily: "var(--font-mono)" }}
-    >
-      <span
-        className="inline-block h-2 w-2 rounded-full"
-        style={{ backgroundColor: color }}
-      />
-      {label}
-    </span>
-  );
-}
-
 function CertificationGauge({
-  totalMarks = 62,
-  certifiedScaleRange = {} as Record<string, [number, number]>,
-  targetBandIndex = 3,
+  totalMarks,
+  certifiedScaleRange = {
+    "Not Certified": [0, 39],
+    Certified: [40, 49],
+    Silver: [50, 64],
+    Gold: [65, 79],
+    Platinum: [80, 100],
+  } as Record<string, [number, number]>,
+  targetBandIndex,
+}: {
+  totalMarks: number;
+  certifiedScaleRange?: Record<string, [number, number]>;
+  targetBandIndex?: number;
+  criteriaMarks?: Record<string, number>;
 }) {
-  const [showLegendModal, setShowLegendModal] = useState(false);
   const MAX = 100;
 
-  const bands = GAUGE_BANDS.map(({ key, color }) => {
-    const range = certifiedScaleRange[key as string];
+  const bands = GAUGE_BANDS.map(({ key, color }, index) => {
+    const range = certifiedScaleRange[key];
     const min = range?.[0] ?? 0;
     const max = range?.[1] ?? 0;
-    const left = (min / MAX) * 100;
-    const right = (max / MAX) * 100;
-    return { key, min, max, color, left, right };
+
+    const isLastBand = index === GAUGE_BANDS.length - 1;
+
+    return {
+      key,
+      min,
+      max,
+      color,
+      left: (min / MAX) * 100,
+      right: ((isLastBand ? max : max + 1) / MAX) * 100,
+    };
   });
 
   const markerPct = Math.min(100, Math.max(0, (totalMarks / MAX) * 100));
-  const activeBand = bands.find(
-    (b) => totalMarks >= b.min && totalMarks <= b.max,
-  );
-  const targetBand =
-    targetBandIndex !== undefined ? bands[targetBandIndex] : undefined;
+  const markerLeft = totalMarks;
+  const activeBand =
+    bands.find((b) => totalMarks >= b.min && totalMarks <= b.max) ??
+    bands[bands.length - 1];
+
+  const activeIndex = GAUGE_BANDS.findIndex((b) => b.key === activeBand.key);
+  const nextBand = GAUGE_BANDS[Math.min(activeIndex + 1, GAUGE_BANDS.length - 1)];
+  const pointsNeeded = certifiedScaleRange[nextBand.key][0] - totalMarks;
+  const atTopBand = activeBand.key === "Platinum";
+  const targetBand = targetBandIndex !== undefined ? bands[targetBandIndex] : undefined;
 
   return (
-    <section className="relative mb-6 mt-3 overflow-hidden rounded-3xl border border-[#E4E1D8] bg-[#FDFDFC] p-5 shadow-[0_1px_2px_rgba(30,38,33,0.04)] sm:p-8">
-      <div
-        className="pointer-events-none absolute -right-10 -top-10 h-40 w-40 rounded-full opacity-[0.4]"
-        style={{
-          background: `radial-gradient(circle, ${activeBand?.color ?? "#B7BEB8"}55 0%, transparent 70%)`,
-        }}
-      />
-
-      {/* Header — stacks on mobile so the stamp never squeezes against the score */}
-      <div className="relative flex flex-col items-start gap-4 sm:flex-row sm:flex-wrap sm:items-start sm:justify-between sm:gap-5">
-        <div>
+    <div className="mb-6 mt-3 flex flex-col gap-5">
+      {/* Overall score card */}
+      <section className="rounded-2xl border border-[#E4E1D8] bg-[#FDFDFC] p-5 shadow-[0_1px_2px_rgba(30,38,33,0.04)]">
+        <div className="flex flex-wrap items-start justify-between gap-2">
+          <div className="text-[13px] font-medium text-[#7C8680]">Overall score</div>
           <div
-            className="text-[10px] uppercase tracking-[0.14em] text-[#8A938C] sm:text-[11px]"
-            style={{ fontFamily: "var(--font-mono)" }}
+            className="inline-flex shrink-0 items-center gap-1.5 rounded-full border px-3 py-1"
+            style={{ borderColor: `${activeBand.color}55`, backgroundColor: `${activeBand.color}14` }}
           >
-            GBI certification score
-          </div>
-          <div className="mt-1.5 flex flex-wrap items-baseline gap-x-3 gap-y-1">
-            <span className="font-serif text-[26px] font-semibold leading-none tabular-nums text-[#2C4A3A] sm:text-[34px] md:text-[42px]">
-              {totalMarks}
+            <XCircle size={13} style={{ color: activeBand.color }} />
+            <span className="whitespace-nowrap text-[12px] font-semibold" style={{ color: activeBand.color }}>
+              {activeBand.key}
             </span>
-            <span className="font-mono text-[14px] font-medium text-[#8A938C] sm:text-[16px]">
-              / 100 pts
-            </span>
-          </div>
-          <div className="mt-1 text-[12px] text-[#8A938C] sm:text-[12.5px]">
-            Enter assessment marks against each criterion below.
           </div>
         </div>
 
-        {/* Certification stamp */}
-        <div
-          className="flex shrink-0 -rotate-2 items-center gap-2 self-start rounded-lg border-2 border-dashed px-3 py-1.5 sm:px-3.5 sm:py-2"
-          style={{
-            borderColor: activeBand?.color ?? "#B7BEB8",
-            color: activeBand?.color ?? "#8A938C",
-          }}
-        >
-          <Award size={14} className="shrink-0" />
+        <div className="mt-1.5 flex items-baseline gap-x-2">
           <span
-            className="whitespace-nowrap text-[10.5px] font-bold uppercase tracking-[0.06em] sm:text-[11.5px]"
-            style={{ fontFamily: "var(--font-mono)" }}
+            className="font-serif text-[40px] font-semibold leading-none text-[#1E2621] sm:text-[44px]"
+            style={{ fontFamily: "var(--font-display)" }}
           >
-            {activeBand?.key ?? "N/A"}
+            {totalMarks}
           </span>
-        </div>
-      </div>
-
-      {/* Gauge bar */}
-      <div className="relative mt-8 sm:mt-6">
-        <div className="relative h-2.5 overflow-hidden rounded-full bg-[#EFEDE6]">
-          {bands.map((band, index) => {
-            const achievedEnd = Math.min(band.right, markerPct);
-            const hasAchieved = achievedEnd > band.left;
-            const hasRemaining = band.right > markerPct;
-            const remainingStart = Math.max(band.left, markerPct);
-            return (
-              <div key={band.key}>
-                {hasAchieved && (
-                  <div
-                    className="absolute inset-y-0"
-                    style={{
-                      width: `${achievedEnd}%`,
-                      backgroundColor: band.color,
-                    }}
-                  />
-                )}
-                {hasRemaining && (
-                  <div
-                    className="absolute inset-y-0"
-                    style={{
-                      left: `${remainingStart}%`,
-                      width: `${band.right}%`,
-                      backgroundColor: band.color,
-                      opacity: 0.28,
-                    }}
-                  />
-                )}
-              </div>
-            );
-          })}
-
-          {bands.map((band) => (
-            <div
-              key={band.key}
-              className="absolute top-1/2 h-4 w-0.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-white/70"
-              style={{ left: `${band.left}%` }}
-            />
-          ))}
-          <div
-            className="absolute top-1/2 h-4 w-0.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-white/70"
-            style={{ left: `100%` }}
-          />
+          <span className="text-[14px] font-medium text-[#7C8680] sm:text-[15px]">/ 100 points</span>
         </div>
 
-        {/* Target / Current markers — clamped so their labels never run off the card edge */}
-        {targetBand && (
+        {!atTopBand && (
           <>
-            <div
-              className="absolute -top-2.5 -translate-x-1/2"
-              style={{
-                left: `${Math.min(94, Math.max(6, targetBand.left))}%`,
-              }}
-            >
-              <div className="flex flex-col items-center gap-3 sm:gap-5">
-                <svg
-                  width="10"
-                  height="12"
-                  viewBox="0 0 12 10"
-                  fill="none"
-                  className="sm:h-[15px] sm:w-3"
-                >
-                  <path d="M6 10L0 0h12z" fill={targetBand.color} />
-                </svg>
-                <span
-                  className="whitespace-nowrap text-[8px] font-bold uppercase tracking-[0.06em] sm:text-[9px]"
-                  style={{
-                    color: targetBand.color,
-                    fontFamily: "var(--font-mono)",
-                  }}
-                >
-                  Target
-                </span>
-              </div>
+            <div className="my-4 h-px bg-[#E4E1D8]" />
+            <div className="text-[13.5px]">
+              <span className="font-semibold" style={{ color: "#C9962E" }}>
+                {pointsNeeded} points needed
+              </span>{" "}
+              <span className="text-[#1E2621]">to reach {nextBand.key}</span>
             </div>
-            <div
-              className="absolute top-0 h-2.5 w-0.5 -translate-x-1/2"
-              style={{
-                left: `${targetBand.left}%`,
-                backgroundColor: targetBand.color,
-              }}
-            />
           </>
         )}
+      </section>
 
+      {/* Certification progress card */}
+      <section className="relative rounded-2xl border border-[#E4E1D8] bg-[#FDFDFC] p-5 shadow-[0_1px_2px_rgba(30,38,33,0.04)] sm:p-6">
         <div
-          className="absolute -top-2.5 -translate-x-1/2"
-          style={{ left: `${markerPct}%` }}
-        >
-          <div className="flex flex-col items-center gap-3 sm:gap-5">
-            <svg
-              width="10"
-              height="12"
-              viewBox="0 0 12 10"
-              fill="none"
-              className="sm:h-[15px] sm:w-3"
-            >
-              <path d="M6 10L0 0h12z" fill={activeBand?.color ?? "#1E2621"} />
-            </svg>
-            <span
-              className="whitespace-nowrap text-[8px] font-bold uppercase tracking-[0.06em] sm:text-[9px]"
-              style={{
-                color: activeBand?.color ?? "#1E2621",
-                fontFamily: "var(--font-mono)",
-              }}
-            >
-              Current
-            </span>
-          </div>
-        </div>
-        <div
-          className="absolute top-0 h-2.5 w-0.5 -translate-x-1/2"
-          style={{
-            left: `${markerPct}%`,
-            backgroundColor: activeBand?.color ?? "#1E2621",
-          }}
+          className="pointer-events-none absolute -right-10 -top-10 h-40 w-40 overflow-hidden rounded-full opacity-[0.35]"
+          style={{ background: `radial-gradient(circle, ${activeBand.color}55 0%, transparent 70%)` }}
         />
+        <h2 className="relative text-[15px] font-semibold text-[#1E2621]" style={{ fontFamily: "var(--font-display)" }}>
+          Certification progress
+        </h2>
 
-        {/* Legend — info icon on mobile (opens modal), track-aligned from sm up */}
-        <div className="relative mt-8 sm:mt-9">
-          <button
-            type="button"
-            onClick={() => setShowLegendModal(true)}
-            className="flex items-center gap-1.5 text-[11px] font-medium text-[#8A938C] transition-colors hover:text-[#5B655F] sm:hidden"
-          >
-            <Info size={13} />
-            View band legend
-          </button>
-
-          <div className="relative hidden h-11 sm:block">
-            {bands.map((band) => {
-              const mid = (band.left + band.right) / 2;
-              return (
-                <div
-                  key={band.key}
-                  className="absolute top-0 flex -translate-x-1/2 flex-col items-center gap-1"
-                  style={{ left: `${Math.min(96, Math.max(4, mid))}%` }}
+        <div className="relative mt-6">
+          {/* room above the bar for the "your score" flag so it never clips/wraps */}
+          <div className="relative pt-7">
+            <div className="absolute top-0 -translate-x-1/2 whitespace-nowrap" style={{ left: `${markerLeft}%` }}>
+              <div className="flex flex-col items-center">
+                <span
+                  className="text-[9px] font-bold uppercase tracking-[0.06em]"
+                  style={{ color: activeBand?.color ?? "#1E2621", fontFamily: "var(--font-mono)" }}
                 >
-                  <span
-                    className="h-2.5 w-2.5 rounded-full ring-2 ring-white"
-                    style={{ backgroundColor: band.color }}
-                  />
-                  <span
-                    className="whitespace-nowrap text-[13px] font-bold"
-                    style={{
-                      color: band.color,
-                      fontFamily: "var(--font-mono)",
-                    }}
-                  >
-                    {band.key}
-                  </span>
-                  <span
-                    className="whitespace-nowrap text-[11px] font-medium tabular-nums"
-                    style={{ color: band.color, opacity: 0.75 }}
-                  >
-                    {band.min}–{band.max}
-                  </span>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      </div>
-
-      {/* Mobile legend modal */}
-      {showLegendModal && (
-        <div
-          className="fixed inset-0 z-50 flex items-end justify-center sm:hidden"
-          onClick={() => setShowLegendModal(false)}
-        >
-          <div className="absolute inset-0 bg-[#1E2621]/40 backdrop-blur-sm" />
-          <div
-            role="dialog"
-            aria-modal="true"
-            onClick={(e) => e.stopPropagation()}
-            className="relative w-full max-w-md rounded-t-3xl border border-[#E4E1D8] bg-white p-6 pb-8 shadow-[0_-8px_30px_rgba(30,38,33,0.12)]"
-          >
-            <div className="mb-4 flex items-center justify-between">
-              <h3
-                className="text-[15px] font-semibold text-[#1E2621]"
-                style={{ fontFamily: "var(--font-display)" }}
-              >
-                Certification Band Legend
-              </h3>
-              <button
-                type="button"
-                onClick={() => setShowLegendModal(false)}
-                className="flex h-8 w-8 items-center justify-center rounded-full text-[#8A938C] transition-colors hover:bg-[#F6F6F2] hover:text-[#1E2621]"
-              >
-                <svg
-                  width="14"
-                  height="14"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2.5"
-                  strokeLinecap="round"
-                >
-                  <path d="M18 6 6 18M6 6l12 12" />
+                  Your{"\n"}score
+                </span>
+                <svg width="10" height="8" viewBox="0 0 12 10" fill="none" className="mt-0.5">
+                  <path d="M6 10L0 0h12z" fill={activeBand?.color ?? "#1E2621"} />
                 </svg>
-              </button>
+              </div>
             </div>
-            <div className="flex flex-col gap-3">
+
+            <div className="relative h-2.5 overflow-hidden rounded-full bg-[#EFEDE6]">
+              {bands.map((band) => {
+                const bandWidth = band.right - band.left;
+
+                const achievedStart = band.left;
+                const achievedEnd = Math.min(markerPct, band.right);
+
+                const remainingStart = Math.max(markerPct, band.left);
+                const remainingEnd = band.right;
+
+                return (
+                  <div key={band.key}>
+                    {/* Achieved */}
+                    {achievedEnd > achievedStart && (
+                      <div
+                        className="absolute inset-y-0"
+                        style={{
+                          left: `${achievedStart}%`,
+                          width: `${achievedEnd - achievedStart}%`,
+                          backgroundColor: band.color,
+                        }}
+                      />
+                    )}
+
+                    {/* Remaining */}
+                    {remainingEnd > remainingStart && (
+                      <div
+                        className="absolute inset-y-0"
+                        style={{
+                          left: `${remainingStart}%`,
+                          width: `${remainingEnd - remainingStart}%`,
+                          backgroundColor: band.color,
+                          opacity: 0.28,
+                        }}
+                      />
+                    )}
+                  </div>
+                );
+              })}
+
               {bands.map((band) => (
                 <div
                   key={band.key}
-                  className="flex items-center gap-3 rounded-xl border border-[#E4E1D8] px-4 py-3"
-                >
-                  <span
-                    className="h-3 w-3 shrink-0 rounded-full"
-                    style={{ backgroundColor: band.color }}
-                  />
-                  <div className="flex flex-1 items-baseline justify-between gap-2">
-                    <span
-                      className="text-[12.5px] font-bold"
-                      style={{
-                        color: band.color,
-                        fontFamily: "var(--font-mono)",
-                      }}
-                    >
-                      {band.key}
-                    </span>
-                    <span className="text-[11.5px] font-medium tabular-nums text-[#8A938C]">
-                      {band.min}–{band.max} pts
-                    </span>
+                  className="absolute top-1/2 h-4 w-0.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-white"
+                  style={{ left: `${band.left}%` }}
+                />
+              ))}
+              <div
+                className="absolute top-1/2 h-4 w-0.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-white/70"
+                style={{ left: "100%" }}
+              />
+            </div>
+
+            {targetBand && (
+              <div
+                className="absolute h-2.5 w-0.5 -translate-x-1/2"
+                style={{ left: `${Math.min(94, Math.max(6, targetBand.left))}%`, top: "28px", backgroundColor: targetBand.color }}
+              />
+            )}
+            <div
+              className="absolute h-2.5 w-0.5 -translate-x-1/2"
+              style={{ left: `${markerPct}%`, top: "28px", backgroundColor: activeBand?.color ?? "#1E2621" }}
+            />
+          </div>
+
+          {/* legend: wraps freely at any width, never overlaps */}
+          <div className="mt-6 flex flex-wrap gap-x-5 gap-y-3">
+            {bands.map((band) => (
+              <div key={band.key} className="flex min-w-[62px] items-start gap-1.5">
+                <span className="mt-1 h-2.5 w-2.5 shrink-0 rounded-full ring-2 ring-white" style={{ backgroundColor: band.color }} />
+                <div className="leading-tight">
+                  <div className="whitespace-nowrap text-[11.5px] font-bold" style={{ color: band.color, fontFamily: "var(--font-mono)" }}>
+                    {band.key}
+                  </div>
+                  <div className="whitespace-nowrap text-[10.5px] font-medium tabular-nums" style={{ color: band.color, opacity: 0.75 }}>
+                    {band.min}–{band.max}
                   </div>
                 </div>
-              ))}
-            </div>
+              </div>
+            ))}
           </div>
         </div>
-      )}
-    </section>
+      </section>
+    </div>
   );
 }
 

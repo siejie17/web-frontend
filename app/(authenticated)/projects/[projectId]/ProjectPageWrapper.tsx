@@ -5,6 +5,7 @@ import { Loader2, Check, MessageSquareText } from "lucide-react";
 import ProjectHeader from "@/components/project/ProjectHeader";
 import ProjectDetailTabs from "@/components/tabs/ProjectDetailsTabs";
 import CertificatePanel from "@/components/project/CertificatePanel";
+import LoadingOverlay from "@/components/ui/LoadingOverlay";
 
 interface Props {
   project: any;
@@ -78,62 +79,12 @@ export default function ProjectPageWrapper({
 
       {/* Loading overlay — blocks interaction while submitting */}
       {submitting && (
-        <div
-          className="fixed inset-0 z-30 flex items-center justify-center bg-[#1E2621]/8 backdrop-blur-[3px]"
-          style={{ animation: 'overlayFadeIn 0.25s ease-out' }}
-        >
-          <div
-            className="flex flex-col items-center gap-4 rounded-[28px] border border-[#E4E1D8]/80 bg-white/95 px-10 py-8"
-            style={{
-              boxShadow:
-                '0 24px 48px -12px rgba(30,38,33,0.18), 0 8px 20px -8px rgba(30,38,33,0.10), 0 0 0 1px rgba(228,225,216,0.6)',
-              animation: 'cardRiseIn 0.35s cubic-bezier(0.16,1,0.3,1)',
-            }}
-          >
-            {/* Gradient ring spinner */}
-            <div className="relative h-11 w-11">
-              <svg viewBox="0 0 44 44" className="h-11 w-11" style={{ animation: 'spin 0.9s linear infinite' }}>
-                <circle cx="22" cy="22" r="18" fill="none" stroke="#EDEAE0" strokeWidth="3.5" />
-                <circle
-                  cx="22" cy="22" r="18" fill="none"
-                  stroke="url(#saveRingGradient)"
-                  strokeWidth="3.5"
-                  strokeLinecap="round"
-                  strokeDasharray="113"
-                  strokeDashoffset="82"
-                />
-                <defs>
-                  <linearGradient id="saveRingGradient" x1="0%" y1="0%" x2="100%" y2="100%">
-                    <stop offset="0%" stopColor="#3E6B52" />
-                    <stop offset="100%" stopColor="#8FB89C" />
-                  </linearGradient>
-                </defs>
-              </svg>
-            </div>
-
-            <div className="flex flex-col items-center gap-0.5">
-              <span className="text-[14.5px] font-semibold tracking-[-0.01em] text-[#1E2621]">
-                Saving changes
-              </span>
-              <span className="text-[12px] text-[#8A8F85]">This&lsquo;ll just take a second</span>
-            </div>
-          </div>
-
-          <style>{`
-            @keyframes overlayFadeIn {
-              from { opacity: 0; }
-              to { opacity: 1; }
-            }
-            @keyframes cardRiseIn {
-              from { opacity: 0; transform: scale(0.94) translateY(6px); }
-              to { opacity: 1; transform: scale(1) translateY(0); }
-            }
-            @keyframes spin {
-              from { transform: rotate(0deg); }
-              to { transform: rotate(360deg); }
-            }
-          `}</style>
-        </div>
+        <LoadingOverlay
+          variant="light"
+          title="Saving changes"
+          description="This'll just take a second"
+          className="z-30"
+        />
       )}
 
       {/* Save button — only when there are unsaved changes and not shared */}

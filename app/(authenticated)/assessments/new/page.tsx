@@ -107,6 +107,7 @@ import type { LucideIcon } from "lucide-react";
 import { FormInputs } from "@/types/form";
 import { BackButton } from "@/components/ui/BackButton";
 import InfoTooltip from "@/components/ui/InfoTooltip";
+import LoadingOverlay from "@/components/ui/LoadingOverlay";
 
 const currentYear = new Date().getFullYear();
 const YEAR_LIST = Array.from({ length: 6 }, (_, i) => String(currentYear + i));
@@ -656,15 +657,11 @@ export default function NewAssessmentPage() {
   return (
     <>
       {submitting && (
-        <div className="fixed inset-0 z-10000 flex flex-col items-center justify-center gap-3 bg-[#1E2621]/60 backdrop-blur-sm pointer-events-auto px-6 text-center">
-          <Loader2 size={32} className="animate-spin text-[#F6F6F2]" />
-          <p className="text-[15px] font-medium text-[#F6F6F2]">
-            Assessment is running…
-          </p>
-          <p className="text-[13px] text-[#C9D3CC]">
-            Please be patient for a sec
-          </p>
-        </div>
+        <LoadingOverlay
+          title="Assessment is running…"
+          description="Please be patient for a sec"
+          className="z-10000"
+        />
       )}
       <div className="mx-auto px-4 pb-8 pt-4 sm:pb-10 sm:pt-6 md:max-w-375">
         <BackButton text="Dashboard" redirect="/dashboard" />

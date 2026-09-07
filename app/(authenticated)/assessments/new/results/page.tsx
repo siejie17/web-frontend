@@ -13,7 +13,6 @@ import {
   X,
   Eye,
   Plus,
-  Loader2,
 } from "lucide-react";
 import CostBreakdownHierarchy from "@/components/project/CostBreakdownHierarchy";
 import type {
@@ -24,6 +23,7 @@ import { formatMoney } from "@/components/project/CostBreakdownTree";
 import GreenElementsScreen from "@/components/assessment/GreenElementsScreen";
 import { BackButton } from "@/components/ui/BackButton";
 import { useAuth } from "@/contexts/AuthContext";
+import LoadingOverlay from "@/components/ui/LoadingOverlay";
 
 type ID = string | number;
 
@@ -733,8 +733,10 @@ export default function AssessmentResultsPage() {
   const handleProceedWithChangedCert = useCallback(() => {
     proceedChangedCertRef.current = certificationLevel;
     setShowCertBelowModal(false);
-    showSubmitConfirmation();
-  }, [certificationLevel, showSubmitConfirmation]);
+    // Marks are below the target, so the user already acknowledged the cert
+    // change in the first modal — submit right away without a second confirm.
+    handleSubmitAssessment();
+  }, [certificationLevel, handleSubmitAssessment]);
 
   const handleCancelCertChange = useCallback(() => {
     setShowCertBelowModal(false);
@@ -1104,18 +1106,7 @@ export default function AssessmentResultsPage() {
 
       {/* Submission overlay loading indicator */}
       {submitting && (
-        <div
-          className="fixed inset-0 z-[60] flex items-center justify-center bg-[#1E2621]/60 p-4 backdrop-blur-sm"
-          role="status"
-          aria-live="polite"
-        >
-          <div className="flex items-center gap-3 rounded-full border border-[#E4E1D8] bg-white px-6 py-3.5 shadow-[0_24px_48px_rgba(30,38,33,0.18)]">
-            <Loader2 size={18} className="animate-spin text-[#3E6B52]" />
-            <span className="text-[13.5px] font-semibold text-[#1E2621]">
-              Submitting assessment…
-            </span>
-          </div>
-        </div>
+        <LoadingOverlay title="Submitting assessment…" className="z-[60]" />
       )}
     </>
   );
