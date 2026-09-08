@@ -78,7 +78,7 @@ export async function proxy(request: NextRequest) {
             Authorization: `Bearer ${token}`,
           },
           cache: 'no-store',
-          signal: AbortSignal.timeout(5_000),
+          signal: AbortSignal.timeout(30_000),
         });
 
         if (res.status === 401 || res.status === 403) {

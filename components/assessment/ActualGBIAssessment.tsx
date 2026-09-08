@@ -27,6 +27,7 @@ import {
   Award,
   Lightbulb,
   Landmark,
+  XCircle,
 } from "lucide-react";
 import CustomDropdown from "../form/CustomDropdown";
 import ReactMarkdown from "react-markdown";
@@ -2165,11 +2166,11 @@ const ActualGBIAssessment = ({
                   : "0 1px 2px rgba(28,31,29,0.03)",
             }}
           >
-            <div className="px-5 py-4.5">
-              <div className="flex items-start justify-between gap-3">
+            <div className="px-4 py-3.5 sm:px-5 sm:py-4.5 lg:px-6">
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between sm:gap-3">
                 <div className="min-w-0 flex-1">
                   <span
-                    className={`block text-[13.5px] leading-5 tracking-[-0.01em] ${
+                    className={`block text-[13px] leading-5 tracking-[-0.01em] sm:text-[13.5px] lg:text-sm ${
                       hasSubitems
                         ? "font-semibold text-[#1C1F1D]/90"
                         : "font-medium text-[#1C1F1D]/80"
@@ -2179,7 +2180,7 @@ const ActualGBIAssessment = ({
                   </span>
 
                   {(hasSubitems && !allSubitemsMatch) ? (
-                    <div className="mt-1 flex items-center gap-1.5">
+                    <div className="flex flex-wrap items-center justify-end gap-1.5 sm:flex-nowrap">
                       <AlertTriangle
                         className="h-3 w-3 shrink-0"
                         style={{ color: T.mismatch }}
@@ -2236,11 +2237,12 @@ const ActualGBIAssessment = ({
 
                   <button
                     type="button"
-                    onClick={() => handleInfoGuideOpen(buildSupplementalInfo(item), "ESG & Suggestions", "Details")}
-                    className="flex h-7 items-center gap-1 rounded-lg bg-[#B7791F]/[0.08] px-2 text-[10px] font-bold text-[#9A6418] transition-colors hover:bg-[#B7791F]/[0.14]"
-                    aria-label="ESG and suggestions"
+                    onClick={() => handleInfoGuideOpen(buildSupplementalInfo(item), "Suggestions", "Details")}
+                    className="flex h-8 sm:h-7 items-center gap-1 rounded-lg bg-[#B7791F]/[0.08] px-2.5 sm:px-2 text-[10.5px] sm:text-[10px] font-bold text-[#9A6418] transition-colors hover:bg-[#B7791F]/[0.14]"
+                    aria-label="Suggestions"
                   >
-                    <FileText size={12} /> ESG
+                    <FileText size={12} />
+                    <span className="hidden md:flex">Suggestions</span>
                   </button>
                 </div>
               </div>
@@ -2272,7 +2274,7 @@ const ActualGBIAssessment = ({
                         return (
                           <div
                             key={oi}
-                            className="rounded-2xl px-3.5 py-3 transition-all duration-150"
+                            className="rounded-2xl px-3 py-2.5 sm:px-3.5 sm:py-3 transition-all duration-150"
                             style={{
                               background: actualOptionChecked
                                 ? `${T.actual}0D`
@@ -2288,7 +2290,7 @@ const ActualGBIAssessment = ({
                           >
                             <div className="flex items-center">
                               <span
-                                className={`flex-1 pr-2 text-[13px] leading-5 ${
+                                className={`flex-1 pr-2 text-[12.5px] leading-5 sm:text-[13px] ${
                                   isChecked || actualOptionChecked
                                     ? "font-semibold"
                                     : "font-normal text-[#1C1F1D]/60"
@@ -2447,7 +2449,7 @@ const ActualGBIAssessment = ({
                             return (
                               <div
                                 key={`${group.id}-${gi}`}
-                                className="rounded-[18px] border p-3.5 transition-all duration-200 ease-out"
+                                className="rounded-2xl sm:rounded-[18px] border p-3 sm:p-3.5 transition-all duration-200 ease-out"
                                 style={{
                                   borderColor: isActive
                                     ? `${T.predicted}4D`
@@ -2598,7 +2600,7 @@ const ActualGBIAssessment = ({
           </div>
 
           {hasSubitems ? (
-            <div className="m-2 bg-white rounded-xl border-t border-[#1C1F1D]/6 px-5 py-3.5">
+            <div className="m-2 bg-white rounded-xl border-t border-[#1C1F1D]/6 px-4 py-3 sm:px-5 sm:py-3.5">
               {(() => {
                 const priorCustomInputs = Array.from(
                   new Set([
@@ -2627,7 +2629,7 @@ const ActualGBIAssessment = ({
                         return (
                           <div
                             key={subitem.id}
-                            className="rounded-[14px] border bg-white px-3.5 py-2.5"
+                            className="rounded-[14px] border bg-white px-3 py-2.5 sm:px-3.5"
                             style={{
                               borderColor: differs
                                 ? `${T.mismatch}33`
@@ -2713,7 +2715,7 @@ const ActualGBIAssessment = ({
                                   <button
                                     type="button"
                                     onClick={() => deleteCustomItem(item.id, customItem.id)}
-                                    className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[#1E2621]/30 transition-colors hover:bg-red-50 hover:text-red-500"
+                                    className="flex h-9 w-9 sm:h-7 sm:w-7 shrink-0 items-center justify-center rounded-full text-[#1E2621]/30 transition-colors hover:bg-red-50 hover:text-red-500"
                                   >
                                     <Trash2 size={13} />
                                   </button>
@@ -2847,7 +2849,7 @@ const ActualGBIAssessment = ({
   }
 
   return (
-    <div className="flex h-full min-h-150 flex-1 flex-col ">
+    <div className="flex h-full min-h-150 flex-1 flex-col md:px-4">
       <AnimatePresence>
         {showOverview && selectedCriterionData && (
           <motion.div
@@ -2855,53 +2857,60 @@ const ActualGBIAssessment = ({
             animate={{ y: 0, opacity: 1 }}
             exit={{ y: -60, opacity: 0 }}
             transition={{ duration: 0.25, ease: [0.22, 1, 0.36, 1] }}
-            className="fixed inset-x-0 top-3 z-40 flex justify-center px-4"
+            className="fixed inset-x-0 top-12 z-40 md:top-16"
           >
-            <div
-              className="flex w-full max-w-xl cursor-pointer items-center gap-3 rounded-full border border-[#E4E1D8] bg-white/95 px-4 py-2.5 shadow-[0_8px_24px_rgba(30,38,33,0.14)] backdrop-blur-md"
-              onClick={() => scrollAssessmentToTop()}
-            >
-              <div className="flex min-w-0 flex-1 items-center gap-2">
-                <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[#3E6B52]/9">
-                  <Leaf size={12} className="text-[#3E6B52]" />
-                </span>
-                <span className="truncate text-[12.5px] font-semibold text-[#1C1F1D]/85">
-                  {selectedCriterionData.name}
-                </span>
-                <span className="shrink-0 rounded-full bg-[#1C1F1D]/5 px-2 py-0.5 font-mono text-[10.5px] font-bold text-[#1C1F1D]/50">
-                  {Math.round(
-                    calculateActualCumulativeMarks(selectedCriterionData) || 0,
-                  )}
-                  /
-                  {selectedCriterionData.total_marks || 0}
-                </span>
-              </div>
+            {/* Smooth blur overlay fading into content */}
+            <div className="h-16 bg-white-900 to-transparent backdrop-blur-md md:h-0" />
 
-              <div className="hidden items-center gap-2 sm:flex">
-                <span className="rounded-full bg-[#1C1F1D]/5 px-2 py-0.5 font-mono text-[10.5px] font-bold text-[#1C1F1D]/50">
-                  Predicted{" "}
-                  {Math.round(
-                    calculateCumulativeMarks(selectedCriterionData) || 0,
-                  )}
-                  /
-                  {selectedCriterionData.total_marks || 0}
-                </span>
-              </div>
+            {/* Floating pill */}
+            <div className="absolute top-2 flex w-full justify-center px-3 sm:top-3 sm:px-4">
+              <div
+                className="flex w-full max-w-xl cursor-pointer items-center gap-2 rounded-full border border-[#E4E1D8] bg-white/95 px-3 py-2 shadow-[0_8px_24px_rgba(30,38,33,0.14)] backdrop-blur-md sm:gap-3 sm:px-4 sm:py-2.5"
+                onClick={() => scrollAssessmentToTop()}
+              >
+                <div className="flex min-w-0 flex-1 items-center gap-1.5 sm:gap-2">
+                  <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[#3E6B52]/9 sm:h-6 sm:w-6">
+                    <Leaf size={12} className="text-[#3E6B52]" />
+                  </span>
+                  <span className="min-w-0 truncate text-[12px] font-semibold text-[#1C1F1D]/85 sm:text-[12.5px]">
+                    {selectedCriterionData.name}
+                  </span>
+                </div>
 
-              {handleExportGbiPdf && (
-                <button
-                  type="button"
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    handleExportGbiPdf();
-                  }}
-                  disabled={gbiExporting}
-                  className="ml-1 flex shrink-0 items-center gap-1.5 rounded-full border border-[#E4E1D8] bg-white px-3 py-1.5 text-[11px] font-semibold text-[#5B655F] shadow-[0_1px_2px_rgba(30,38,33,0.04)] transition-colors hover:border-[#BFD6C8] hover:text-[#2C4A3A] disabled:cursor-not-allowed disabled:opacity-60"
-                >
-                  <FileDown size={12} />
-                  {gbiExporting ? "PDF…" : "Export"}
-                </button>
-              )}
+                <div className="items-center gap-2 sm:flex">
+                  <span className="whitespace-nowrap rounded-full bg-[#1C1F1D]/5 px-1.5 py-0.5 font-mono text-[10px] font-bold text-[#1C1F1D]/50 sm:px-2 sm:text-[10.5px]">
+                    Predicted{" "}
+                    {Math.round(
+                      calculateCumulativeMarks(selectedCriterionData) || 0,
+                    )}
+                    /
+                    {selectedCriterionData.total_marks || 0}
+                  </span>
+
+                  <span className="shrink-0 whitespace-nowrap rounded-full bg-[#1C1F1D]/5 px-1.5 py-0.5 font-mono text-[10px] font-bold text-[#1C1F1D]/50 sm:px-2 sm:text-[10.5px]">
+                    Actual {Math.round(
+                      calculateActualCumulativeMarks(selectedCriterionData) || 0,
+                    )}
+                    /
+                    {selectedCriterionData.total_marks || 0}
+                  </span>
+                </div>
+
+                {handleExportGbiPdf && (
+                  <button
+                    type="button"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      handleExportGbiPdf();
+                    }}
+                    disabled={gbiExporting}
+                    className="ml-1 flex shrink-0 items-center gap-1.5 rounded-full border border-[#E4E1D8] bg-white px-3 py-1.5 text-[11px] font-semibold text-[#5B655F] shadow-[0_1px_2px_rgba(30,38,33,0.04)] transition-colors hover:border-[#BFD6C8] hover:text-[#2C4A3A] disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    <FileDown size={12} />
+                    {gbiExporting ? "PDF…" : "Export"}
+                  </button>
+                )}
+              </div>
             </div>
           </motion.div>
         )}
@@ -3310,9 +3319,10 @@ function IconGhostButton({
     <button
       type="button"
       onClick={onPress}
-      className="flex h-7 w-7 items-center justify-center rounded-full transition-colors duration-150 hover:bg-[#1C1F1D]/6"
+      className="flex h-8 sm:h-7 items-center gap-1 rounded-lg bg-grey/[0.18] px-2.5 sm:px-2 text-[10.5px] sm:text-[10px] font-bold text-slate transition-colors hover:bg-grey/[0.24]"
     >
       <IconCmp size={14} style={{ color }} />
+      <span className="hidden md:flex">Info</span>
     </button>
   );
 }
@@ -3341,165 +3351,194 @@ function SelectionCompareBlock({
   );
 }
 
-/* ── Certification Gauge ── */
-
 const GAUGE_BANDS = [
   { key: "Not Certified", color: "#B4483C" },
   { key: "Certified", color: "#B8935B" },
   { key: "Silver", color: "#9AA0A6" },
   { key: "Gold", color: "#C9962E" },
   { key: "Platinum", color: "#3E6B52" },
-] as const;
+];
+
+/* ── Certification Gauge ── */
 
 function CertificationGauge({
   totalMarks,
-  certifiedScaleRange,
-  predictedMarks,
+  certifiedScaleRange = {
+    "Not Certified": [0, 39],
+    Certified: [40, 49],
+    Silver: [50, 64],
+    Gold: [65, 79],
+    Platinum: [80, 100],
+  } satisfies Record<string, [number, number]>,
 }: {
   totalMarks: number;
-  certifiedScaleRange: Record<string, [number, number]>;
-  predictedMarks?: number | null;
+  certifiedScaleRange?: Record<string, [number, number]>;
+  predictedMarks?: number;
 }) {
   const MAX = 100;
 
-  const bands = GAUGE_BANDS.map(({ key, color }) => {
+  const bands = GAUGE_BANDS.map(({ key, color }, index) => {
     const range = certifiedScaleRange[key];
     const min = range?.[0] ?? 0;
     const max = range?.[1] ?? 0;
-    const left = (min / MAX) * 100;
-    const right = (max / MAX) * 100;
-    return { key, min, max, color, left, right };
+
+    const isLastBand = index === GAUGE_BANDS.length - 1;
+
+    return {
+      key,
+      min,
+      max,
+      color,
+      left: (min / MAX) * 100,
+      right: ((isLastBand ? max : max + 1) / MAX) * 100,
+    };
   });
 
   const markerPct = Math.min(100, Math.max(0, (totalMarks / MAX) * 100));
-  const activeBand = bands.find(
-    (b) => totalMarks >= b.min && totalMarks <= b.max,
-  );
+  const markerLeft = totalMarks;
+  const activeBand =
+    bands.find((b) => totalMarks >= b.min && totalMarks <= b.max) ??
+    bands[bands.length - 1];
 
-  const predictedPct =
-    predictedMarks != null
-      ? Math.min(100, Math.max(0, (predictedMarks / MAX) * 100))
-      : undefined;
-  const predictedBand =
-    predictedMarks != null
-      ? bands.find((b) => predictedMarks >= b.min && predictedMarks <= b.max)
-      : undefined;
+  const activeIndex = GAUGE_BANDS.findIndex((b) => b.key === activeBand.key);
+  const nextBand = GAUGE_BANDS[Math.min(activeIndex + 1, GAUGE_BANDS.length - 1)];
+  const pointsNeeded = certifiedScaleRange[nextBand.key][0] - totalMarks;
+  const atTopBand = activeBand.key === "Platinum";
 
   return (
-    <section className="relative mb-6 mt-1.5 overflow-hidden rounded-3xl border border-[#E4E1D8] bg-[#FDFDFC] p-5 shadow-[0_1px_2px_rgba(30,38,33,0.04)] sm:p-8">
-      <div
-        className="pointer-events-none absolute -right-10 -top-10 h-40 w-40 rounded-full opacity-[0.4]"
-        style={{
-          background: `radial-gradient(circle, ${activeBand?.color ?? "#B7BEB8"}55 0%, transparent 70%)`,
-        }}
-      />
-      <div className="relative flex flex-wrap items-start justify-between gap-5">
-        <div>
+    <div className="flex flex-col gap-5">
+      {/* Overall score card */}
+      <section className="rounded-2xl border border-[#E4E1D8] bg-[#FDFDFC] p-5 shadow-[0_1px_2px_rgba(30,38,33,0.04)]">
+        <div className="flex flex-wrap items-start justify-between gap-2">
+          <div className="text-[13px] font-medium text-[#7C8680]">Overall score</div>
           <div
-            className="text-[11px] uppercase tracking-[0.14em] text-[#8A938C]"
-            style={{ fontFamily: "var(--font-mono)" }}
+            className="inline-flex shrink-0 items-center gap-1.5 rounded-full border px-3 py-1"
+            style={{ borderColor: `${activeBand.color}55`, backgroundColor: `${activeBand.color}14` }}
           >
-            GBI certification score
-          </div>
-          <div className="mt-1.5 flex flex-wrap items-baseline gap-x-3 gap-y-1">
-            <span className="font-serif text-[28px] font-semibold leading-none tabular-nums text-[#2C4A3A] sm:text-[34px] md:text-[42px]">
-              {totalMarks}
+            <XCircle size={13} style={{ color: activeBand.color }} />
+            <span className="whitespace-nowrap text-[12px] font-semibold" style={{ color: activeBand.color }}>
+              {activeBand.key}
             </span>
-            <span className="font-mono text-[16px] font-medium text-[#8A938C]">
-              / 100 pts
-            </span>
-          </div>
-          <div className="mt-1 text-[12.5px] text-[#8A938C]">
-            Enter assessment marks against each criterion below.
           </div>
         </div>
 
-        <div
-          className="flex shrink-0 -rotate-2 items-center gap-2 rounded-lg border-2 border-dashed px-3.5 py-2"
-          style={{
-            borderColor: activeBand?.color ?? "#B7BEB8",
-            color: activeBand?.color ?? "#8A938C",
-          }}
-        >
-          <Award size={15} />
+        <div className="mt-1.5 flex items-baseline gap-x-2">
           <span
-            className="text-[11.5px] font-bold uppercase tracking-[0.06em]"
-            style={{ fontFamily: "var(--font-mono)" }}
+            className="font-serif text-[40px] font-semibold leading-none text-[#1E2621] sm:text-[44px]"
+            style={{ fontFamily: "var(--font-display)" }}
           >
-            {activeBand?.key ?? "N/A"}
+            {totalMarks}
           </span>
+          <span className="text-[14px] font-medium text-[#7C8680] sm:text-[15px]">/ 100 points</span>
         </div>
-      </div>
 
-      <div className="relative mt-6">
-        <div className="relative h-2.5 rounded-full bg-[#EFEDE6]">
-          <div
-            className="absolute inset-y-0 left-0 rounded-full transition-[width] duration-300"
-            style={{
-              width: `${markerPct}%`,
-              background: activeBand?.color ?? "#B7BEB8",
-            }}
-          />
-          {bands.map((band) => (
-            <div
-              key={band.key}
-              className="absolute top-1/2 h-4 w-0.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-[#1E2621]"
-              style={{ left: `${band.left}%` }}
-            />
-          ))}
-          <div
-            className="absolute top-1/2 h-4 w-0.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-[#1E2621]"
-            style={{ left: `100%` }}
-          />
+        {!atTopBand && (
+          <>
+            <div className="my-4 h-px bg-[#E4E1D8]" />
+            <div className="text-[13.5px]">
+              <span className="font-semibold" style={{ color: "#C9962E" }}>
+                {pointsNeeded} points needed
+              </span>{" "}
+              <span className="text-[#1E2621]">to reach {nextBand.key}</span>
+            </div>
+          </>
+        )}
+      </section>
 
-          {predictedBand && predictedPct != null && (
-            <div
-              className="absolute -top-7 -translate-x-1/2"
-              style={{ left: `${predictedPct}%` }}
-            >
-              <div className="flex flex-col items-center gap-1.5">
+      {/* Certification progress card */}
+      <section className="relative rounded-2xl border border-[#E4E1D8] bg-[#FDFDFC] p-5 shadow-[0_1px_2px_rgba(30,38,33,0.04)] sm:p-6">
+        <div
+          className="pointer-events-none absolute -right-10 -top-10 h-40 w-40 overflow-hidden rounded-full opacity-[0.35]"
+          style={{ background: `radial-gradient(circle, ${activeBand.color}55 0%, transparent 70%)` }}
+        />
+        <h2 className="relative text-[15px] font-semibold text-[#1E2621]" style={{ fontFamily: "var(--font-display)" }}>
+          Certification progress
+        </h2>
+
+        <div className="relative mt-6">
+          {/* room above the bar for the "your score" flag so it never clips/wraps */}
+          <div className="relative pt-7">
+            <div className="absolute top-0 -translate-x-1/2 whitespace-nowrap" style={{ left: `${markerLeft}%` }}>
+              <div className="flex flex-col items-center">
                 <span
-                  className="whitespace-nowrap text-[9px] font-bold uppercase tracking-[0.06em] text-[#6B7FD8]"
-                  style={{ fontFamily: "var(--font-mono)" }}
+                  className="text-[9px] font-bold uppercase tracking-[0.06em]"
+                  style={{ color: activeBand?.color ?? "#1E2621", fontFamily: "var(--font-mono)" }}
                 >
-                  Predicted ({predictedMarks})
+                  Your{"\n"}score
                 </span>
-                <svg width="8" height="6" viewBox="0 0 8 6" fill="none">
-                  <path d="M4 6L0 0h8z" fill="#6B7FD8" />
+                <svg width="10" height="8" viewBox="0 0 12 10" fill="none" className="mt-0.5">
+                  <path d="M6 10L0 0h12z" fill={activeBand?.color ?? "#1E2621"} />
                 </svg>
               </div>
             </div>
-          )}
-        </div>
 
-        <div className="relative mt-3 h-9">
-          {bands.map((band) => {
-            const mid = (band.left + band.right) / 2;
-            return (
-              <div
-                key={band.key}
-                className="absolute top-0 flex -translate-x-1/2 flex-col items-center gap-0.5"
-                style={{ left: `${Math.min(96, Math.max(4, mid))}%` }}
-              >
-                <span
-                  className="h-2 w-2 rounded-full"
-                  style={{ backgroundColor: band.color }}
+            <div className="relative h-2.5 overflow-hidden rounded-full bg-[#EFEDE6]">
+              {bands.map((band, index) => {
+                const achievedEnd = Math.min(markerPct, band.right);
+                const hasAchieved = achievedEnd > band.left;
+                const hasRemaining = band.right > markerPct;
+                const remainingStart = Math.max(band.left, markerPct);
+                return (
+                  <div key={band.key}>
+                    {hasAchieved && (
+                      <div
+                        className="absolute inset-y-0"
+                        style={{ left: `${band.left}%`, width: `${achievedEnd - band.left}%`, backgroundColor: band.color }}
+                      />
+                    )}
+                    {hasRemaining && (
+                      <div
+                        className="absolute inset-y-0"
+                        style={{
+                          left: `${remainingStart}%`,
+                          width: `${band.right}%`,
+                          backgroundColor: band.color,
+                          opacity: 0.28,
+                        }}
+                      />
+                    )}
+                  </div>
+                );
+              })}
+
+              {bands.map((band) => (
+                <div
+                  key={band.key}
+                  className="absolute top-1/2 h-4 w-0.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-white"
+                  style={{ left: `${band.left}%` }}
                 />
-                <span
-                  className="whitespace-nowrap text-[10.5px] text-[#8A938C]"
-                  style={{ fontFamily: "var(--font-mono)" }}
-                >
-                  {band.key}
-                </span>
-                <span className="whitespace-nowrap text-[9px] text-[#B7BEB8] tabular-nums">
-                  {band.min}–{band.max}
-                </span>
+              ))}
+              <div
+                className="absolute top-1/2 h-4 w-0.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-white/70"
+                style={{ left: "100%" }}
+              />
+            </div>
+
+            <div
+              className="absolute h-2.5 w-0.5 -translate-x-1/2"
+              style={{ left: `${markerPct}%`, top: "28px", backgroundColor: activeBand?.color ?? "#1E2621" }}
+            />
+          </div>
+
+          {/* legend: wraps freely at any width, never overlaps */}
+          <div className="mt-6 flex flex-wrap gap-x-5 gap-y-3">
+            {bands.map((band) => (
+              <div key={band.key} className="flex min-w-[62px] items-start gap-1.5">
+                <span className="mt-1 h-2.5 w-2.5 shrink-0 rounded-full ring-2 ring-white" style={{ backgroundColor: band.color }} />
+                <div className="leading-tight">
+                  <div className="whitespace-nowrap text-[11.5px] font-bold" style={{ color: band.color, fontFamily: "var(--font-mono)" }}>
+                    {band.key}
+                  </div>
+                  <div className="whitespace-nowrap text-[10.5px] font-medium tabular-nums" style={{ color: band.color, opacity: 0.75 }}>
+                    {band.min}–{band.max}
+                  </div>
+                </div>
               </div>
-            );
-          })}
+            ))}
+          </div>
         </div>
-      </div>
-    </section>
+      </section>
+    </div>
   );
 }
 

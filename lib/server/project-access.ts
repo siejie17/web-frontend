@@ -2,7 +2,6 @@ import "server-only";
 
 import { cookies } from "next/headers";
 import { ProjectData } from "@/types/project";
-import { computeActualMarks } from "@/lib/assessment-utils";
 
 type AuthUser = {
   id: string;
@@ -37,6 +36,8 @@ export type Project = {
     verification_code: string;
     issued_at?: string | null;
   } | null;
+  changed_cert?: boolean;
+  status?: string;
   created_at?: string;
 };
 
@@ -173,44 +174,52 @@ export async function getOwnedProject(projectId: string) {
   return { user, project, selectedProject, isShared };
 }
 
-async function fetchProjectActualMarks(
-  projectId: number,
+type ActualRatingsResponse = {
+  success?: boolean;
+  ratings?: Record<string, number>;
+};
+
+/**
+ * Fetches actual assessment marks for a set of projects in ONE request,
+ * instead of firing a full /projects/{id} call per project (the old N+1
+ * pattern). The backend loads all actual answers and computes green-element
+ * marks in a single pass.
+ */
+async function fetchActualRatings(
+  projectIds: number[],
   token: string,
-): Promise<number | null> {
-  const data = await fetchAuthedJson<any>(
-    `/projects/${projectId}`,
+): Promise<Record<string, number>> {
+  if (projectIds.length === 0) return {};
+
+  const ids = Array.from(new Set(projectIds));
+  const data = await fetchAuthedJson<ActualRatingsResponse>(
+    `/users/0/projects/actual-ratings?project_ids=${ids.join(",")}`,
     token,
   );
 
-  if (!data) return null;
+  if (!data || !data.ratings) return {};
 
-  const greenElements = data?.green_elements ?? [];
-  const projectData = data?.projectData ?? data;
-
-  if (!Array.isArray(greenElements) || greenElements.length === 0) return null;
-
-  return computeActualMarks(greenElements, projectData);
+  return data.ratings;
 }
 
 async function enrichWithActualRatings(
   projectsList: Project[],
   token: string,
 ): Promise<Project[]> {
-  const actualRatings = await Promise.all(
-    projectsList.map(async (p) => {
-      const marks = await fetchProjectActualMarks(p.id, token);
-      return { id: p.id, marks };
-    }),
-  );
+  if (projectsList.length === 0) return [];
 
-  const ratingMap: Record<number, number | null> = {};
-  actualRatings.forEach((r) => {
-    ratingMap[r.id] = r.marks;
-  });
+  const idList = projectsList
+    .map((p) => Number(p.id))
+    .filter((id) => Number.isFinite(id));
+
+  const ratingMap = await fetchActualRatings(idList, token);
 
   return projectsList.map((p) => ({
     ...p,
-    actual_rating: ratingMap[p.id] ?? p.actual_rating,
+    actual_rating:
+      ratingMap[String(p.id)] ??
+      ratingMap[Number(p.id)] ??
+      p.actual_rating,
   }));
 }
 

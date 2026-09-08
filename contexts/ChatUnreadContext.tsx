@@ -26,7 +26,7 @@ const ChatUnreadContext =
 
 export function ChatUnreadProvider({ children }: { children: ReactNode }) {
   const { user } = useAuth();
-  const [unreadByProject, setUnreadByProject] = useState<Record<number, number>>(
+  const [unreadByProject, setUnreadByProject] = useState<Record<string, number>>(
     {},
   );
   const trackedProjectIdsRef = useRef<number[]>([]);

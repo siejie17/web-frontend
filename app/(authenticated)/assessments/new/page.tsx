@@ -25,6 +25,45 @@
  * vine that fills in as sections complete; the loading state is a
  * small elevation sketching itself in rather than a generic shimmer.
  *
+ * ── Responsive behavior ──────────────────────────────────────────
+ * The desktop "climbing vine" rail (SectionRail) only renders at the
+ * `lg` breakpoint and up, so below that a compact horizontal
+ * MobileSectionNav takes over: a scrollable row of section chips plus
+ * a thin progress bar, pinned just above the form. All spacing,
+ * type sizes, and touch targets scale down through xs → sm → md so
+ * the form is comfortable on phones (~360–430px), small tablets, and
+ * up, without ever requiring horizontal scrolling of the page itself.
+ * Note: this file intentionally carries no horizontal padding of its
+ * own — the authenticated layout's <main> supplies px-10. If that
+ * layout padding is fixed (non-responsive) on very narrow phones,
+ * it should be made responsive (e.g. `px-4 sm:px-6 lg:px-10`) in
+ * app/(authenticated)/layout.tsx, since this page can't override it
+ * without risking doubled padding on other pages that share it.
+ *
+ * ── Sticky header offset ─────────────────────────────────────────
+ * Both the desktop SectionRail and the mobile/tablet MobileSectionNav
+ * are `sticky`-positioned progress cards. Because the authenticated
+ * layout owns a persistent sticky header above this page, a naive
+ * `top-0` (or any fixed `top-N` that doesn't know the header's
+ * height) causes the card to pin *underneath* the header instead of
+ * just below it — the header's higher z-index then visually clips
+ * the top of the card as the page scrolls. Both components read the
+ * header height from a `--app-header-h` CSS custom property (with a
+ * 4rem fallback) instead of a hardcoded offset. Set this once, e.g.
+ * in the authenticated layout:
+ *
+ *   <div style={{ "--app-header-h": "64px" } as React.CSSProperties}>
+ *
+ * ...or globally in CSS (`:root { --app-header-h: 64px; }`) if the
+ * header height is constant. Update the value if the header's height
+ * ever changes (e.g. a taller header on mobile).
+ *
+ * The loading skeletons for both components now mirror the exact
+ * same sticky offset and height as their loaded counterparts (they
+ * previously used different offsets — `top-14` vs `top-4` on desktop,
+ * and no sticky at all on the mobile skeleton), so the card no longer
+ * visibly jumps position the instant form-input data finishes loading.
+ *
  * ── Live budget prediction ──────────────────────────────────────
  * Once Category, Year, Building Size, State, Region (when applicable)
  * and Structure are all filled in, a debounced call fires against a
@@ -37,7 +76,14 @@
  * ---------------------------------------------------------------
  */
 
-import { useEffect, useRef, useState, useMemo, useId, useCallback } from "react";
+import {
+  useEffect,
+  useRef,
+  useState,
+  useMemo,
+  useId,
+  useCallback,
+} from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
   ChevronDown,
@@ -60,6 +106,8 @@ import {
 import type { LucideIcon } from "lucide-react";
 import { FormInputs } from "@/types/form";
 import { BackButton } from "@/components/ui/BackButton";
+import InfoTooltip from "@/components/ui/InfoTooltip";
+import LoadingOverlay from "@/components/ui/LoadingOverlay";
 
 const currentYear = new Date().getFullYear();
 const YEAR_LIST = Array.from({ length: 6 }, (_, i) => String(currentYear + i));
@@ -81,6 +129,12 @@ const TONE: Record<Tone, { solid: string; text: string; soft: string }> = {
   neutral: { solid: "#8A938C", text: "#8A938C", soft: "#F6F6F2" },
 };
 
+// Shared sticky-offset helper for the progress card (desktop rail +
+// mobile/tablet nav). Reads the layout's --app-header-h custom
+// property so the card sticks just below the persistent header
+// rather than underneath it. See file header comment for setup.
+const STICKY_TOP = "top-[calc(var(--app-header-h,4rem)+0.75rem)]";
+
 const formatMoney = (n: number) =>
   `RM ${Math.round(n).toLocaleString("en-MY")}`;
 
@@ -100,47 +154,47 @@ const formatMoney = (n: number) =>
  * below exist purely to simulate what a real, fast prediction call
  * would feel like in the UI.
  */
- let predictionController: AbortController | null = null;
+let predictionController: AbortController | null = null;
 
- async function predictCostAPI(
-   params: {
-     type: string;
-     category: string;
-     year: string;
-     buildingSize: number;
-     state: string;
-     region: string | null;
-     structure: string;
-   },
-   signal: AbortSignal
- ): Promise<number> {
-   const response = await fetch("/be-api/assessment/prediction-cost", {
-     method: "POST",
-     signal,
-     headers: {
-       "Content-Type": "application/json",
-     },
-     body: JSON.stringify({
-       predictionData: {
-         type: params.type,
-         category: params.category,
-         year: Number(params.year),
-         size: params.buildingSize,
-         state: params.state,
-         region: params.region,
-         structure: params.structure,
-       },
-     }),
-   });
+async function predictCostAPI(
+  params: {
+    type: string;
+    category: string;
+    year: string;
+    buildingSize: number;
+    state: string;
+    region: string | null;
+    structure: string;
+  },
+  signal: AbortSignal,
+): Promise<number> {
+  const response = await fetch("/be-api/assessment/prediction-cost", {
+    method: "POST",
+    signal,
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      predictionData: {
+        type: params.type,
+        category: params.category,
+        year: Number(params.year),
+        size: params.buildingSize,
+        state: params.state,
+        region: params.region,
+        structure: params.structure,
+      },
+    }),
+  });
 
-   const data = await response.json();
+  const data = await response.json();
 
-   if (!response.ok || !data.success) {
-     throw new Error(data.message ?? "Prediction failed.");
-   }
+  if (!response.ok || !data.success) {
+    throw new Error(data.message ?? "Prediction failed.");
+  }
 
-   return data.data.totalCost;
- }
+  return data.data.totalCost;
+}
 
 /* ---------------- Page ---------------- */
 
@@ -282,16 +336,10 @@ export default function NewAssessmentPage() {
    * appearing in the tally once a budget happens to be entered.
    */
   const requiredTotal =
-    3 +
-    (hasClassifications ? 2 : 0) +
-    5 +
-    (showRegion ? 1 : 0);
+    3 + (hasClassifications ? 2 : 0) + 5 + (showRegion ? 1 : 0);
   const requiredDone =
-    [
-      projectName.trim() !== "",
-      !!buildingType,
-      !!ratingScale,
-    ].filter(Boolean).length +
+    [projectName.trim() !== "", !!buildingType, !!ratingScale].filter(Boolean)
+      .length +
     (hasClassifications
       ? [!!classification, !!managementOption].filter(Boolean).length
       : 0) +
@@ -315,20 +363,48 @@ export default function NewAssessmentPage() {
     projectName.trim() !== "" &&
     !!buildingType &&
     (!hasClassifications || (!!classification && !!managementOption));
-  const sectionLocationDone = !!state && (!showRegion || !!region) && !!structure;
+  const sectionLocationDone =
+    !!state && (!showRegion || !!region) && !!structure;
   const sectionScaleDone =
     !!year && buildingSizeDisplay !== "" && parseFloat(buildingSizeDisplay) > 0;
   const sectionCertificationDone = !!ratingScale;
 
-  const railSections: { id: string; label: string; icon: LucideIcon; done: boolean }[] = [
-    { id: "section-basics", label: "The Basics", icon: ClipboardList, done: sectionBasicsDone },
-    { id: "section-location", label: "Location & Structure", icon: MapPin, done: sectionLocationDone },
-    { id: "section-scale", label: "Scale & Timing", icon: Ruler, done: sectionScaleDone },
-    { id: "section-certification", label: "Certification Target", icon: Award, done: sectionCertificationDone },
+  const railSections: {
+    id: string;
+    label: string;
+    icon: LucideIcon;
+    done: boolean;
+  }[] = [
+    {
+      id: "section-basics",
+      label: "The Basics",
+      icon: ClipboardList,
+      done: sectionBasicsDone,
+    },
+    {
+      id: "section-location",
+      label: "Location & Structure",
+      icon: MapPin,
+      done: sectionLocationDone,
+    },
+    {
+      id: "section-scale",
+      label: "Scale & Timing",
+      icon: Ruler,
+      done: sectionScaleDone,
+    },
+    {
+      id: "section-certification",
+      label: "Certification Target",
+      icon: Award,
+      done: sectionCertificationDone,
+    },
   ];
 
   const scrollToSection = (id: string) => {
-    document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
+    document
+      .getElementById(id)
+      ?.scrollIntoView({ behavior: "smooth", block: "start" });
   };
 
   /* ---- input formatting helpers ---- */
@@ -391,7 +467,16 @@ export default function NewAssessmentPage() {
     if (showRegion && !region) missing.push("Region");
     if (!structure) missing.push("Structure");
     return missing;
-  }, [category, year, buildingSizeDisplay, buildingSizeValue, state, region, structure, showRegion]);
+  }, [
+    category,
+    year,
+    buildingSizeDisplay,
+    buildingSizeValue,
+    state,
+    region,
+    structure,
+    showRegion,
+  ]);
 
   const predictionReady = missingPredictionFields.length === 0;
 
@@ -426,7 +511,7 @@ export default function NewAssessmentPage() {
             region: showRegion ? region : null,
             structure: structure as string,
           },
-          predictionController.signal
+          predictionController.signal,
         );
 
         setPredictedCost(cost);
@@ -471,6 +556,7 @@ export default function NewAssessmentPage() {
   const runAssessment = async () => {
     setOpenField(null);
     setSubmitting(true);
+
     try {
       const data = {
         projectName: projectName.trim(),
@@ -490,6 +576,8 @@ export default function NewAssessmentPage() {
         costPreviewWay: "Detailed",
       };
 
+      const start = performance.now();
+
       const res = await fetch("/be-api/assessment/results", {
         method: "POST",
         headers: {
@@ -498,13 +586,21 @@ export default function NewAssessmentPage() {
         body: JSON.stringify(data),
       });
 
-      const result = await res.json().catch(() => null);
+      console.log(
+        `Assessment request took ${(performance.now() - start).toFixed(0)}ms`,
+      );
 
-      if (result) {
-        sessionStorage.setItem("assessment_result", JSON.stringify(result));
-        router.push("/assessments/new/results");
+      const result = await res.json();
+
+      if (!res.ok) {
+        throw new Error(result?.message || "Assessment failed");
       }
-    } finally {
+
+      sessionStorage.setItem("assessment_result", JSON.stringify(result));
+
+      router.push("/assessments/new/results");
+    } catch (error) {
+      console.error("Error running assessment:", error);
       setSubmitting(false);
     }
   };
@@ -561,21 +657,17 @@ export default function NewAssessmentPage() {
   return (
     <>
       {submitting && (
-        <div className="fixed inset-0 z-10000 flex flex-col items-center justify-center gap-3 bg-[#1E2621]/60 backdrop-blur-sm pointer-events-auto">
-          <Loader2 size={32} className="animate-spin text-[#F6F6F2]" />
-          <p className="text-[15px] font-medium text-[#F6F6F2]">
-            Assessment is running…
-          </p>
-          <p className="text-[13px] text-[#C9D3CC]">
-            Please be patient for a sec
-          </p>
-        </div>
+        <LoadingOverlay
+          title="Assessment is running…"
+          description="Please be patient for a sec"
+          className="z-10000"
+        />
       )}
-      <div className="mx-auto max-w-275 pb-10 pt-6">
+      <div className="mx-auto px-4 pb-8 pt-4 sm:pb-10 sm:pt-6 md:max-w-375">
         <BackButton text="Dashboard" redirect="/dashboard" />
 
         {/* ---------------- Intro ---------------- */}
-        <section className="relative mb-8 overflow-hidden rounded-3xl border border-[#E4E1D8] bg-[#FCFCF8] p-6 shadow-[0_8px_24px_rgba(30,38,33,0.04)] sm:p-8">
+        <section className="relative mb-6 overflow-hidden rounded-2xl border border-[#E4E1D8] bg-[#FCFCF8] p-5 shadow-[0_8px_24px_rgba(30,38,33,0.04)] sm:mb-8 sm:rounded-3xl sm:p-6 md:p-8">
           {/* Ambient blueprint grid — the drafting-paper half of the motif */}
           <div
             aria-hidden="true"
@@ -591,21 +683,21 @@ export default function NewAssessmentPage() {
               opacity: 0.7,
             }}
           />
-          <div className="relative flex flex-col gap-6 sm:flex-row sm:items-start sm:justify-between">
+          <div className="relative flex flex-col gap-5 sm:flex-row sm:items-start sm:justify-between sm:gap-6">
             <div>
               <p
-                className="mb-3 text-[12px] uppercase tracking-[0.08em] text-[#7C8880]"
+                className="mb-2.5 text-[11px] uppercase tracking-[0.08em] text-[#7C8880] sm:mb-3 sm:text-[12px]"
                 style={{ fontFamily: "var(--font-mono)" }}
               >
                 New assessment
               </p>
               <h1
-                className="text-[30px] font-bold leading-[1.15] tracking-[-0.02em] sm:text-[32px]"
+                className="text-[24px] font-bold leading-[1.15] tracking-[-0.02em] sm:text-[30px] md:text-[32px]"
                 style={{ fontFamily: "var(--font-display)" }}
               >
                 High-Level Cost Estimation
               </h1>
-              <p className="mt-3 max-w-lg text-[15px] leading-relaxed text-[#5B655F]">
+              <p className="mt-2.5 text-[14px] leading-relaxed text-[#5B655F] sm:mt-3 sm:text-[15px]">
                 Estimate your project&apos;s performance against the standards
                 for its green building and cost optimisation compliance.
               </p>
@@ -616,7 +708,11 @@ export default function NewAssessmentPage() {
               aria-hidden="true"
               className="relative hidden h-20 w-20 shrink-0 items-center justify-center rounded-2xl border border-dashed border-[#C9D3CC] bg-white/80 backdrop-blur-sm sm:flex"
             >
-              <Building2 size={30} className="text-[#2C4A3A]" strokeWidth={1.5} />
+              <Building2
+                size={30}
+                className="text-[#2C4A3A]"
+                strokeWidth={1.5}
+              />
               <span className="absolute -bottom-2.5 -right-2.5 flex h-8 w-8 items-center justify-center rounded-full border-[3px] border-[#FCFCF8] bg-[#3E6B52] text-white shadow-[0_6px_14px_rgba(62,107,82,0.35)]">
                 <Sprout size={14} />
               </span>
@@ -625,31 +721,48 @@ export default function NewAssessmentPage() {
         </section>
 
         <div className="lg:grid lg:grid-cols-[212px_minmax(0,1fr)] lg:gap-10">
-          {/* ---------------- Section rail (climbing vine) ---------------- */}
-          <SectionRail sections={railSections} onNavigate={scrollToSection} loading={loading} requiredDone={requiredDone} requiredTotal={requiredTotal} progressPct={progressPct} />
+          {/* ---------------- Section rail (climbing vine) — desktop only ---------------- */}
+          <SectionRail
+            sections={railSections}
+            onNavigate={scrollToSection}
+            loading={loading}
+            requiredDone={requiredDone}
+            requiredTotal={requiredTotal}
+            progressPct={progressPct}
+          />
+
+          {/* ---------------- Section nav — mobile/tablet only ---------------- */}
+          <MobileSectionNav
+            sections={railSections}
+            onNavigate={scrollToSection}
+            loading={loading}
+            requiredDone={requiredDone}
+            requiredTotal={requiredTotal}
+            progressPct={progressPct}
+          />
+
           {/* ---------------- Form shell ---------------- */}
           <form
             onSubmit={handleSubmit}
             noValidate
-            className={`relative mb-5 rounded-3xl border border-[#E4E1D8] bg-white shadow-[0_8px_24px_rgba(30,38,33,0.05)] ${submitting ? "pointer-events-none select-none" : ""}`}
+            className={`relative mb-5 rounded-2xl border border-[#E4E1D8] bg-white shadow-[0_8px_24px_rgba(30,38,33,0.05)] sm:rounded-3xl ${submitting ? "pointer-events-none select-none" : ""}`}
             aria-busy={submitting}
           >
-            <div className="overflow-hidden rounded-t-3xl">
+            <div className="overflow-hidden rounded-t-2xl sm:rounded-t-3xl">
               {/* Progress header */}
-              <div className="border-b border-[#EFEDE6] bg-[#FBFAF7] px-7 py-4 sm:px-9">
+              <div className="border-b border-[#EFEDE6] bg-[#FBFAF7] px-4 py-3.5 sm:px-7 sm:py-4 md:px-9">
                 <div className="flex items-center justify-between">
                   <span
-                    className="text-[12px] uppercase tracking-[0.08em] text-[#7C8880]"
+                    className="text-[11px] uppercase tracking-[0.08em] text-[#7C8880] sm:text-[12px]"
                     style={{ fontFamily: "var(--font-mono)" }}
                   >
                     Project details
                   </span>
-
                 </div>
               </div>
             </div>
 
-            <div className="px-7 py-8 sm:px-9 sm:py-9">
+            <div className="px-4 py-6 sm:px-7 sm:py-8 md:px-9 md:py-9">
               {loading ? (
                 <LoadingBlueprint />
               ) : (
@@ -717,7 +830,9 @@ export default function NewAssessmentPage() {
                       openField={openField}
                       setOpenField={setOpenField}
                       error={errors.category}
-                      hint={hint?.field === "category" ? hint.message : undefined}
+                      hint={
+                        hint?.field === "category" ? hint.message : undefined
+                      }
                       onDismissHint={() => dismissHint("category")}
                       onSelect={(v) => {
                         setCategory(v);
@@ -891,39 +1006,38 @@ export default function NewAssessmentPage() {
                         clearError("year");
                       }}
                       isLastInSection
-                      />
+                    />
 
-                      <TextField
-                        name="projectBudget"
-                        label="Project/Building Estimation"
-                        placeholder="Enter budget or leave empty"
-                        value={budgetDisplay}
-                        onChange={handleBudgetChange}
-                        error={errors.projectBudget}
-                        inputMode="numeric"
-                        required={false}
-                        prefix="RM"
-                      />
+                    <TextField
+                      name="projectBudget"
+                      label="Project/Building Estimation"
+                      placeholder="Enter budget or leave empty"
+                      value={budgetDisplay}
+                      onChange={handleBudgetChange}
+                      error={errors.projectBudget}
+                      inputMode="numeric"
+                      required={false}
+                      prefix="RM"
+                    />
 
-                      {missingPredictionFields.length > 0 ? (
-                        <p className="mt-1.5 flex items-start gap-1.5 rounded-lg border border-[#EFC98A] bg-[#FFF8EA] px-3 py-2 text-[11.5px] leading-relaxed text-[#9A6B27]">
-                          <AlertTriangle size={12} className="mt-0.5 shrink-0" />
-                          <span>
-                            For a live cost estimate against your budget, fill
-                            in:{" "}
-                            <span className="font-semibold">
-                              {missingPredictionFields.join(", ")}
-                            </span>
-                            .
+                    {missingPredictionFields.length > 0 ? (
+                      <p className="mt-1.5 flex items-start gap-1.5 rounded-lg border border-[#EFC98A] bg-[#FFF8EA] px-3 py-2 text-[11.5px] leading-relaxed text-[#9A6B27]">
+                        <AlertTriangle size={12} className="mt-0.5 shrink-0" />
+                        <span>
+                          For a live cost estimate against your budget, fill in:{" "}
+                          <span className="font-semibold">
+                            {missingPredictionFields.join(", ")}
                           </span>
-                        </p>
-                      ) : (
-                        <BudgetPredictionIndicator
-                          predictedCost={predictedCost}
-                          predictionLoading={predictionLoading}
-                          budgetRaw={budgetRaw}
-                        />
-                      )}
+                          .
+                        </span>
+                      </p>
+                    ) : (
+                      <BudgetPredictionIndicator
+                        predictedCost={predictedCost}
+                        predictionLoading={predictionLoading}
+                        budgetRaw={budgetRaw}
+                      />
+                    )}
                   </FormSection>
 
                   <FormSection
@@ -965,7 +1079,7 @@ export default function NewAssessmentPage() {
                     />
                   </FormSection>
 
-                  <div className="mt-6 flex flex-col items-center gap-3 border-t border-[#EFEDE6] pt-7 sm:flex-row sm:justify-between">
+                  <div className="mt-6 flex flex-col items-center gap-3 border-t border-[#EFEDE6] pt-6 sm:pt-7 sm:flex-row sm:justify-between">
                     <p className="text-[12.5px] text-[#8A938C]" />
                     <button
                       type="submit"
@@ -999,11 +1113,11 @@ export default function NewAssessmentPage() {
       {/* ── Not Certified confirmation modal ── */}
       {showNotCertModal && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-[#1E2621]/50 p-4 backdrop-blur-md animate-[fadeIn_0.2s_ease-out]"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-[#1E2621]/50 p-4 backdrop-blur-md animate-[fadeIn_0.2s_ease-out] sm:items-center"
           onClick={() => setShowNotCertModal(false)}
         >
           <div
-            className="relative w-full max-w-sm overflow-hidden rounded-[28px] border border-[#EDEAE1] bg-white shadow-[0_32px_64px_-12px_rgba(30,38,33,0.28)] animate-[riseIn_0.28s_cubic-bezier(0.16,1,0.3,1)]"
+            className="relative max-h-[92vh] w-full max-w-sm overflow-y-auto overflow-x-hidden rounded-[24px] border border-[#EDEAE1] bg-white shadow-[0_32px_64px_-12px_rgba(30,38,33,0.28)] animate-[riseIn_0.28s_cubic-bezier(0.16,1,0.3,1)] sm:rounded-[28px]"
             onClick={(e) => e.stopPropagation()}
           >
             {/* Ambient top glow */}
@@ -1020,14 +1134,14 @@ export default function NewAssessmentPage() {
               type="button"
               onClick={() => setShowNotCertModal(false)}
               aria-label="Close"
-              className="absolute right-4 top-4 z-10 flex h-8 w-8 items-center justify-center rounded-full text-[#9BA39C] transition-colors hover:bg-[#F6F6F2] hover:text-[#5B655F]"
+              className="absolute right-3 top-3 z-10 flex h-9 w-9 items-center justify-center rounded-full text-[#9BA39C] transition-colors hover:bg-[#F6F6F2] hover:text-[#5B655F] sm:right-4 sm:top-4 sm:h-8 sm:w-8"
             >
               <X size={16} />
             </button>
 
-            <div className="relative px-7 pb-7 pt-8">
+            <div className="relative px-5 pb-6 pt-7 sm:px-7 sm:pb-7 sm:pt-8">
               {/* Icon badge */}
-              <div className="mb-5 flex justify-center">
+              <div className="mb-4 flex justify-center sm:mb-5">
                 <div className="relative flex h-14 w-14 items-center justify-center">
                   <span className="absolute inset-0 rounded-full bg-[#FFF1E0]" />
                   <span className="absolute inset-0 animate-[pulseRing_2.4s_ease-out_infinite] rounded-full ring-2 ring-[#EFC98A]" />
@@ -1043,51 +1157,53 @@ export default function NewAssessmentPage() {
               <div className="text-center">
                 <h3
                   id="not-cert-modal-title"
-                  className="text-[17px] font-semibold tracking-tight text-[#1E2621]"
+                  className="text-[16px] font-semibold tracking-tight text-[#1E2621] sm:text-[17px]"
                   style={{ fontFamily: "var(--font-display)" }}
                 >
                   Not Certified option selected
                 </h3>
-                <p className="mx-auto mt-2 max-w-70 text-[13.5px] leading-relaxed text-[#5B655F]">
+                <p className="mx-auto mt-2 max-w-70 text-[13px] leading-relaxed text-[#5B655F] sm:text-[13.5px]">
                   Your project will skip Green Building Index assessment and
                   won&apos;t carry a verified green credential.
                 </p>
               </div>
 
-              {/* Tier ladder */}
-              <div className="mt-6 rounded-2xl border border-[#EDEAE1] bg-[#FAFAF7] px-4 py-4">
-                <div className="flex items-center justify-between gap-1.5">
-                  {CERT_TIERS.map((tier, i) => {
-                    const active = tier === "Not Certified";
-                    return (
-                      <div
-                        key={tier}
-                        className="flex flex-1 items-center gap-1.5"
-                      >
-                        <div className="flex flex-1 flex-col items-center gap-1.5">
-                          <span
-                            className={`h-2 w-full rounded-full transition-colors ${
-                              active ? "bg-[#C08A3E]" : "bg-[#E4E1D8]"
-                            }`}
-                          />
-                          <span
-                            className={`text-center text-[9.5px] font-medium leading-tight ${
-                              active ? "text-[#B8935B]" : "text-[#9BA39C]"
-                            }`}
-                          >
-                            {tier}
-                          </span>
+              {/* Tier ladder — scrolls horizontally on narrow phones instead of squeezing */}
+              <div className="mt-5 rounded-2xl border border-[#EDEAE1] bg-[#FAFAF7] px-3 py-4 sm:mt-6 sm:px-4">
+                <div className="-mx-1 overflow-x-auto px-1">
+                  <div className="flex min-w-[420px] items-center justify-between gap-1.5 sm:min-w-0">
+                    {CERT_TIERS.map((tier, i) => {
+                      const active = tier === "Not Certified";
+                      return (
+                        <div
+                          key={tier}
+                          className="flex flex-1 items-center gap-1.5"
+                        >
+                          <div className="flex flex-1 flex-col items-center gap-1.5">
+                            <span
+                              className={`h-2 w-full rounded-full transition-colors ${
+                                active ? "bg-[#C08A3E]" : "bg-[#E4E1D8]"
+                              }`}
+                            />
+                            <span
+                              className={`text-center text-[9.5px] font-medium leading-tight ${
+                                active ? "text-[#B8935B]" : "text-[#9BA39C]"
+                              }`}
+                            >
+                              {tier}
+                            </span>
+                          </div>
+                          {i < CERT_TIERS.length - 1 && (
+                            <ArrowRight
+                              size={10}
+                              strokeWidth={2.5}
+                              className="mb-4 shrink-0 text-[#D8D4C8]"
+                            />
+                          )}
                         </div>
-                        {i < CERT_TIERS.length - 1 && (
-                          <ArrowRight
-                            size={10}
-                            strokeWidth={2.5}
-                            className="mb-4 shrink-0 text-[#D8D4C8]"
-                          />
-                        )}
-                      </div>
-                    );
-                  })}
+                      );
+                    })}
+                  </div>
                 </div>
                 <p className="mt-3 text-center text-[12px] leading-relaxed text-[#5B655F]">
                   Consider targeting at least{" "}
@@ -1129,8 +1245,8 @@ export default function NewAssessmentPage() {
       )}
 
       {toast && (
-        <div className="pointer-events-none fixed inset-x-0 bottom-6 z-50 flex justify-center px-4">
-          <div className="flex items-center gap-2 rounded-full bg-[#1E2621] px-4 py-2.5 text-[13px] font-medium text-white shadow-lg">
+        <div className="pointer-events-none fixed inset-x-0 bottom-4 z-50 flex justify-center px-4 sm:bottom-6">
+          <div className="flex items-center gap-2 rounded-full bg-[#1E2621] px-4 py-2.5 text-[12.5px] font-medium text-white shadow-lg sm:text-[13px]">
             <AlertCircle size={14} className="shrink-0 text-[#C08A3E]" />
             {toast}
           </div>
@@ -1140,7 +1256,7 @@ export default function NewAssessmentPage() {
   );
 }
 
-/* ---------------- Section rail (climbing vine navigator) ---------------- */
+/* ---------------- Section rail (climbing vine navigator) — desktop (lg+) ---------------- */
 
 function SectionRail({
   sections,
@@ -1174,7 +1290,7 @@ function SectionRail({
   if (loading) {
     return (
       <nav aria-label="Form sections" className="hidden lg:block">
-        <div className="sticky top-14 flex max-h-[calc(100vh-7.5rem)] flex-col overflow-y-auto rounded-2xl border border-[#EFEDE6] bg-white p-4">
+        <div className="sticky top-4 flex max-h-[calc(100vh-7.5rem)] flex-col overflow-y-auto rounded-2xl border border-[#EFEDE6] bg-white p-4">
           <div
             className="mb-4 text-[11px] uppercase tracking-widest text-[#B7BEB8]"
             style={{ fontFamily: "var(--font-mono)" }}
@@ -1219,7 +1335,7 @@ function SectionRail({
   return (
     <nav aria-label="Form sections" className="hidden lg:block">
       <div
-        className="sticky top-14 flex max-h-[calc(100vh-7.5rem)] flex-col overflow-y-auto rounded-2xl transition-all duration-300 border border-[#EFEDE6] bg-white p-4"
+        className="sticky top-4 flex max-h-[calc(100vh-7.5rem)] flex-col overflow-y-auto rounded-2xl transition-all duration-300 border border-[#EFEDE6] bg-white p-4"
       >
         <div
           className="mb-4 text-[11px] uppercase tracking-widest text-[#B7BEB8]"
@@ -1311,6 +1427,162 @@ function SectionRail({
   );
 }
 
+/* ---------------- Section nav — mobile/tablet (below lg) ----------------
+ * SectionRail is desktop-only, so phones and tablets would otherwise get
+ * zero progress feedback. This is a compact, sticky, horizontally
+ * scrollable row of section chips (name + done/pending state) plus a
+ * thin overall progress bar, pinned just below the layout's persistent
+ * header (via --app-header-h, see file header comment) — not at the
+ * very top of the viewport, where it would end up hidden underneath
+ * that header once the page scrolls.
+ */
+
+ function MobileSectionNav({
+   sections,
+   onNavigate,
+   loading,
+   requiredDone,
+   requiredTotal,
+   progressPct,
+ }: {
+   sections: { id: string; label: string; icon: LucideIcon; done: boolean }[];
+   onNavigate: (id: string) => void;
+   loading?: boolean;
+   requiredDone: number;
+   requiredTotal: number;
+   progressPct: number;
+ }) {
+   const scrollbarStyle = (
+     <style>{`
+       .pfx-nav-scroller {
+         scrollbar-width: none;
+         -ms-overflow-style: none;
+         -webkit-overflow-scrolling: touch;
+         overscroll-behavior-x: contain;
+       }
+       .pfx-nav-scroller::-webkit-scrollbar {
+         display: none;
+       }
+     `}</style>
+   );
+
+   // Full-bleed blur layer: sits directly behind the rounded nav card,
+   // stretching edge-to-edge across the viewport via the
+   // `left-1/2 right-1/2 -mx-[50vw] w-screen` breakout trick (escapes this
+   // component's own padding and the authenticated layout's px-10 on
+   // <main>). It's sized to match the sticky container's own height
+   // (inset-0 within the relative wrapper below), so it only blurs the
+   // strip of content scrolling up directly behind the nav — not the
+   // whole viewport above or below it. The rounded card renders on top
+   // at z-10, unchanged from before. The overlay's opacity/blur fade in
+   // from 0 as the page scrolls so it only starts hiding the content
+   // once the nav is actually riding over it.
+   const [scrollProgress, setScrollProgress] = useState(0);
+
+   useEffect(() => {
+     const handleScroll = () => {
+       const progress = Math.min(Math.max(window.scrollY / 180, 0), 1);
+       setScrollProgress(progress);
+     };
+     handleScroll();
+     window.addEventListener("scroll", handleScroll, { passive: true });
+     return () => window.removeEventListener("scroll", handleScroll);
+   }, []);
+
+   const blurBackdrop = (
+     <div
+       aria-hidden="true"
+       className="pointer-events-none absolute left-1/2 right-1/2 -top-[40rem] -bottom-12 -mx-[50vw] w-screen transition-opacity duration-200"
+       style={{
+         opacity: scrollProgress,
+         backdropFilter: `blur(${scrollProgress * 10}px)`,
+         WebkitBackdropFilter: `blur(${scrollProgress * 10}px)`,
+         maskImage:
+           "linear-gradient(to bottom, black 0%, black 88%, transparent 100%)",
+         WebkitMaskImage:
+           "linear-gradient(to bottom, black 0%, black 88%, transparent 100%)",
+       }}
+     />
+   );
+
+   if (loading) {
+     return (
+       <div className={`sticky ${STICKY_TOP} z-10 mb-4 -mx-1 lg:hidden`}>
+         <div className="relative">
+           {blurBackdrop}
+           <div className="relative z-10 rounded-2xl border border-[#EFEDE6] bg-white/95 p-3">
+             <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 md:grid-cols-4">
+               {scrollbarStyle}
+               {[1, 2, 3, 4].map((i) => (
+                 <div
+                   key={i}
+                   className="h-8 animate-pulse rounded-full bg-[#EFEDE6]"
+                 />
+               ))}
+             </div>
+             <div className="mt-3 h-1 w-full animate-pulse rounded-full bg-[#E4E1D8]" />
+           </div>
+         </div>
+       </div>
+     );
+   }
+
+   return (
+     <div
+       className={`sticky z-10 mb-4 -mx-1 lg:hidden`}
+       style={{ top: `calc(var(--app-header-h,2rem) + ${0.75 * (1 - scrollProgress)}rem)` }}
+     >
+       <div className="relative">
+         {blurBackdrop}
+         <div className="relative z-10 rounded-2xl border border-[#EFEDE6] bg-white/95 p-3 shadow-[0_8px_24px_rgba(30,38,33,0.08)]">
+           {scrollbarStyle}
+           <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 md:grid-cols-4">
+             {sections.map((s) => {
+               const Icon = s.icon;
+               return (
+                 <button
+                   key={s.id}
+                   type="button"
+                   onClick={() => onNavigate(s.id)}
+                   className={`flex items-center justify-center gap-1.5 rounded-full border px-3 py-1.5 text-[12px] font-medium transition-colors ${
+                     s.done
+                       ? "border-[#3E6B52]/30 bg-[#EEF4F0] text-[#3E6B52]"
+                       : "border-[#E4E1D8] bg-white text-[#5B655F]"
+                   }`}
+                 >
+                   {s.done ? <Check size={12} /> : <Icon size={12} />}
+                   {s.label}
+                 </button>
+               );
+             })}
+           </div>
+           <div className="mt-2.5 flex items-center gap-2.5">
+             <div
+               className="h-1 flex-1 overflow-hidden rounded-full bg-[#EFEDE6]"
+               role="progressbar"
+               aria-valuenow={progressPct}
+               aria-valuemin={0}
+               aria-valuemax={100}
+               aria-label="Form completion"
+             >
+               <div
+                 className="h-full rounded-full bg-linear-to-r from-[#3E6B52] to-[#6FA383] transition-all duration-500 ease-out"
+                 style={{ width: `${progressPct}%` }}
+               />
+             </div>
+             <span
+               className="shrink-0 text-[10.5px] text-[#B7BEB8]"
+               style={{ fontFamily: "var(--font-mono)" }}
+             >
+               {requiredDone}/{requiredTotal}
+             </span>
+           </div>
+         </div>
+       </div>
+     </div>
+   );
+ }
+
 /* ---------------- Form section wrapper ---------------- */
 
 function FormSection({
@@ -1329,22 +1601,22 @@ function FormSection({
   return (
     <div
       id={id}
-      className={`scroll-mt-28 mb-8 pb-8 ${noBorder ? "" : "border-b border-[#EFEDE6]"}`}
+      className={`mb-7 pb-7 sm:mb-8 sm:pb-8 ${noBorder ? "" : "border-b border-[#EFEDE6]"}`}
     >
       <div className="mb-4">
         <h2
-          className="text-[15px] font-semibold"
+          className="text-[14.5px] font-semibold sm:text-[15px]"
           style={{ fontFamily: "var(--font-display)" }}
         >
           {title}
         </h2>
         {description && (
-          <p className="mt-1.5 text-[13px] leading-relaxed text-[#8A938C]">
+          <p className="mt-1.5 text-[12.5px] leading-relaxed text-[#8A938C] sm:text-[13px]">
             {description}
           </p>
         )}
       </div>
-      <div className="space-y-5">{children}</div>
+      <div className="space-y-4 sm:space-y-5">{children}</div>
     </div>
   );
 }
@@ -1393,7 +1665,7 @@ function TextField({
     <div data-field-name={label} className="space-y-0">
       <label
         htmlFor={name}
-        className="mb-1.5 flex items-center gap-1.5 text-[12.5px] font-medium text-[#5B655F]"
+        className="mb-1.5 flex items-center gap-1.5 text-[12px] font-medium text-[#5B655F] sm:text-[12.5px]"
       >
         {label}
         {required && <RequiredMark />}
@@ -1427,7 +1699,7 @@ function TextField({
           aria-required={required}
           aria-invalid={!!error}
           aria-describedby={error ? errorId : undefined}
-          className={`w-full rounded-[14px] border bg-white py-2.75 text-[14px] text-[#1E2621] placeholder:text-[#B7BEB8] transition-colors focus:outline-none focus:ring-2 focus:ring-[#3E6B52]/25 ${
+          className={`w-full min-w-0 rounded-[14px] border bg-white py-3 text-[16px] text-[#1E2621] placeholder:text-[#B7BEB8] transition-colors focus:outline-none focus:ring-2 focus:ring-[#3E6B52]/25 sm:py-2.75 sm:text-[14px] ${
             prefix ? "pl-12 pr-4" : "px-4"
           } ${
             error
@@ -1586,7 +1858,7 @@ function SelectField({
       <label
         id={buttonId + "-label"}
         htmlFor={buttonId}
-        className="mb-1.5 block text-[12.5px] font-medium text-[#5B655F]"
+        className="mb-1.5 block text-[12px] font-medium text-[#5B655F] sm:text-[12.5px]"
       >
         {label}
         {required && <RequiredMark />}
@@ -1609,7 +1881,7 @@ function SelectField({
           disabled={disabled}
           onClick={() => (isOpen ? closeList() : openList())}
           onKeyDown={handleButtonKeyDown}
-          className={`flex w-full items-center justify-between rounded-[14px] border px-4 py-2.75 text-left text-[14px] transition-colors ${
+          className={`flex w-full items-center justify-between rounded-[14px] border px-4 py-3 text-left text-[16px] transition-colors sm:py-2.75 sm:text-[14px] ${
             disabled
               ? "cursor-not-allowed border-[#E4E1D8] bg-[#F6F6F2] text-[#B7BEB8]"
               : error
@@ -1619,12 +1891,12 @@ function SelectField({
                   }`
           }`}
         >
-          <span className={value ? "" : "text-[#B7BEB8]"}>
+          <span className={`truncate ${value ? "" : "text-[#B7BEB8]"}`}>
             {value || placeholder}
           </span>
           <ChevronDown
             size={16}
-            className={`shrink-0 text-[#8A938C] transition-transform ${
+            className={`ml-2 shrink-0 text-[#8A938C] transition-transform ${
               isOpen ? "rotate-180" : ""
             }`}
           />
@@ -1644,7 +1916,7 @@ function SelectField({
             tabIndex={-1}
             onKeyDown={handleListKeyDown}
             autoFocus
-            className="absolute left-0 right-0 top-[calc(100%+6px)] z-20 max-h-64 overflow-y-auto rounded-[14px] border border-[#E4E1D8] bg-white py-1.5 shadow-[0_16px_36px_rgba(30,38,33,0.12)] focus:outline-none"
+            className="absolute left-0 right-0 top-[calc(100%+6px)] z-20 max-h-60 overflow-y-auto rounded-[14px] border border-[#E4E1D8] bg-white py-1.5 shadow-[0_16px_36px_rgba(30,38,33,0.12)] focus:outline-none sm:max-h-64"
           >
             {safeOptions.length === 0 ? (
               <div className="px-4 py-3 text-[13px] text-[#B7BEB8]">
@@ -1663,13 +1935,13 @@ function SelectField({
                   aria-selected={opt === value}
                   onMouseEnter={() => setActiveIndex(idx)}
                   onClick={() => commitSelection(opt)}
-                  className={`flex w-full items-center justify-between px-4 py-2.5 text-left text-[13.5px] transition-colors ${
+                  className={`flex w-full items-center justify-between px-4 py-2.75 text-left text-[14px] transition-colors sm:py-2.5 sm:text-[13.5px] ${
                     idx === activeIndex ? "bg-[#F6F6F2]" : ""
                   } ${opt === value ? "font-medium text-[#3E6B52]" : "text-[#1E2621]"}`}
                 >
-                  {opt}
+                  <span className="truncate">{opt}</span>
                   {opt === value && (
-                    <span className="h-1.5 w-1.5 rounded-full bg-[#3E6B52]" />
+                    <span className="ml-2 h-1.5 w-1.5 shrink-0 rounded-full bg-[#3E6B52]" />
                   )}
                 </button>
               ))
@@ -1732,7 +2004,8 @@ function BudgetPredictionIndicator({
 }) {
   const hasBudget = budgetRaw !== null;
   const hasPrediction = predictedCost !== null;
-  const isOverBudget = hasBudget && hasPrediction && predictedCost! > budgetRaw!;
+  const isOverBudget =
+    hasBudget && hasPrediction && predictedCost! > budgetRaw!;
 
   const tone: Tone = !hasPrediction
     ? "neutral"
@@ -1749,7 +2022,7 @@ function BudgetPredictionIndicator({
       : !hasBudget
         ? "No budget set"
         : isOverBudget
-          ? "Under estimate"
+          ? "Over budget"
           : "Within budget";
 
   const StatusIcon = predictionLoading
@@ -1760,57 +2033,91 @@ function BudgetPredictionIndicator({
         ? TrendingUp
         : ShieldCheck;
 
+  const active = hasBudget && hasPrediction;
+
   return (
     <div
-      className="mt-1.5 rounded-2xl border px-4 py-3 transition-colors duration-300"
+      className="mt-1.5 overflow-visible rounded-2xl border transition-colors duration-300"
       style={{
-        borderColor:
-          hasBudget && hasPrediction ? `${TONE[tone].solid}40` : "#E4E1D8",
-        backgroundColor:
-          hasBudget && hasPrediction ? TONE[tone].soft : "#FBFAF7",
+        borderColor: active ? `${TONE[tone].solid}40` : "#E4E1D8",
+        background: active
+          ? `linear-gradient(180deg, ${TONE[tone].soft} 0%, #FFFFFF 100%)`
+          : "#FBFAF7",
       }}
     >
-      <div className="flex items-center justify-between gap-3">
+      {/* Header row */}
+      <div className="flex flex-wrap items-center justify-between gap-2 px-3.5 pt-3.5 sm:gap-3 sm:px-4">
         <div className="flex items-center gap-1.5">
-          <StatusIcon
-            size={13}
-            className={predictionLoading ? "animate-spin" : ""}
-            style={{ color: predictionLoading ? "#8A938C" : TONE[tone].text }}
-          />
           <span
-            className="text-[11px] font-semibold uppercase tracking-[0.06em]"
-            style={{
-              fontFamily: "var(--font-mono)",
-              color: predictionLoading ? "#8A938C" : TONE[tone].text,
-            }}
+            className="text-[10.5px] font-semibold uppercase tracking-[0.08em] text-[#8A938C] sm:text-[11px]"
+            style={{ fontFamily: "var(--font-mono)" }}
           >
-            {statusLabel}
+            Live Cost Estimate
           </span>
+          <InfoTooltip text="Live estimate based on the project data entered so far." />
         </div>
-        <span className="text-[13px] font-semibold tabular-nums text-[#1E2621]">
-          {hasPrediction ? formatMoney(predictedCost!) : "—"}
+
+        <span
+          className="flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.04em] transition-colors duration-300 sm:text-[10.5px]"
+          style={{
+            fontFamily: "var(--font-mono)",
+            color: predictionLoading ? "#8A938C" : TONE[tone].text,
+            backgroundColor: predictionLoading
+              ? "#EFEDE6"
+              : `${TONE[tone].solid}18`,
+          }}
+        >
+          <StatusIcon
+            size={11}
+            className={predictionLoading ? "animate-spin" : ""}
+          />
+          {statusLabel}
         </span>
       </div>
 
+      {/* Predicted value */}
+      <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1 px-3.5 pt-2 sm:px-4">
+        <span className="text-[18px] font-bold tabular-nums leading-none tracking-[-0.01em] text-[#1E2621] transition-opacity duration-300 sm:text-[20px]">
+          {hasPrediction ? formatMoney(predictedCost!) : "—"}
+        </span>
+        {hasBudget && (
+          <span
+            className="text-[10.5px] text-[#8A938C] sm:text-[11px]"
+            style={{ fontFamily: "var(--font-mono)" }}
+          >
+            budget {formatMoney(budgetRaw!)}
+          </span>
+        )}
+      </div>
+
       {hasPrediction && (
-        <>
+        <div className="px-3.5 pb-1 pt-3 sm:px-4">
           <MiniBudgetGauge
             budget={hasBudget ? (budgetRaw as number) : 0}
             predicted={predictedCost as number}
             tone={tone}
           />
-          <div className="mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-1">
+          <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1">
             <LegendDot color={TONE[tone].solid} label="Predicted" />
             {hasBudget && <LegendDot color="#1E2621" label="Budgeted" line />}
           </div>
-        </>
+        </div>
       )}
 
-      <p className="mt-1.5 text-[11px] leading-relaxed text-[#8A938C]">
-        {hasPrediction
-          ? "Live estimate based on the project details entered so far."
-          : "Estimating your project cost from the details entered so far…"}
-      </p>
+      <div
+        className="mt-3 border-t px-3.5 py-2.5 sm:px-4"
+        style={{ borderColor: active ? `${TONE[tone].solid}22` : "#EFEDE6" }}
+      >
+        <p className="text-[10.5px] leading-relaxed text-[#8A938C] sm:text-[11px]">
+          {hasPrediction
+            ? isOverBudget
+              ? "Predicted cost exceeds your set budget."
+              : hasBudget
+                ? "Predicted cost fits within your set budget."
+                : "Set a budget above to compare it against this estimate."
+            : "Estimating your project cost from the details entered so far…"}
+        </p>
+      </div>
     </div>
   );
 }
@@ -1828,14 +2135,18 @@ function MiniBudgetGauge({
   const pct = (n: number) => Math.min(100, Math.max(0, (n / max) * 100));
 
   return (
-    <div className="relative mt-3 h-1.5 rounded-full bg-[#EFEDE6]">
+    <div className="relative h-2 rounded-full bg-[#EFEDE6]">
       <div
         className="absolute inset-y-0 left-0 rounded-full transition-[width] duration-300"
-        style={{ width: `${pct(predicted)}%`, backgroundColor: TONE[tone].solid }}
+        style={{
+          width: `${pct(predicted)}%`,
+          backgroundColor: TONE[tone].solid,
+          boxShadow: `0 0 10px ${TONE[tone].solid}55`,
+        }}
       />
       {budget > 0 && (
         <div
-          className="absolute top-1/2 h-3 w-0.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-[#1E2621]"
+          className="absolute top-1/2 h-3.5 w-[3px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-[#1E2621] shadow-[0_0_0_2px_#FFFFFF]"
           style={{ left: `${pct(budget)}%` }}
         />
       )}
@@ -1889,7 +2200,7 @@ function LoadingBlueprint() {
   }, []);
 
   return (
-    <div className="flex flex-col items-center justify-center gap-5 py-16 text-center">
+    <div className="flex flex-col items-center justify-center gap-4 py-12 text-center sm:gap-5 sm:py-16">
       <style>{`
         @keyframes pfxDraw { to { stroke-dashoffset: 0; } }
         @keyframes pfxPop {
@@ -1905,7 +2216,7 @@ function LoadingBlueprint() {
       `}</style>
 
       <span
-        className="text-[11px] uppercase tracking-[0.14em] text-[#B7BEB8]"
+        className="text-[10.5px] uppercase tracking-[0.14em] text-[#B7BEB8] sm:text-[11px]"
         style={{ fontFamily: "var(--font-mono)" }}
       >
         Preparing your workspace
@@ -1913,7 +2224,7 @@ function LoadingBlueprint() {
 
       <svg
         viewBox="0 0 220 150"
-        className="h-32 w-48"
+        className="h-28 w-44 sm:h-32 sm:w-48"
         fill="none"
         strokeWidth={2.5}
         strokeLinecap="round"
@@ -1974,7 +2285,7 @@ function LoadingBlueprint() {
 
       <p
         key={captionIndex}
-        className="text-[13px] text-[#8A938C]"
+        className="text-[12.5px] text-[#8A938C] sm:text-[13px]"
         style={{ animation: "pfxCaptionCycle 2s ease-in-out" }}
       >
         {LOADING_CAPTIONS[captionIndex]}

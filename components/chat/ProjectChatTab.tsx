@@ -114,7 +114,7 @@ export function ProjectChatTab({
 
   return (
     <>
-      <div className="flex flex-col h-270">
+      <div className="flex flex-col h-[70vh] min-h-[420px] sm:h-[75vh] lg:h-200">
         {/* Slim toolbar (the Team discussion header lives on the card) */}
         <div className="mb-2.5 flex flex-wrap items-center justify-between gap-3">
           <AvatarStack members={effectiveMembers} max={5} size={30} />
@@ -122,7 +122,7 @@ export function ProjectChatTab({
             <button
               type="button"
               onClick={() => setShowMembers(true)}
-              className="flex items-center gap-1.5 rounded-full border border-[#E4E1D8] bg-white px-3 py-1.5 text-[12px] font-medium text-[#5B655F] shadow-sm transition-colors hover:border-[#C9D3CC] hover:text-[#3E6B52]"
+              className="flex items-center gap-1.5 rounded-full border border-[#E4E1D8] bg-white px-3 py-2 sm:py-1.5 text-[12px] font-medium text-[#5B655F] shadow-sm transition-colors hover:border-[#C9D3CC] hover:text-[#3E6B52]"
             >
               <Users size={13} />
               <span className="hidden sm:inline">Members</span>

@@ -141,8 +141,7 @@ export default async function AboutPage({
   const activeTab = normalizeTab(params.tab);
 
   return (
-    <div className="space-y-6 py-8">
-      <BackButton />
+    <div className="mx-auto space-y-6 py-8 md:max-w-375">
       <HeroTitleBlock activeTab={activeTab} />
       {activeTab === "about-us" ? <AboutUsTab /> : <ProjectTeamTab />}
     </div>

@@ -16,6 +16,7 @@ import {
   Inbox,
   Check,
   MessageSquare,
+  Target,
 } from "lucide-react";
 
 import { formatCurrency, formatSize } from "@/lib/utils";
@@ -42,6 +43,7 @@ type Project = {
   structure?: string | null;
   rating?: number | null;
   target_certification?: string | null;
+  changed_cert?: boolean;
 };
 
 function formatValue(value: unknown) {
@@ -87,6 +89,8 @@ export default function ProjectDetailTabs({
   submitRef,
   readOnly = false,
   isProjectOwner = false,
+  onChatUnreadChange,
+  onActualCostChange,
 }: {
   selectedProject: any | null;
   activeTab: TabKey;
@@ -96,6 +100,8 @@ export default function ProjectDetailTabs({
   submitRef?: React.MutableRefObject<(() => Promise<void>) | null>;
   readOnly?: boolean;
   isProjectOwner?: boolean;
+  onChatUnreadChange?: (unread: number) => void;
+  onActualCostChange?: (total: number) => void;
 }) {
   const [projectData, setProjectData] = useState<Project | null>(null);
   const [costBreakdownData, setCostBreakdownData] =
@@ -155,6 +161,7 @@ export default function ProjectDetailTabs({
         structure: selectedProject.projectData.structure,
         rating: selectedProject.projectData.rating,
         target_certification: selectedProject.projectData.target_certification,
+        changed_cert: selectedProject.projectData.changed_cert,
       };
 
       setProjectData(projectDetails);
@@ -162,7 +169,7 @@ export default function ProjectDetailTabs({
     }
   }, [selectedProject]);
 
-  const hideGbi = projectData?.target_certification === "Not Certified";
+  const hideGbi = projectData?.target_certification === "Not Certified" && projectData?.changed_cert == false;
 
   const visibleTabs = useMemo(
     () => (hideGbi ? ALL_TABS.filter((t) => t.key !== "gbi") : ALL_TABS),
@@ -476,7 +483,10 @@ export default function ProjectDetailTabs({
   return (
     <div>
       {/* ---------------- Tab bar (outside the card) ---------------- */}
-      <div className="mb-4 flex flex-wrap gap-1.5">
+      <div
+        className="mb-4 grid w-full gap-1 rounded-3xl border border-[#E4E1D8] bg-white p-1 sm:gap-1.5"
+        style={{ gridTemplateColumns: `repeat(${visibleTabs.length}, minmax(0, 1fr))` }}
+      >
         {visibleTabs.map((tab) => {
           const Icon = tab.icon;
           const isActive = activeTab === tab.key;
@@ -486,16 +496,16 @@ export default function ProjectDetailTabs({
               type="button"
               onClick={() => onTabChange(tab.key)}
               aria-current={isActive ? "page" : undefined}
-              className={`flex items-center gap-1.5 rounded-full px-4 py-2 text-[13px] font-medium transition-all focus-visible:outline focus-visible:outline-offset-2 focus-visible:outline-[#3E6B52] ${
+              className={`flex items-center justify-center gap-1.5 rounded-2xl px-3 py-2.5 text-[12.5px] font-medium transition-all focus-visible:outline focus-visible:outline-offset-2 focus-visible:outline-[#3E6B52] sm:px-4 sm:text-[13px] ${
                 isActive
                   ? "bg-[#3E6B52] text-[#F6F6F2] shadow-[0_10px_24px_rgba(62,107,82,0.24)]"
-                  : "border border-[#E4E1D8] bg-white text-[#5B655F] hover:-translate-y-0.5 hover:border-[#C9D3CC] hover:text-[#3E6B52] hover:shadow-[0_10px_24px_rgba(30,38,33,0.08)]"
+                  : "text-[#5B655F] hover:text-[#3E6B52]"
               }`}
             >
-              <Icon size={14} />
-              {tab.label}
+              <Icon size={14} className="shrink-0" />
+              <span className="truncate">{tab.label}</span>
               {tab.key === "chat" && chatUnread > 0 && !isActive && (
-                <span className="flex h-4 min-w-4 items-center justify-center rounded-full bg-[#C08A3E] px-1 text-[10px] font-bold text-white">
+                <span className="flex h-4 min-w-4 shrink-0 items-center justify-center rounded-full bg-[#C08A3E] px-1 text-[10px] font-bold text-white">
                   {chatUnread > 9 ? "9+" : chatUnread}
                 </span>
               )}
@@ -541,11 +551,11 @@ export default function ProjectDetailTabs({
           className={
             activeTab === "chat"
               ? "px-6 pb-6 pt-2 sm:px-8"
-              : "px-7 py-8 sm:px-9 sm:py-9"
+              : "px-7 py-8 sm:px-2 sm:py-9"
           }
         >
           {activeTab === "details" && (
-            <>
+            <div className="px-4">
               <DetailSection
                 title="The basics"
                 description="What kind of building this is."
@@ -600,7 +610,6 @@ export default function ProjectDetailTabs({
               <DetailSection
                 title="Location & structure"
                 description="Where the site sits and how it's built."
-                noBorder
               >
                 <DetailField
                   icon={<MapPin size={15} />}
@@ -613,7 +622,19 @@ export default function ProjectDetailTabs({
                   value={formatValue(projectData?.structure)}
                 />
               </DetailSection>
-            </>
+
+              <DetailSection
+                title="Certification"
+                description="The certification that you chose to acheive."
+                noBorder
+              >
+                <DetailField
+                  icon={<Target size={15} />}
+                  label="Target Certification"
+                  value={String(projectData?.target_certification ?? "")}
+                />
+              </DetailSection>
+            </div>
           )}
 
           <div className={activeTab === "cost" ? "" : "hidden"}>
@@ -633,6 +654,7 @@ export default function ProjectDetailTabs({
                 value={costBreakdownData}
                 onChangedNodesUpdateAction={handleChangedNodesUpdate}
                 onStructuralChangeAction={handleStructuralChange}
+                onTotalActualChange={onActualCostChange}
                 mode="comparison"
                 hideSubmitBar
                 resetKey={saveCount}

@@ -23,6 +23,7 @@ import { formatMoney } from "@/components/project/CostBreakdownTree";
 import GreenElementsScreen from "@/components/assessment/GreenElementsScreen";
 import { BackButton } from "@/components/ui/BackButton";
 import { useAuth } from "@/contexts/AuthContext";
+import LoadingOverlay from "@/components/ui/LoadingOverlay";
 
 type ID = string | number;
 
@@ -208,6 +209,27 @@ function nextTopKey(tree: CostBreakdown): string {
 
 function asNumber(v: unknown): number | undefined {
   return typeof v === "number" && !Number.isNaN(v) ? v : undefined;
+}
+
+/* ── Certification comparison helpers ── */
+const CERT_ORDER = [
+  "Not Certified",
+  "Certified",
+  "Silver",
+  "Gold",
+  "Platinum",
+] as const;
+
+function normalizeCertLabel(label: string | undefined | null): string {
+  if (!label) return "";
+  return label.split("(")[0].trim().toLowerCase();
+}
+
+function certRank(label: string | undefined | null): number {
+  if (!label) return -1;
+  const name = normalizeCertLabel(label);
+  const idx = CERT_ORDER.findIndex((c) => name.includes(c.toLowerCase()));
+  return idx;
 }
 
 export default function AssessmentResultsPage() {
@@ -399,10 +421,9 @@ export default function AssessmentResultsPage() {
     Record<string, { id: string; description: string; isCustom: boolean }[]>
   >({});
   const [showCostUpdatedToast, setShowCostUpdatedToast] = useState(false);
-  const [showMarksWarning, setShowMarksWarning] = useState(false);
-  const [marksWarning, setMarksWarning] = useState({ target: "", min: 0, current: 0 });
   const [showSubmitConfirm, setShowSubmitConfirm] = useState(false);
   const [confirmStep, setConfirmStep] = useState<"warning" | "confirm">("confirm");
+  const [showCertBelowModal, setShowCertBelowModal] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
   /* ── Total marks from GreenElementsScreen ── */
@@ -490,7 +511,7 @@ export default function AssessmentResultsPage() {
     return result;
   }, [costBreakdown, certificationLevel, certificationsData, baseTotal]);
 
-  const handleSubmitAssessment = useCallback(async () => {
+  const performSubmit = useCallback(async (overwriteCert: string | null) => {
     if (!user?.id) return;
 
     const currentTree = currentCostBreakdownRef.current ?? costBreakdownWithCert ?? {};
@@ -617,11 +638,22 @@ export default function AssessmentResultsPage() {
     }
 
     setSubmitting(true);
+    setShowSubmitConfirm(false);
     try {
+      const mappedFormData = inner?.mapped_form_data
+        ? {
+            ...(inner?.mapped_form_data as Record<string, unknown>),
+            ...(overwriteCert
+              ? { certifiedRatingScale: overwriteCert }
+              : {}),
+            changedCert: overwriteCert ? true : false,
+          }
+        : undefined;
+
       const payload = {
         user_id: user.id,
         rating: totalMarks,
-        form_data: inner?.mapped_form_data,
+        form_data: mappedFormData,
         costs: {
           total_cost: totalCostNum,
           cost_breakdown: costBreakdownPayload,
@@ -647,20 +679,69 @@ export default function AssessmentResultsPage() {
       if (res.ok && result?.success) {
         sessionStorage.removeItem("assessment_result");
         router.push("/assessments/history");
-      } else {
-        alert(result?.message ?? "Failed to submit assessment.");
+        return;
       }
+      alert(result?.message ?? "Failed to submit assessment.");
     } catch {
       alert("An error occurred while submitting the assessment.");
     } finally {
-      setSubmitting(false);
       setShowSubmitConfirm(false);
     }
+    setSubmitting(false);
   }, [
     costBreakdownWithCert, checkedItems, checkedOptions, checkedSubitems,
     customItems, selectedDropdowns, greenElements, isNotCert, totalMarks, inner,
     user, router,
   ]);
+
+  const proceedChangedCertRef = useRef<string | null>(null);
+
+  const showSubmitConfirmation = useCallback(() => {
+    const budget = projectDetails?.projectBudget;
+    const cost = totalCost;
+    if (
+      typeof budget === "number" &&
+      typeof cost === "number" &&
+      cost > budget
+    ) {
+      setConfirmStep("warning");
+      setShowSubmitConfirm(true);
+      return;
+    }
+    setConfirmStep("confirm");
+    setShowSubmitConfirm(true);
+  }, [projectDetails, totalCost]);
+
+  const openSubmitFlow = useCallback(() => {
+    const targetRank = certRank(projectDetails?.certifiedRatingScale);
+    const achievedRank = certRank(certificationLevel);
+
+    if (targetRank >= 0 && achievedRank >= 0 && achievedRank < targetRank) {
+      setShowCertBelowModal(true);
+      return;
+    }
+
+    showSubmitConfirmation();
+  }, [projectDetails, certificationLevel, showSubmitConfirmation]);
+
+  const handleSubmitAssessment = useCallback(async () => {
+    const overwrite = proceedChangedCertRef.current;
+    proceedChangedCertRef.current = null;
+    await performSubmit(overwrite);
+  }, [performSubmit]);
+
+  const handleProceedWithChangedCert = useCallback(() => {
+    proceedChangedCertRef.current = certificationLevel;
+    setShowCertBelowModal(false);
+    // Marks are below the target, so the user already acknowledged the cert
+    // change in the first modal — submit right away without a second confirm.
+    handleSubmitAssessment();
+  }, [certificationLevel, handleSubmitAssessment]);
+
+  const handleCancelCertChange = useCallback(() => {
+    setShowCertBelowModal(false);
+    setActiveTab("gbi");
+  }, []);
 
   /* ── Toast on certification level change ── */
   const prevLevelRef = useRef<string | null>(null);
@@ -732,7 +813,7 @@ export default function AssessmentResultsPage() {
 
   return (
     <>
-      <div className="relative mx-auto max-w-275 pb-4 pt-6">
+      <div className="relative mx-auto px-4 pb-4 pt-6 md:max-w-375">
         <BackButton action={handleBack} />
 
         <div className="mb-6">
@@ -757,7 +838,7 @@ export default function AssessmentResultsPage() {
           />
         )}
 
-        <div className="mb-4 flex flex-wrap gap-1.5">
+        <div className="mb-4 flex w-full items-center gap-1 rounded-full border border-[#E4E1D8] bg-white p-1 sm:gap-1.5">
           {tabs.map((tab) => {
             const Icon = tab.icon;
             const isActive = activeTab === tab.key;
@@ -767,14 +848,14 @@ export default function AssessmentResultsPage() {
                 type="button"
                 onClick={() => setActiveTab(tab.key)}
                 aria-current={isActive ? "page" : undefined}
-                className={`flex items-center gap-1.5 rounded-full px-4 py-2 text-[13px] font-medium transition-all focus-visible:outline focus-visible:outline-offset-2 focus-visible:outline-[#3E6B52] ${
-                  isActive
+                className={`flex flex-1 items-center justify-center gap-1.5 rounded-full px-3 py-2.5 text-[12.5px] font-medium transition-all focus-visible:outline focus-visible:outline-offset-2 focus-visible:outline-[#3E6B52] sm:px-4 sm:text-[13px] ${
+                  isActive && tabs.length != 1
                     ? "bg-[#3E6B52] text-[#F6F6F2] shadow-[0_10px_24px_rgba(62,107,82,0.24)]"
-                    : "border border-[#E4E1D8] bg-white text-[#5B655F] hover:-translate-y-0.5 hover:border-[#C9D3CC] hover:text-[#3E6B52] hover:shadow-[0_10px_24px_rgba(30,38,33,0.08)]"
+                    : "text-[#5B655F] hover:text-[#3E6B52]"
                 }`}
               >
-                <Icon size={14} />
-                {tab.label}
+                <Icon size={14} className="shrink-0" />
+                <span className="truncate">{tab.label}</span>
               </button>
             );
           })}
@@ -830,37 +911,7 @@ export default function AssessmentResultsPage() {
         <div className="flex justify-end py-6">
           <button
             type="button"
-            onClick={() => {
-              if (!isNotCert) {
-                const targetTier = GBI_TIERS[activeTierIndex];
-                const targetRange = targetTier
-                  ? certificationsData?.certifiedScaleRange?.[targetTier.label]
-                  : undefined;
-                const targetMin = targetRange ? targetRange[0] : undefined;
-                if (targetMin !== undefined && totalMarks < targetMin) {
-                  setMarksWarning({
-                    target: targetTier.label,
-                    min: targetMin,
-                    current: totalMarks,
-                  });
-                  setShowMarksWarning(true);
-                  return;
-                }
-              }
-              const budget = projectDetails?.projectBudget;
-              const cost = totalCost;
-              if (
-                typeof budget === "number" &&
-                typeof cost === "number" &&
-                cost > budget
-              ) {
-                setConfirmStep("warning");
-                setShowSubmitConfirm(true);
-                return;
-              }
-              setConfirmStep("confirm");
-              setShowSubmitConfirm(true);
-            }}
+            onClick={openSubmitFlow}
             className="rounded-full bg-[#3E6B52] px-6 py-3 text-[14px] font-semibold text-[#F6F6F2] shadow-[0_12px_28px_rgba(62,107,82,0.24)] transition-all hover:-translate-y-0.5 hover:shadow-[0_16px_36px_rgba(62,107,82,0.30)] focus-visible:outline focus-visible:outline-offset-2 focus-visible:outline-[#3E6B52] sm:px-8"
           >
             Submit Assessment
@@ -896,51 +947,6 @@ export default function AssessmentResultsPage() {
           onConfirm={handleConfirmLeave}
           onCancel={handleCancelLeave}
         />
-      )}
-
-      {/* Marks warning modal */}
-      {showMarksWarning && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-[#1E2621]/40 p-4 backdrop-blur-sm animate-in fade-in duration-150"
-          onClick={() => setShowMarksWarning(false)}
-        >
-          <div
-            role="alertdialog"
-            aria-modal="true"
-            onClick={(e) => e.stopPropagation()}
-            className="w-full max-w-sm rounded-3xl border border-[#E4E1D8] bg-white p-6 shadow-[0_24px_48px_rgba(30,38,33,0.16)] animate-in fade-in zoom-in-95 slide-in-from-bottom-2 duration-200"
-          >
-            <div className="mb-5 flex items-center gap-3">
-              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#FEF3E2] text-[#C08A3E]">
-                <AlertTriangle size={20} />
-              </span>
-              <div>
-                <h2
-                  className="text-[16px] font-semibold text-[#1E2621]"
-                  style={{ fontFamily: "var(--font-display)" }}
-                >
-                  Marks not achieved
-                </h2>
-                <p className="mt-1 text-[13px] leading-relaxed text-[#5B655F]">
-                  You need at least {marksWarning.min} &nbsp;marks to reach &quot;
-                  {marksWarning.target}&quot;, but you currently have{" "}
-                  {marksWarning.current} marks.
-                </p>
-              </div>
-            </div>
-            <button
-              type="button"
-              onClick={() => {
-                setShowMarksWarning(false);
-                setActiveTab("gbi");
-              }}
-              autoFocus
-              className="w-full rounded-full bg-[#B4483C] px-4 py-2.5 text-[13px] font-semibold text-white shadow-[0_8px_20px_rgba(180,72,60,0.24)] transition-all hover:-translate-y-0.5 hover:shadow-[0_12px_28px_rgba(180,72,60,0.30)] focus-visible:outline focus-visible:outline-offset-2 focus-visible:outline-[#B4483C]"
-            >
-              Go to GBI Assessment
-            </button>
-          </div>
-        </div>
       )}
 
       {/* Submit confirmation modal */}
@@ -1046,6 +1052,62 @@ export default function AssessmentResultsPage() {
           </div>
         </div>
       )}
+
+      {/* Certification below target confirmation modal */}
+      {showCertBelowModal && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-[#1E2621]/40 p-4 backdrop-blur-sm animate-in fade-in duration-150"
+          onClick={handleCancelCertChange}
+        >
+          <div
+            role="alertdialog"
+            aria-modal="true"
+            onClick={(e) => e.stopPropagation()}
+            className="w-full max-w-sm rounded-3xl border border-[#E4E1D8] bg-white p-6 shadow-[0_24px_48px_rgba(30,38,33,0.16)] animate-in fade-in zoom-in-95 slide-in-from-bottom-2 duration-200"
+          >
+            <div className="mb-5 flex items-start gap-3">
+              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#FEF3E2] text-[#C08A3E] ring-4 ring-[#FEF3E2]/50">
+                <AlertTriangle size={20} strokeWidth={2.25} />
+              </span>
+              <div className="pt-0.5">
+                <h2
+                  className="text-[16px] font-semibold text-[#1E2621]"
+                  style={{ fontFamily: "var(--font-display)" }}
+                >
+                  Certification below target
+                </h2>
+                <p className="mt-1 text-[13px] leading-relaxed text-[#5B655F]">
+                  Your achieved certification is below your selected target.
+                  Proceeding will change the certification level in the
+                  submitted assessment to your actual achieved certification.
+                </p>
+              </div>
+            </div>
+            <div className="flex flex-col-reverse gap-3 sm:flex-row">
+              <button
+                type="button"
+                onClick={handleCancelCertChange}
+                autoFocus
+                className="flex-1 rounded-full border border-[#E4E1D8] bg-white px-4 py-2.5 text-[13px] font-semibold text-[#5B655F] transition-colors hover:bg-[#F6F6F2] focus-visible:outline focus-visible:outline-offset-2 focus-visible:outline-[#3E6B52]"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleProceedWithChangedCert}
+                className="flex-1 rounded-full bg-[#C08A3E] px-4 py-2.5 text-[13px] font-semibold text-white shadow-[0_8px_20px_rgba(192,138,62,0.24)] transition-all hover:-translate-y-0.5 hover:shadow-[0_12px_28px_rgba(192,138,62,0.30)] focus-visible:outline focus-visible:outline-offset-2 focus-visible:outline-[#C08A3E]"
+              >
+                Proceed to Submit
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Submission overlay loading indicator */}
+      {submitting && (
+        <LoadingOverlay title="Submitting assessment…" className="z-[60]" />
+      )}
     </>
   );
 }
@@ -1093,12 +1155,24 @@ function ProjectHero({
 }) {
   const [showDetails, setShowDetails] = useState(false);
 
+  // Shared padding scale for every panel in the hero — one extra step (md)
+  // before the grid splits into two columns, so single-column tablet view
+  // gets a bit more breathing room instead of jumping straight to the
+  // "desktop" density.
+  const panelPadding =
+    "px-5 py-7 sm:px-7 sm:py-8 md:px-8 md:py-8 lg:px-9 lg:py-9";
+
   return (
     <>
       <div className="mb-6 overflow-hidden rounded-3xl border border-[#E4E1D8] bg-white shadow-[0_8px_24px_rgba(30,38,33,0.05)]">
-        <div className="grid grid-cols-1 md:grid-cols-[1fr_1fr]">
+        {/* Split to two columns at lg instead of md — a 768px tablet showing
+            two dense columns side by side was too tight; now it stays
+            single-column (full width) until there's genuinely enough room. */}
+        <div className="grid grid-cols-1 lg:grid-cols-[1fr_1fr]">
           {/* Left: identity */}
-          <div className="border-b border-[#E4E1D8] px-5 py-7 sm:px-7 sm:py-8 md:border-b-0 md:border-r md:px-9 md:py-9">
+          <div
+            className={`border-b border-[#E4E1D8] lg:border-b-0 lg:border-r ${panelPadding}`}
+          >
             <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[#3E6B52]">
               Project Overview
             </p>
@@ -1119,7 +1193,7 @@ function ProjectHero({
             <button
               type="button"
               onClick={() => setShowDetails(true)}
-              className="mt-4 inline-flex items-center gap-1.5 rounded-full border border-[#E4E1D8] bg-[#FBFAF7] px-4 py-2 text-[12.5px] font-medium text-[#5B655F] transition-colors hover:border-[#C9D3CC] hover:text-[#3E6B52] focus-visible:outline focus-visible:outline-offset-2 focus-visible:outline-[#3E6B52]"
+              className="mt-4 inline-flex items-center gap-1.5 whitespace-nowrap rounded-full border border-[#E4E1D8] bg-[#FBFAF7] px-4 py-2 text-[12.5px] font-medium text-[#5B655F] transition-colors hover:border-[#C9D3CC] hover:text-[#3E6B52] focus-visible:outline focus-visible:outline-offset-2 focus-visible:outline-[#3E6B52]"
             >
               <Eye size={14} />
               View project details
@@ -1135,7 +1209,7 @@ function ProjectHero({
 
             if (isNotCert) {
               return (
-                <div className="flex flex-col justify-center p-5 sm:px-7 sm:py-8 md:px-9 md:py-9">
+                <div className={`flex flex-col justify-center ${panelPadding}`}>
                   <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[#8A938C]">
                     Note:
                   </p>
@@ -1144,7 +1218,7 @@ function ProjectHero({
                     <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#C08A3E] text-white">
                       <AlertTriangle size={15} />
                     </span>
-                    <div>
+                    <div className="min-w-0">
                       <p className="text-[13px] font-semibold text-[#8A6420]">
                         GBI Assessment not available
                       </p>
@@ -1163,7 +1237,7 @@ function ProjectHero({
 
             return (activeTab === "cost" && !isNotCert) ? (
               /* GBI glimpse (shown while viewing cost tab) */
-              <div className="flex flex-col justify-center px-5 py-7 sm:px-7 sm:py-8 md:px-9 md:py-9">
+              <div className={`flex flex-col justify-center ${panelPadding}`}>
                 <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[#8A938C]">
                   GBI Assessment
                 </p>
@@ -1180,7 +1254,7 @@ function ProjectHero({
                   return (
                     <>
                       <p
-                        className="mt-2 text-[20px] font-semibold leading-tight sm:text-[22px]"
+                        className="mt-2 text-[20px] font-semibold leading-tight sm:text-[22px] lg:text-[24px]"
                         style={{
                           fontFamily: "var(--font-display)",
                           color: tier?.color ?? "#1E2621",
@@ -1205,7 +1279,18 @@ function ProjectHero({
                             />
                           ))}
                         </div>
-                        <div className="mt-2 hidden justify-between sm:flex">
+
+                        {/*
+                          Full per-tier label row needs real width to stay
+                          legible. It's fine full-width on mobile/tablet
+                          (sm → just before the grid splits), but the moment
+                          the hero splits into two columns at lg, this
+                          column is only ~half the viewport, so we drop back
+                          to the compact 3-label version — then bring the
+                          full row back at xl, once a half-width column is
+                          wide again in absolute terms.
+                        */}
+                        <div className="mt-2 hidden justify-between sm:flex lg:hidden xl:flex">
                           {GBI_TIERS.map((t, i) => (
                             <span
                               key={t.key}
@@ -1219,7 +1304,7 @@ function ProjectHero({
                             </span>
                           ))}
                         </div>
-                        <div className="mt-2 flex justify-between sm:hidden">
+                        <div className="mt-2 flex justify-between sm:hidden lg:flex xl:hidden">
                           <span className="text-[9.5px] font-medium uppercase tracking-wide text-[#B7BEB8]">
                             Not Certified
                           </span>
@@ -1261,12 +1346,12 @@ function ProjectHero({
               </div>
             ) : (
               /* Cost glimpse (shown while viewing gbi tab) */
-              <div className="flex flex-col justify-center px-5 py-7 sm:px-7 sm:py-8 md:px-9 md:py-9">
+              <div className={`flex flex-col justify-center ${panelPadding}`}>
                 <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[#8A938C]">
                   Cost Summary
                 </p>
                 <p
-                  className="mt-2 text-[20px] font-semibold leading-tight sm:text-[22px]"
+                  className="mt-2 text-[20px] font-semibold leading-tight sm:text-[22px] lg:text-[24px]"
                   style={{
                     fontFamily: "var(--font-display)",
                     color: "#2C4A3A",
@@ -1278,7 +1363,7 @@ function ProjectHero({
                 </p>
 
               <div className="mt-5 flex items-center gap-2 rounded-lg border border-dashed border-[#E4E1D8] px-3.5 py-2">
-                <DollarSign size={14} className="text-[#5B655F]" />
+                <DollarSign size={14} className="shrink-0 text-[#5B655F]" />
                 <span
                   className="text-[11.5px] font-bold uppercase tracking-[0.06em] text-[#5B655F]"
                   style={{ fontFamily: "var(--font-mono)" }}

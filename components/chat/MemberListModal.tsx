@@ -38,11 +38,13 @@ export function MemberListModal({
   const [removingId, setRemovingId] = useState<string | null>(null);
   const [savingRoleId, setSavingRoleId] = useState<string | null>(null);
   const [roles, setRoles] = useState<RoleOption[]>([]);
+  const [rolesLoading, setRolesLoading] = useState(false);
 
   useEffect(() => {
     if (!canManageRoles) return;
 
     let active = true;
+    setRolesLoading(true);
     fetch("/be-api/roles", { credentials: "include", cache: "no-store" })
       .then(async (response) => {
         const data = await response.json().catch(() => null);
@@ -53,6 +55,9 @@ export function MemberListModal({
         if (active) {
           onToast("error", error instanceof Error ? error.message : "Unable to load roles.");
         }
+      })
+      .finally(() => {
+        if (active) setRolesLoading(false);
       });
 
     return () => {
@@ -168,22 +173,30 @@ export function MemberListModal({
                 <div className="flex shrink-0 items-center gap-1.5">
                   {canManageRoles && !m.isOwner ? (
                     <div className="relative">
-                      <select
-                        value={m.membership.roleId ?? rolesByName.get(m.membership.role)?.id ?? ""}
-                        onChange={(event) => void changeRole(m, Number(event.target.value))}
-                        disabled={roles.length === 0 || savingRoleId === m.user.id || removingId === m.user.id}
-                        aria-label={`Change ${m.user.fullName}'s project role`}
-                        title={rolesByName.get(m.membership.role)?.description ?? "Project role"}
-                        className="h-8 w-34 appearance-none rounded-lg border border-[#DDE2DD] bg-white pl-2.5 pr-7 text-[11px] font-semibold text-[#425048] outline-none transition-colors hover:border-[#AEBAB1] focus:border-[#3E6B52] focus:ring-2 focus:ring-[#3E6B52]/15 disabled:cursor-wait disabled:bg-[#F6F6F2] disabled:text-[#8A938C]"
-                      >
-                        {roles.map((role) => (
-                          <option key={role.id} value={role.id}>
-                            {role.display_name}
-                          </option>
-                        ))}
-                      </select>
+                      {rolesLoading ? (
+                        <span className="flex h-8 w-34 items-center justify-center rounded-lg border border-[#DDE2DD] bg-[#F9FAF8] text-[#8A938C]">
+                          <LoaderCircle className="animate-spin" size={14} />
+                        </span>
+                      ) : (
+                        <select
+                          value={m.membership.roleId ?? rolesByName.get(m.membership.role)?.id ?? ""}
+                          onChange={(event) => void changeRole(m, Number(event.target.value))}
+                          disabled={roles.length === 0 || savingRoleId === m.user.id || removingId === m.user.id}
+                          aria-label={`Change ${m.user.fullName}'s project role`}
+                          title={rolesByName.get(m.membership.role)?.description ?? "Project role"}
+                          className="h-8 w-34 appearance-none rounded-lg border border-[#DDE2DD] bg-white pl-2.5 pr-7 text-[11px] font-semibold text-[#425048] outline-none transition-colors hover:border-[#AEBAB1] focus:border-[#3E6B52] focus:ring-2 focus:ring-[#3E6B52]/15 disabled:cursor-wait disabled:bg-[#F6F6F2] disabled:text-[#8A938C]"
+                        >
+                          {roles.map((role) => (
+                            <option key={role.id} value={role.id}>
+                              {role.display_name}
+                            </option>
+                          ))}
+                        </select>
+                      )}
                       {savingRoleId === m.user.id ? (
                         <LoaderCircle className="pointer-events-none absolute right-2 top-2 animate-spin text-[#3E6B52]" size={14} />
+                      ) : rolesLoading ? (
+                        <span className="absolute inset-0" aria-hidden />
                       ) : (
                         <ChevronDown className="pointer-events-none absolute right-2 top-2 text-[#7C8880]" size={14} />
                       )}

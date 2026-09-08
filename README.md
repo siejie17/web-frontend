@@ -185,6 +185,7 @@ These routes act as the frontend backend-for-frontend layer:
 - `POST /be-api/auth/logout`
 - `GET /be-api/auth/me`
 - `POST /be-api/ai/chat`
+- `POST /be-api/ai/gbi-recommendations`
 - `GET /be-api/assessment/form-inputs`
 - `GET /be-api/users/:userId/projects`
 

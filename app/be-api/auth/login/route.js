@@ -12,7 +12,7 @@ export async function POST(request) {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
             body: JSON.stringify({ email, password }),
-            signal: AbortSignal.timeout(10_000),
+            signal: AbortSignal.timeout(60_000),
         });
     } catch (error) {
         const timedOut = error instanceof Error && error.name === 'TimeoutError';
@@ -36,7 +36,7 @@ export async function POST(request) {
 
     // 3. User is verified -> Bake the secure cookie
     const response = NextResponse.json({ user: data.user, success: true });
-    
+
     response.cookies.set('session_token', data.token, {
         httpOnly: true,
         secure: process.env.NODE_ENV === 'production',

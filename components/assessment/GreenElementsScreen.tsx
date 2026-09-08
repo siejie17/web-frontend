@@ -22,7 +22,7 @@ import {
   Trash2,
   Check,
   Sparkles,
-  Award,
+  XCircle,
 } from "lucide-react";
 import CustomDropdown from "../form/CustomDropdown";
 import ReactMarkdown from "react-markdown";
@@ -186,9 +186,10 @@ function IconButton({ onPress, icon, color, bg, activeBg }: any) {
     <button
       type="button"
       onClick={onPress}
-      className={`flex h-7 w-7 items-center justify-center rounded-lg ${bg} ${activeBg} transition-all duration-150 active:scale-90 focus-visible:outline focus-visible:outline-offset-2`}
+      className={`flex h-7 shrink-0 items-center gap-1 rounded-lg ${bg} ${activeBg} px-2 text-[10px] font-bold text-slate-900 transition-colors hover:bg-[#B7791F]/[0.14]`}
     >
       <IconCmp size={14} color={color} />
+      <span className="hidden md:flex">Info</span>
     </button>
   );
 }
@@ -305,7 +306,9 @@ function renderMdxHeading(
 }
 
 /** Split info into sections by top-level `## ` headings so each can be boxed. */
-function splitMdxSections(info: string): { heading?: string; body: string[] }[] {
+function splitMdxSections(
+  info: string,
+): { heading?: string; body: string[] }[] {
   const lines = info.split("\n");
   const sections: { heading?: string; body: string[] }[] = [];
   let current: { heading?: string; body: string[] } | null = null;
@@ -386,10 +389,15 @@ function InfoGuideModal({
                 >
                   <ReactMarkdown
                     components={{
-                      h1: (props) => renderMdxHeading(props.children as any, "h1"),
-                      h2: (props) => renderMdxHeading(props.children as any, "h2"),
-                      h3: (props) => renderMdxHeading(props.children as any, "h3"),
-                      p: (props) => <p className="mb-0 last:mb-0">{props.children}</p>,
+                      h1: (props) =>
+                        renderMdxHeading(props.children as any, "h1"),
+                      h2: (props) =>
+                        renderMdxHeading(props.children as any, "h2"),
+                      h3: (props) =>
+                        renderMdxHeading(props.children as any, "h3"),
+                      p: (props) => (
+                        <p className="mb-0 last:mb-0">{props.children}</p>
+                      ),
                       ul: (props) => (
                         <ul className="mb-0 list-disc space-y-1 pl-5 last:mb-0">
                           {props.children}
@@ -1139,7 +1147,15 @@ const GreenElementsScreen = ({
         });
       }
     },
-    [selectedCriterion, criteria, checkedItems, checkedSubitems, customItems, setCriteriaMarks, setCustomItems],
+    [
+      selectedCriterion,
+      criteria,
+      checkedItems,
+      checkedSubitems,
+      customItems,
+      setCriteriaMarks,
+      setCustomItems,
+    ],
   );
 
   // Update criteriaTotalMarks whenever criteriaMarks changes
@@ -1193,112 +1209,114 @@ const GreenElementsScreen = ({
 
       if (!hasPriorSelections) {
         newSections.forEach((criterion) => {
-        const targetCriterion = criterion.name;
+          const targetCriterion = criterion.name;
 
-        setCriteriaMarks((prevMarks) => ({
-          ...prevMarks,
-          [targetCriterion]: 0,
-        }));
+          setCriteriaMarks((prevMarks) => ({
+            ...prevMarks,
+            [targetCriterion]: 0,
+          }));
 
-        // Handle items at criterion level
-        if (criterion.items && Array.isArray(criterion.items)) {
-          criterion.items.forEach((item) => {
-            // Only add regular items to checkedItems
-            initialCheckedState[item.id as any] =
-              item.is_compulsory === 1 ? true : false;
+          // Handle items at criterion level
+          if (criterion.items && Array.isArray(criterion.items)) {
+            criterion.items.forEach((item) => {
+              // Only add regular items to checkedItems
+              initialCheckedState[item.id as any] =
+                item.is_compulsory === 1 ? true : false;
 
-            item.is_compulsory &&
-              setCriteriaMarks((prevMarks) => {
-                const currentMarks = prevMarks[targetCriterion] || 0;
+              item.is_compulsory &&
+                setCriteriaMarks((prevMarks) => {
+                  const currentMarks = prevMarks[targetCriterion] || 0;
 
-                return {
-                  ...prevMarks,
-                  [targetCriterion]: Math.max(
-                    0,
-                    currentMarks + (item.marks as number),
-                  ),
-                };
-              });
+                  return {
+                    ...prevMarks,
+                    [targetCriterion]: Math.max(
+                      0,
+                      currentMarks + (item.marks as number),
+                    ),
+                  };
+                });
 
-            const groupedOptions =
-              item.option_groups?.flatMap((group) =>
-                Array.isArray(group?.options) ? group.options : [],
-              ) || [];
+              const groupedOptions =
+                item.option_groups?.flatMap((group) =>
+                  Array.isArray(group?.options) ? group.options : [],
+                ) || [];
 
-            if (groupedOptions.length > 0) {
-              initialCheckedOptions[item.id as any] = {};
-              groupedOptions.forEach((option) => {
-                initialCheckedOptions[item.id as any][option.id as any] = false;
-              });
-            }
+              if (groupedOptions.length > 0) {
+                initialCheckedOptions[item.id as any] = {};
+                groupedOptions.forEach((option) => {
+                  initialCheckedOptions[item.id as any][option.id as any] =
+                    false;
+                });
+              }
 
-            // Initialize subitems separately in checkedSubitems
-            if (
-              item.subitems &&
-              Array.isArray(item.subitems) &&
-              item.subitems.length > 0
-            ) {
-              initialCheckedSubitems[item.id as any] = {};
-              item.subitems.forEach((subitem) => {
-                initialCheckedSubitems[item.id as any][subitem.id as any] =
-                  false;
-              });
-            }
-          });
-        }
+              // Initialize subitems separately in checkedSubitems
+              if (
+                item.subitems &&
+                Array.isArray(item.subitems) &&
+                item.subitems.length > 0
+              ) {
+                initialCheckedSubitems[item.id as any] = {};
+                item.subitems.forEach((subitem) => {
+                  initialCheckedSubitems[item.id as any][subitem.id as any] =
+                    false;
+                });
+              }
+            });
+          }
 
-        // Handle items in subcriteria
-        if (criterion.subcriteria && Array.isArray(criterion.subcriteria)) {
-          criterion.subcriteria.forEach((sub) => {
-            if (sub.items && Array.isArray(sub.items)) {
-              sub.items.forEach((item) => {
-                // Only add regular items to checkedItems
-                initialCheckedState[item.id as any] =
-                  item.is_compulsory === 1 ? true : false;
+          // Handle items in subcriteria
+          if (criterion.subcriteria && Array.isArray(criterion.subcriteria)) {
+            criterion.subcriteria.forEach((sub) => {
+              if (sub.items && Array.isArray(sub.items)) {
+                sub.items.forEach((item) => {
+                  // Only add regular items to checkedItems
+                  initialCheckedState[item.id as any] =
+                    item.is_compulsory === 1 ? true : false;
 
-                item.is_compulsory &&
-                  setCriteriaMarks((prevMarks) => {
-                    const currentMarks = prevMarks[targetCriterion] || 0;
+                  item.is_compulsory &&
+                    setCriteriaMarks((prevMarks) => {
+                      const currentMarks = prevMarks[targetCriterion] || 0;
 
-                    return {
-                      ...prevMarks,
-                      [targetCriterion]: Math.max(
-                        0,
-                        currentMarks + (item.marks as number),
-                      ),
-                    };
-                  });
+                      return {
+                        ...prevMarks,
+                        [targetCriterion]: Math.max(
+                          0,
+                          currentMarks + (item.marks as number),
+                        ),
+                      };
+                    });
 
-                const groupedOptions =
-                  item.option_groups?.flatMap((group) =>
-                    Array.isArray(group?.options) ? group.options : [],
-                  ) || [];
+                  const groupedOptions =
+                    item.option_groups?.flatMap((group) =>
+                      Array.isArray(group?.options) ? group.options : [],
+                    ) || [];
 
-                if (groupedOptions.length > 0) {
-                  initialCheckedOptions[item.id as any] = {};
-                  groupedOptions.forEach((option) => {
-                    initialCheckedOptions[item.id as any][option.id as any] =
-                      false;
-                  });
-                }
+                  if (groupedOptions.length > 0) {
+                    initialCheckedOptions[item.id as any] = {};
+                    groupedOptions.forEach((option) => {
+                      initialCheckedOptions[item.id as any][option.id as any] =
+                        false;
+                    });
+                  }
 
-                // Initialize subitems separately in checkedSubitems
-                if (
-                  item.subitems &&
-                  Array.isArray(item.subitems) &&
-                  item.subitems.length > 0
-                ) {
-                  initialCheckedSubitems[item.id as any] = {};
-                  item.subitems.forEach((subitem) => {
-                    initialCheckedSubitems[item.id as any][subitem.id as any] =
-                      false;
-                  });
-                }
-              });
-            }
-          });
-        }
-      });
+                  // Initialize subitems separately in checkedSubitems
+                  if (
+                    item.subitems &&
+                    Array.isArray(item.subitems) &&
+                    item.subitems.length > 0
+                  ) {
+                    initialCheckedSubitems[item.id as any] = {};
+                    item.subitems.forEach((subitem) => {
+                      initialCheckedSubitems[item.id as any][
+                        subitem.id as any
+                      ] = false;
+                    });
+                  }
+                });
+              }
+            });
+          }
+        });
       }
 
       const firstCriterionName =
@@ -1481,8 +1499,10 @@ const GreenElementsScreen = ({
                 : "border border-[#1C1F1D]/6 shadow-[0_1px_2px_rgba(28,31,29,0.03)] hover:border-[#1C1F1D]/9 hover:shadow-[0_1px_2px_rgba(28,31,29,0.04),0_12px_28px_-14px_rgba(28,31,29,0.14)]",
             ].join(" ")}
           >
-            <div className="px-5 py-4.5">
-              <div className="flex items-center">
+            {/* Responsive padding: tighter on small viewports */}
+            <div className="px-4 py-4 sm:px-5 sm:py-4.5">
+              {/* Header row: wraps instead of overflowing on narrow screens */}
+              <div className="flex flex-wrap items-center gap-y-2">
                 {/* Checkbox — only for simple items */}
                 {hasCheckbox ? (
                   <button
@@ -1511,10 +1531,10 @@ const GreenElementsScreen = ({
                   </button>
                 ) : null}
 
-                {/* Description */}
+                {/* Description — always sits beside the checkbox; badges wrap below it if needed */}
                 <button
                   type="button"
-                  className="mr-3 flex-1 rounded-lg text-left transition-colors focus-visible:outline focus-visible:outline-offset-2 focus-visible:outline-[#3E6B52]/30"
+                  className="mr-3 min-w-0 flex-1 rounded-lg text-left transition-colors focus-visible:outline focus-visible:outline-offset-2 focus-visible:outline-[#3E6B52]/30"
                   onClick={
                     isUnchanged
                       ? undefined
@@ -1522,7 +1542,7 @@ const GreenElementsScreen = ({
                   }
                 >
                   <span
-                    className={`text-[13.5px] leading-5 tracking-[-0.01em] ${
+                    className={`block break-words text-[13.5px] leading-5 tracking-[-0.01em] ${
                       hasSubitems
                         ? "font-semibold text-[#1C1F1D]/90"
                         : isChecked
@@ -1534,8 +1554,8 @@ const GreenElementsScreen = ({
                   </span>
                 </button>
 
-                {/* Right-side badges & icon actions */}
-                <div className="flex items-center gap-2">
+                {/* Right-side badges & icon actions — wrap onto their own row if needed */}
+                <div className="ml-auto flex flex-wrap items-center justify-end gap-2 sm:ml-0">
                   {showPointsBadge ? (
                     <button
                       type="button"
@@ -1544,7 +1564,7 @@ const GreenElementsScreen = ({
                           ? undefined
                           : () => handleCheckboxToggle(item.id)
                       }
-                      className="transition-transform duration-150 active:scale-95"
+                      className="shrink-0 transition-transform duration-150 active:scale-95"
                     >
                       <PointsBadge
                         points={item.marks as number}
@@ -1554,35 +1574,47 @@ const GreenElementsScreen = ({
                   ) : null}
 
                   {showSelectionBadge ? (
-                    <PointsBadge
-                      points={itemSelectionTotal || 0}
-                      active={itemSelectionTotal !== 0}
-                    />
+                    <div className="shrink-0">
+                      <PointsBadge
+                        points={itemSelectionTotal || 0}
+                        active={itemSelectionTotal !== 0}
+                      />
+                    </div>
                   ) : null}
 
                   {item.info && !hasOptions ? (
-                    <IconButton
-                      onPress={() =>
-                        handleInfoGuideOpen(
-                          item.info as string,
-                          "Information",
-                          "Guide",
-                        )
-                      }
-                      icon="info"
-                      color="#9CA3AF"
-                      bg="bg-[#1C1F1D]/[0.04]"
-                      activeBg="hover:bg-[#1C1F1D]/[0.08]"
-                    />
+                    <div className="shrink-0">
+                      <IconButton
+                        onPress={() =>
+                          handleInfoGuideOpen(
+                            item.info as string,
+                            "Information",
+                            "Guide",
+                          )
+                        }
+                        icon="info"
+                        color="#9CA3AF"
+                        bg="bg-[#1C1F1D]/[0.04]"
+                        activeBg="hover:bg-[#1C1F1D]/[0.08]"
+                      />
+                    </div>
                   ) : null}
 
                   <button
                     type="button"
-                    onClick={() => handleInfoGuideOpen(buildSupplementalInfo(item), "ESG & Suggestions", "Details")}
-                    className="flex h-7 items-center gap-1 rounded-lg bg-[#B7791F]/[0.08] px-2 text-[10px] font-bold text-[#9A6418] transition-colors hover:bg-[#B7791F]/[0.14]"
-                    aria-label="ESG and suggestions"
+                    onClick={() =>
+                      handleInfoGuideOpen(
+                        buildSupplementalInfo(item),
+                        "Suggestions",
+                        "Details",
+                      )
+                    }
+                    className="flex h-7 shrink-0 items-center gap-1 rounded-lg bg-[#B7791F]/[0.08] px-2 text-[10px] font-bold text-[#9A6418] transition-colors hover:bg-[#B7791F]/[0.14]"
+                    aria-label="Suggestions"
                   >
-                    <FileText size={12} /> ESG
+                    <FileText size={12} />
+                    {/* Label hides on very narrow viewports to save space; icon always visible */}
+                    <span className="hidden sm:inline">Suggestions</span>
                   </button>
                 </div>
               </div>
@@ -1601,7 +1633,7 @@ const GreenElementsScreen = ({
                         <button
                           type="button"
                           key={oi}
-                          className={`flex w-full items-center rounded-[14px] px-3.5 py-2.5 text-left transition-all duration-150 ease-out ${
+                          className={`flex w-full flex-wrap items-center gap-y-1 rounded-[14px] px-3.5 py-2.5 text-left transition-all duration-150 ease-out ${
                             isOptChecked
                               ? "bg-[#3E6B52]/8 ring-1 ring-inset ring-[#3E6B52]/15"
                               : "bg-[#1C1F1D]/2.5 hover:bg-[#1C1F1D]/5"
@@ -1631,7 +1663,7 @@ const GreenElementsScreen = ({
                             )}
                           </span>
                           <span
-                            className={`flex-1 pr-1 text-[13px] leading-5 ${
+                            className={`min-w-0 flex-1 basis-[60%] break-words pr-1 text-[13px] leading-5 sm:basis-auto ${
                               isOptChecked
                                 ? "font-semibold text-[#3E6B52]"
                                 : "font-normal text-[#1C1F1D]/65"
@@ -1640,7 +1672,7 @@ const GreenElementsScreen = ({
                             {option?.description}
                           </span>
                           <span
-                            className={`mr-2 font-mono text-[11px] font-semibold tracking-wide ${
+                            className={`mr-2 shrink-0 font-mono text-[11px] font-semibold tracking-wide ${
                               isOptChecked
                                 ? "text-[#3E6B52]"
                                 : "text-[#1C1F1D]/25"
@@ -1729,7 +1761,7 @@ const GreenElementsScreen = ({
                         {/* Section divider */}
                         <div className="mb-2.5 flex items-center gap-2">
                           <div className="h-px flex-1 bg-[#1C1F1D]/8" />
-                          <span className="text-[10.5px] font-semibold uppercase tracking-[0.08em] text-[#1C1F1D]/32">
+                          <span className="whitespace-nowrap text-[10.5px] font-semibold uppercase tracking-[0.08em] text-[#1C1F1D]/32">
                             Choose one group
                           </span>
                           <div className="h-px flex-1 bg-[#1C1F1D]/8" />
@@ -1831,7 +1863,7 @@ const GreenElementsScreen = ({
                                     )}
                                   </span>
                                   <span
-                                    className={`text-[13px] font-semibold tracking-[-0.01em] ${
+                                    className={`min-w-0 flex-1 break-words text-[13px] font-semibold tracking-[-0.01em] ${
                                       isActive
                                         ? "text-[#4F46E5]"
                                         : "text-[#1C1F1D]/50"
@@ -1915,7 +1947,7 @@ const GreenElementsScreen = ({
 
           {/* ── Subitems ── */}
           {hasSubitems ? (
-            <div className="mx-0.5 mt-2 rounded-2xl border border-[#1C1F1D]/5 bg-[#1C1F1D]/[0.012] p-2.5">
+            <div className="mx-0.5 mt-2 rounded-2xl border border-[#1C1F1D]/5 bg-[#1C1F1D]/[0.012] p-2 sm:p-2.5">
               {subitems.map((subitem) => (
                 <SubitemRow
                   key={subitem.id}
@@ -1985,7 +2017,7 @@ const GreenElementsScreen = ({
       selectedCriterionData.items && selectedCriterionData.items.length > 0;
 
     return (
-      <div className="px-4 sm:px-6">
+      <div className="px-4">
         {/* Render items directly if no subcriteria */}
         {!hasSubcriteria && hasCriterionItems ? (
           <div className="mb-6">
@@ -2036,33 +2068,40 @@ const GreenElementsScreen = ({
             animate={{ y: 0, opacity: 1 }}
             exit={{ y: -60, opacity: 0 }}
             transition={{ duration: 0.25, ease: [0.22, 1, 0.36, 1] }}
-            className="fixed inset-x-0 top-3 z-40 flex justify-center px-4"
+            className="fixed inset-x-0 top-0 z-40"
           >
-            <div
-              className="flex w-full max-w-xl cursor-pointer items-center gap-3 rounded-full border border-[#E4E1D8] bg-white/95 px-4 py-2.5 shadow-[0_8px_24px_rgba(30,38,33,0.14)] backdrop-blur-md"
-              onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}
-            >
+            {/* Smooth blur overlay fading into content */}
+            <div className="h-14 bg-gradient-to-b from-white/80 via-white/60 to-transparent backdrop-blur-md sm:h-16" />
+
+            {/* Floating pill */}
+            <div className="absolute top-2 flex w-full justify-center px-3 sm:top-3 sm:px-4">
+              <div
+                className="flex w-full max-w-xl cursor-pointer items-center gap-2 rounded-full border border-[#E4E1D8] bg-white/95 px-3 py-2 shadow-[0_8px_24px_rgba(30,38,33,0.14)] backdrop-blur-md sm:gap-3 sm:px-4 sm:py-2.5"
+                onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}
+              >
               {selectedCriterionData && (
-                <div className="flex min-w-0 flex-1 items-center gap-2">
-                  <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[#3E6B52]/9">
+                <div className="flex min-w-0 flex-1 items-center gap-1.5 sm:gap-2">
+                  <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[#3E6B52]/9 sm:h-6 sm:w-6">
                     <Leaf size={12} className="text-[#3E6B52]" />
                   </span>
-                  <span className="truncate text-[12.5px] font-semibold text-[#1C1F1D]/85">
+                  <span className="min-w-0 truncate text-[12px] font-semibold text-[#1C1F1D]/85 sm:text-[12.5px]">
                     {selectedCriterionData.name}
                   </span>
-                  <span className="shrink-0 rounded-full bg-[#1C1F1D]/5 px-2 py-0.5 font-mono text-[10.5px] font-bold text-[#1C1F1D]/50">
+                  <span className="shrink-0 whitespace-nowrap rounded-full bg-[#1C1F1D]/5 px-1.5 py-0.5 font-mono text-[10px] font-bold text-[#1C1F1D]/50 sm:px-2 sm:text-[10.5px]">
                     {criteriaMarks[selectedCriterionData.name] || 0}/
                     {selectedCriterionData.total_marks || 0}
                   </span>
                 </div>
               )}
-
               {certifiedScaleRange && totalMarks !== undefined && (
-                <MiniGaugeBadge
-                  totalMarks={totalMarks}
-                  certifiedScaleRange={certifiedScaleRange}
-                />
+                <div className="shrink-0">
+                  <MiniGaugeBadge
+                    totalMarks={totalMarks}
+                    certifiedScaleRange={certifiedScaleRange}
+                  />
+                </div>
               )}
+              </div>
             </div>
           </motion.div>
         )}
@@ -2101,9 +2140,9 @@ const GreenElementsScreen = ({
         </div>
       ) : criteria.length !== 0 ? (
         <>
-          <div className=" bg-white px-12 py-5 sm:px-8">
+          <div className="bg-white px-4 py-3 md:px-12">
             {/* Section Header */}
-            <div className="mb-1 mx-3">
+            <div className="mb-1">
               {certifiedScaleRange && totalMarks !== undefined && (
                 <CertificationGauge
                   totalMarks={totalMarks}
@@ -2264,8 +2303,8 @@ const GreenElementsScreen = ({
                   initial={{ opacity: 0, y: 16 }}
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0 }}
-                    transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
-                    className="rounded-xl2 border border-[#1C1F1D]/[0.07] bg-white mx-10 py-5 shadow-[0_1px_2px_rgba(28,31,29,0.03)]"
+                  transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
+                  className="rounded-xl2 border border-[#1C1F1D]/[0.07] bg-white mx-3 md:mx-10 py-5 shadow-[0_1px_2px_rgba(28,31,29,0.03)]"
                 >
                   {renderCriterionItems()}
                 </motion.div>
@@ -2301,180 +2340,204 @@ const GAUGE_BANDS = [
   { key: "Platinum", color: "#3E6B52" },
 ] as const;
 
-function GaugeLegendDot({ color, label }: { color: string; label: string }) {
-  return (
-    <span
-      className="flex items-center gap-1.5 text-[11px] text-[#8A938C]"
-      style={{ fontFamily: "var(--font-mono)" }}
-    >
-      <span
-        className="inline-block h-2 w-2 rounded-full"
-        style={{ backgroundColor: color }}
-      />
-      {label}
-    </span>
-  );
-}
-
 function CertificationGauge({
   totalMarks,
-  certifiedScaleRange,
-  criteriaMarks,
+  certifiedScaleRange = {
+    "Not Certified": [0, 39],
+    Certified: [40, 49],
+    Silver: [50, 64],
+    Gold: [65, 79],
+    Platinum: [80, 100],
+  } as Record<string, [number, number]>,
   targetBandIndex,
 }: {
   totalMarks: number;
-  certifiedScaleRange: Record<string, [number, number]>;
-  criteriaMarks: Record<string, number>;
+  certifiedScaleRange?: Record<string, [number, number]>;
   targetBandIndex?: number;
+  criteriaMarks?: Record<string, number>;
 }) {
   const MAX = 100;
 
-  const bands = GAUGE_BANDS.map(({ key, color }) => {
+  const bands = GAUGE_BANDS.map(({ key, color }, index) => {
     const range = certifiedScaleRange[key];
     const min = range?.[0] ?? 0;
     const max = range?.[1] ?? 0;
-    const left = (min / MAX) * 100;
-    const right = (max / MAX) * 100;
-    return { key, min, max, color, left, right };
+
+    const isLastBand = index === GAUGE_BANDS.length - 1;
+
+    return {
+      key,
+      min,
+      max,
+      color,
+      left: (min / MAX) * 100,
+      right: ((isLastBand ? max : max + 1) / MAX) * 100,
+    };
   });
 
   const markerPct = Math.min(100, Math.max(0, (totalMarks / MAX) * 100));
-  const activeBand = bands.find(
-    (b) => totalMarks >= b.min && totalMarks <= b.max,
-  );
-  const targetBand =
-    targetBandIndex !== undefined ? bands[targetBandIndex] : undefined;
+  const markerLeft = totalMarks;
+  const activeBand =
+    bands.find((b) => totalMarks >= b.min && totalMarks <= b.max) ??
+    bands[bands.length - 1];
+
+  const activeIndex = GAUGE_BANDS.findIndex((b) => b.key === activeBand.key);
+  const nextBand = GAUGE_BANDS[Math.min(activeIndex + 1, GAUGE_BANDS.length - 1)];
+  const pointsNeeded = certifiedScaleRange[nextBand.key][0] - totalMarks;
+  const atTopBand = activeBand.key === "Platinum";
+  const targetBand = targetBandIndex !== undefined ? bands[targetBandIndex] : undefined;
 
   return (
-    <section className="relative mb-6 mt-3 overflow-hidden rounded-3xl border border-[#E4E1D8] bg-[#FDFDFC] p-5 shadow-[0_1px_2px_rgba(30,38,33,0.04)] sm:p-8">
-      <div
-        className="pointer-events-none absolute -right-10 -top-10 h-40 w-40 rounded-full opacity-[0.4]"
-        style={{
-          background: `radial-gradient(circle, ${activeBand?.color ?? "#B7BEB8"}55 0%, transparent 70%)`,
-        }}
-      />
-      <div className="relative flex flex-wrap items-start justify-between gap-5">
-        <div>
+    <div className="mb-6 mt-3 flex flex-col gap-5">
+      {/* Overall score card */}
+      <section className="rounded-2xl border border-[#E4E1D8] bg-[#FDFDFC] p-5 shadow-[0_1px_2px_rgba(30,38,33,0.04)]">
+        <div className="flex flex-wrap items-start justify-between gap-2">
+          <div className="text-[13px] font-medium text-[#7C8680]">Overall score</div>
           <div
-            className="text-[11px] uppercase tracking-[0.14em] text-[#8A938C]"
-            style={{ fontFamily: "var(--font-mono)" }}
+            className="inline-flex shrink-0 items-center gap-1.5 rounded-full border px-3 py-1"
+            style={{ borderColor: `${activeBand.color}55`, backgroundColor: `${activeBand.color}14` }}
           >
-            GBI certification score
-          </div>
-          <div className="mt-1.5 flex flex-wrap items-baseline gap-x-3 gap-y-1">
-            <span className="font-serif text-[28px] font-semibold leading-none tabular-nums text-[#2C4A3A] sm:text-[34px] md:text-[42px]">
-              {totalMarks}
+            <XCircle size={13} style={{ color: activeBand.color }} />
+            <span className="whitespace-nowrap text-[12px] font-semibold" style={{ color: activeBand.color }}>
+              {activeBand.key}
             </span>
-            <span className="font-mono text-[16px] font-medium text-[#8A938C]">
-              / 100 pts
-            </span>
-          </div>
-          <div className="mt-1 text-[12.5px] text-[#8A938C]">
-            Enter assessment marks against each criterion below.
           </div>
         </div>
 
-        {/* Certification stamp */}
-        <div
-          className="flex shrink-0 -rotate-2 items-center gap-2 rounded-lg border-2 border-dashed px-3.5 py-2"
-          style={{
-            borderColor: activeBand?.color ?? "#B7BEB8",
-            color: activeBand?.color ?? "#8A938C",
-          }}
-        >
-          <Award size={15} />
+        <div className="mt-1.5 flex items-baseline gap-x-2">
           <span
-            className="text-[11.5px] font-bold uppercase tracking-[0.06em]"
-            style={{ fontFamily: "var(--font-mono)" }}
+            className="font-serif text-[40px] font-semibold leading-none text-[#1E2621] sm:text-[44px]"
+            style={{ fontFamily: "var(--font-display)" }}
           >
-            {activeBand?.key ?? "N/A"}
+            {totalMarks}
           </span>
+          <span className="text-[14px] font-medium text-[#7C8680] sm:text-[15px]">/ 100 points</span>
         </div>
-      </div>
 
-      {/* Gauge bar */}
-      {/* Gauge bar */}
-      <div className="relative mt-6">
-        <div className="relative h-2.5 rounded-full bg-[#EFEDE6]">
-          <div
-            className="absolute inset-y-0 left-0 rounded-full transition-[width] duration-300"
-            style={{
-              width: `${markerPct}%`,
-              background: activeBand?.color ?? "#B7BEB8",
-            }}
-          />
-          {bands.map((band) => (
-            <div
-              key={band.key}
-              className="absolute top-1/2 h-4 w-0.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-[#1E2621]"
-              style={{ left: `${band.left}%` }}
-            />
-          ))}
-          <div
-            className="absolute top-1/2 h-4 w-0.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-[#1E2621]"
-            style={{ left: `100%` }}
-          />
+        {!atTopBand && (
+          <>
+            <div className="my-4 h-px bg-[#E4E1D8]" />
+            <div className="text-[13.5px]">
+              <span className="font-semibold" style={{ color: "#C9962E" }}>
+                {pointsNeeded} points needed
+              </span>{" "}
+              <span className="text-[#1E2621]">to reach {nextBand.key}</span>
+            </div>
+          </>
+        )}
+      </section>
 
-          {targetBand && (
-            <>
-              <div
-                className="absolute -top-2.5 -translate-x-1/2"
-                style={{ left: `${targetBand.left}%` }}
-              >
-                <div
-                  className="flex flex-col items-center gap-5"
+      {/* Certification progress card */}
+      <section className="relative rounded-2xl border border-[#E4E1D8] bg-[#FDFDFC] p-5 shadow-[0_1px_2px_rgba(30,38,33,0.04)] sm:p-6">
+        <div
+          className="pointer-events-none absolute -right-10 -top-10 h-40 w-40 overflow-hidden rounded-full opacity-[0.35]"
+          style={{ background: `radial-gradient(circle, ${activeBand.color}55 0%, transparent 70%)` }}
+        />
+        <h2 className="relative text-[15px] font-semibold text-[#1E2621]" style={{ fontFamily: "var(--font-display)" }}>
+          Certification progress
+        </h2>
+
+        <div className="relative mt-6">
+          {/* room above the bar for the "your score" flag so it never clips/wraps */}
+          <div className="relative pt-7">
+            <div className="absolute top-0 -translate-x-1/2 whitespace-nowrap" style={{ left: `${markerLeft}%` }}>
+              <div className="flex flex-col items-center">
+                <span
+                  className="text-[9px] font-bold uppercase tracking-[0.06em]"
+                  style={{ color: activeBand?.color ?? "#1E2621", fontFamily: "var(--font-mono)" }}
                 >
-                  <svg width="12" height="15" viewBox="0 0 12 10" fill="none">
-                    <path d="M6 10L0 0h12z" fill={targetBand.color} />
-                  </svg>
-                  <span
-                    className="whitespace-nowrap text-[9px] font-bold uppercase tracking-[0.06em]"
-                    style={{ color: targetBand.color, fontFamily: "var(--font-mono)" }}
-                  >
-                    Target
-                  </span>
+                  Your{"\n"}score
+                </span>
+                <svg width="10" height="8" viewBox="0 0 12 10" fill="none" className="mt-0.5">
+                  <path d="M6 10L0 0h12z" fill={activeBand?.color ?? "#1E2621"} />
+                </svg>
+              </div>
+            </div>
+
+            <div className="relative h-2.5 overflow-hidden rounded-full bg-[#EFEDE6]">
+              {bands.map((band) => {
+                const bandWidth = band.right - band.left;
+
+                const achievedStart = band.left;
+                const achievedEnd = Math.min(markerPct, band.right);
+
+                const remainingStart = Math.max(markerPct, band.left);
+                const remainingEnd = band.right;
+
+                return (
+                  <div key={band.key}>
+                    {/* Achieved */}
+                    {achievedEnd > achievedStart && (
+                      <div
+                        className="absolute inset-y-0"
+                        style={{
+                          left: `${achievedStart}%`,
+                          width: `${achievedEnd - achievedStart}%`,
+                          backgroundColor: band.color,
+                        }}
+                      />
+                    )}
+
+                    {/* Remaining */}
+                    {remainingEnd > remainingStart && (
+                      <div
+                        className="absolute inset-y-0"
+                        style={{
+                          left: `${remainingStart}%`,
+                          width: `${remainingEnd - remainingStart}%`,
+                          backgroundColor: band.color,
+                          opacity: 0.28,
+                        }}
+                      />
+                    )}
+                  </div>
+                );
+              })}
+
+              {bands.map((band) => (
+                <div
+                  key={band.key}
+                  className="absolute top-1/2 h-4 w-0.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-white"
+                  style={{ left: `${band.left}%` }}
+                />
+              ))}
+              <div
+                className="absolute top-1/2 h-4 w-0.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-white/70"
+                style={{ left: "100%" }}
+              />
+            </div>
+
+            {targetBand && (
+              <div
+                className="absolute h-2.5 w-0.5 -translate-x-1/2"
+                style={{ left: `${Math.min(94, Math.max(6, targetBand.left))}%`, top: "28px", backgroundColor: targetBand.color }}
+              />
+            )}
+            <div
+              className="absolute h-2.5 w-0.5 -translate-x-1/2"
+              style={{ left: `${markerPct}%`, top: "28px", backgroundColor: activeBand?.color ?? "#1E2621" }}
+            />
+          </div>
+
+          {/* legend: wraps freely at any width, never overlaps */}
+          <div className="mt-6 flex flex-wrap gap-x-5 gap-y-3">
+            {bands.map((band) => (
+              <div key={band.key} className="flex min-w-[62px] items-start gap-1.5">
+                <span className="mt-1 h-2.5 w-2.5 shrink-0 rounded-full ring-2 ring-white" style={{ backgroundColor: band.color }} />
+                <div className="leading-tight">
+                  <div className="whitespace-nowrap text-[11.5px] font-bold" style={{ color: band.color, fontFamily: "var(--font-mono)" }}>
+                    {band.key}
+                  </div>
+                  <div className="whitespace-nowrap text-[10.5px] font-medium tabular-nums" style={{ color: band.color, opacity: 0.75 }}>
+                    {band.min}–{band.max}
+                  </div>
                 </div>
               </div>
-              <div
-                className="absolute top-0 h-2.5 w-0.5 -translate-x-1/2"
-                style={{
-                  left: `${targetBand.left}%`,
-                  backgroundColor: targetBand.color,
-                }}
-              />
-            </>
-          )}
+            ))}
+          </div>
         </div>
-
-        {/* Legend — aligned to each band's actual position on the bar */}
-        <div className="relative mt-3 h-9">
-          {bands.map((band) => {
-            const mid = (band.left + band.right) / 2;
-            return (
-              <div
-                key={band.key}
-                className="absolute top-0 flex -translate-x-1/2 flex-col items-center gap-0.5"
-                style={{ left: `${Math.min(96, Math.max(4, mid))}%` }}
-              >
-                <span
-                  className="h-2 w-2 rounded-full"
-                  style={{ backgroundColor: band.color }}
-                />
-                <span
-                  className="whitespace-nowrap text-[10.5px] text-[#8A938C]"
-                  style={{ fontFamily: "var(--font-mono)" }}
-                >
-                  {band.key}
-                </span>
-                <span className="whitespace-nowrap text-[9px] text-[#B7BEB8] tabular-nums">
-                  {band.min}–{band.max}
-                </span>
-              </div>
-            );
-          })}
-        </div>
-      </div>
-    </section>
+      </section>
+    </div>
   );
 }
 
@@ -2486,7 +2549,7 @@ function MiniGaugeBadge({
   certifiedScaleRange: Record<string, [number, number]>;
 }) {
   const bands = GAUGE_BANDS.map(({ key, color }) => {
-    const range = certifiedScaleRange[key];
+    const range = certifiedScaleRange[key as string];
     return { key, min: range?.[0] ?? 0, max: range?.[1] ?? 0, color };
   });
   const activeBand = bands.find(

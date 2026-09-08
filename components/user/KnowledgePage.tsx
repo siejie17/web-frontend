@@ -109,10 +109,7 @@ export default function KnowledgePage({ type }: KnowledgePageProps) {
 
   return (
     <div className="py-4">
-      <div className="mx-auto max-w-5xl space-y-7 px-4 py-2">
-        <BackButton text="Dashboard" redirect="/dashboard" />
-        <UserPageTabs />
-
+      <div className="mx-auto space-y-7 px-4 py-2">
         <header className="overflow-hidden rounded-3xl border border-[#D6E1D9] bg-[#173B2A] px-6 py-7 text-white shadow-[0_16px_38px_rgba(23,59,42,0.13)] sm:px-8">
           <div className="flex items-start gap-4">
             <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-white/10 text-[#DCECE0] ring-1 ring-white/15">

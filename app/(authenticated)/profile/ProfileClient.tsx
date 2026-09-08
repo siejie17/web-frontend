@@ -251,7 +251,7 @@ export default function ProfileClient() {
   };
 
   const currentRoleLabel =
-    getUserRoleLabel(user?.role ?? null) ??
+    getUserRoleLabel(user?.system_role ?? null) ??
     "Member";
 
   const profilePhoto =
@@ -274,14 +274,7 @@ export default function ProfileClient() {
     <div
       className="py-4"
     >
-      <div className="mx-auto max-w-5xl space-y-8 px-4 py-2">
-        <BackButton
-          text="Dashboard"
-          redirect="/dashboard"
-        />
-
-        <UserPageTabs />
-
+      <div className="mx-auto md:max-w-375 space-y-8 px-4 py-2">
         {/* ---------------- Profile Hero ---------------- */}
         <ProfileHero
           fullName={fullName}
@@ -331,16 +324,16 @@ export default function ProfileClient() {
               onEdit={() => setEditingField("last_name")}
             />
           </div>
-          <div className="mt-1 space-y-1">
-            <InfoTile
-              icon={ShieldCheck}
-              label="Role"
-              value={currentRoleLabel}
-            />
+          <div className="mt-1 grid gap-1 sm:grid-cols-2">
             <InfoTile
               icon={AtSign}
               label="Email"
               value={user.email || "Not provided"}
+            />
+            <InfoTile
+              icon={ShieldCheck}
+              label="System Role"
+              value={currentRoleLabel}
             />
           </div>
 
@@ -498,7 +491,7 @@ function getUserRoleLabel(
   }
 
   if (typeof role === "string") {
-    return role;
+    return role.charAt(0).toUpperCase() + role.slice(1);
   }
 
   return (
